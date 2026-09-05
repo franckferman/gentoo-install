@@ -65,9 +65,14 @@ jobs:
           ./gentoo-install.sh --version
           ./gentoo-install.sh --list-steps
 
+      # The claim under test is about stdout, not about the run succeeding. A
+      # dry run on a bare runner legitimately ends non-zero — there is no target
+      # disk and no root — and with `bash -e` the unguarded assignment aborted
+      # the step before the assertion was ever reached. The check had therefore
+      # never once run.
       - name: Nothing but --json writes on stdout
         run: |
-          out="$(./gentoo-install.sh --dry-run --non-interactive 2>/dev/null)"
+          out="$(./gentoo-install.sh --dry-run --non-interactive 2>/dev/null || true)"
           test -z "$out" || { echo "unexpected stdout: $out" >&2; exit 1; }
 
       - name: --json is valid JSON
