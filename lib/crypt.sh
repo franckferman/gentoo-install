@@ -111,6 +111,58 @@ crypt_variants() {
   done | sort
 }
 
+crypt_validate_early() {
+  # Stage 1 of DESIGN.md §5, for a value no closed list can hold: cryptsetup
+  # supports whatever the running kernel supports, and that differs between
+  # machines. So the question is put to cryptsetup rather than to a table that
+  # would be wrong somewhere.
+  #
+  # Only a cipher other than the default is checked. The measurement is what
+  # costs: a valid cipher takes about two seconds because cryptsetup actually
+  # benchmarks it, while an unknown one fails in twenty milliseconds. Paying two
+  # seconds on every run to re-confirm the one cipher this project ships and
+  # tests would be a poor trade; paying it once for a deliberate choice, before
+  # step 20 wipes anything, is a good one.
+  local cipher="${CFG[crypt_cipher]:-}" size="${CFG[crypt_key_size]:-512}"
+
+  [[ -n "$cipher" ]] || return 0
+  [[ "$cipher" != "aes-xts-plain64" ]] || return 0
+  [[ "${CFG[crypt]:-none}" != "none" ]] || return 0
+  have cryptsetup || return 0
+
+  log "checking that this kernel offers ${cipher} at ${size} bits"
+  if cryptsetup benchmark -c "$cipher" -s "$size" >/dev/null 2>&1; then
+    ok "${cipher}/${size} is available here"
+    return 0
+  fi
+
+  err "This kernel cannot do ${cipher} at ${size} bits"
+  err "       cryptsetup was asked and refused. Either the name is wrong or the"
+  err "       module is not built; the answer differs between kernels, which is"
+  err "       why this is asked rather than looked up in a table."
+  err "       what this machine offers:  cryptsetup benchmark"
+  err "       the default, always built:  crypt_cipher = aes-xts-plain64"
+  return 1
+}
+
+crypt_validate_pbkdf_params() {
+  # --pbkdf-memory belongs to argon2. pbkdf2 has no memory parameter at all: it
+  # is an iteration count and nothing else, and cryptsetup refuses the pair.
+  # Caught here rather than inside luksFormat, which runs in step 30 — after
+  # step 20 has wiped the disk for a combination that was never going to work.
+  local pbkdf="${CFG[crypt_pbkdf]:-argon2id}"
+
+  [[ "$pbkdf" == "pbkdf2" ]] || return 0
+  [[ -n "${CFG[crypt_pbkdf_memory]:-}" ]] || return 0
+
+  err "crypt_pbkdf = pbkdf2 takes no crypt_pbkdf_memory"
+  err "       memory is an argon2 parameter; pbkdf2 is an iteration count and"
+  err "       nothing else, and cryptsetup refuses the two together."
+  err "       drop it:                    crypt_pbkdf_memory ="
+  err "       or keep a memory-hard one:  crypt_pbkdf = argon2id"
+  return 1
+}
+
 crypt_validate_config() {
   # Stage 1 of DESIGN.md §5: the value must be spellable. Ten milliseconds,
   # before a single sector is touched.
@@ -384,7 +436,47 @@ crypt_read_passphrase() {
     return 1
   fi
 
+  crypt_say_keymap
   prompt_secret "$varname" "$label" "$twice"
+}
+
+crypt_say_keymap() {
+  # Said once, before the first passphrase is typed.
+  #
+  # The passphrase is typed here, on the console of a live image, and again at
+  # every boot on the console of the installed machine. If those two consoles
+  # disagree about the keyboard, the passphrase that was set is not the one the
+  # operator meant to set, and the mismatch only shows at the next boot — by
+  # which time the disk is encrypted with it. Loading a keymap is not this
+  # installer's business, but saying which one is loaded costs nothing.
+  local map=""
+
+  [[ -z "${_CRYPT_KEYMAP_SAID:-}" ]] || return 0
+  _CRYPT_KEYMAP_SAID=1
+
+  if have localectl; then
+    map="$(localectl status 2>/dev/null | sed -n 's/.*VC Keymap: *//p' | head -n 1)"
+  fi
+  if [[ -z "$map" && -r /etc/vconsole.conf ]]; then
+    map="$(sed -n 's/^KEYMAP=//p' /etc/vconsole.conf | tr -d '"' | head -n 1)"
+  fi
+  if [[ -z "$map" && -r /etc/conf.d/keymaps ]]; then
+    map="$(sed -n 's/^keymap=//p' /etc/conf.d/keymaps | tr -d '"' | head -n 1)"
+  fi
+
+  if [[ -n "$map" && "$map" != "us" ]]; then
+    log "this console is on the ${map} keymap"
+    log "       the machine you are installing will boot on its own default,"
+    log "       usually us. Type a passphrase whose characters are in the same"
+    log "       place on both, or set it from a file: crypt_pass_file = FILE"
+  elif [[ -n "$map" ]]; then
+    log "this console is on the ${map} keymap"
+  else
+    log "the console keymap could not be read; it is probably us"
+    log "       if this keyboard is not us, the passphrase you type here and the"
+    log "       one the installed machine asks for will not be the same"
+  fi
+  return 0
 }
 
 crypt_check_passphrase_strength() {
@@ -534,7 +626,9 @@ crypt_format_args() {
   if [[ -n "${CFG[crypt_pbkdf_iterations]}" ]]; then
     printf '%s\n' --pbkdf-force-iterations "${CFG[crypt_pbkdf_iterations]}"
   fi
-  if [[ -n "${CFG[crypt_pbkdf_memory]}" ]]; then
+  # argon2 only: pbkdf2 refuses this flag. The combination is already refused at
+  # parse time; this keeps the argv right even for a caller driving this alone.
+  if [[ -n "${CFG[crypt_pbkdf_memory]}" && "${CFG[crypt_pbkdf]}" != "pbkdf2" ]]; then
     printf '%s\n' --pbkdf-memory "${CFG[crypt_pbkdf_memory]}"
   fi
 }

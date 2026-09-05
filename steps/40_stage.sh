@@ -27,6 +27,45 @@ fi
 # --------------------------------------------------------------------------- #
 #  The step                                                                   #
 # --------------------------------------------------------------------------- #
+_step_40_local() {
+  # Args: $1 = target root, $2 = "file" or "url".
+  local root="$1" kind="$2" tarball
+
+  if [[ "$kind" == "file" ]]; then
+    tarball="${CFG[stage_file]}"
+    stage_local_check_file "$tarball" || return "$EXIT_FAILURE"
+    log "stage of your own: ${tarball}"
+  else
+    tarball="$(stage_cache_dir)/${CFG[stage_url]##*/}"
+    log "stage of your own: ${CFG[stage_url]}"
+    log "                   into ${tarball}"
+  fi
+
+  if is_explicit flavour || is_explicit stage_variant; then
+    warn "flavour and stage_variant are ignored when a stage is named outright"
+    warn "       what ${tarball##*/} contains is what gets installed"
+  fi
+
+  if [[ "$DRY_RUN" == "yes" ]]; then
+    log "dry-run: nothing fetched, nothing unpacked"
+    return "$EXIT_SUCCESS"
+  fi
+
+  if [[ "$kind" == "url" ]]; then
+    mkdir -p -- "$(stage_cache_dir)" || return "$EXIT_FAILURE"
+    stage_fetch "${CFG[stage_url]}" "$tarball" || return "$EXIT_FAILURE"
+    stage_local_check_file "$tarball" || return "$EXIT_FAILURE"
+  fi
+
+  stage_local_verify "$tarball" || return "$EXIT_FAILURE"
+  stage_unpack "$tarball" "$root" || return "$EXIT_FAILURE"
+
+  state_set "stage.source" "$kind"
+  state_set "stage.tarball" "${tarball##*/}"
+  stage_show_result "$tarball" "$root"
+  return "$EXIT_SUCCESS"
+}
+
 step_40_stage() {
   # The disposable keyring is torn down on every path out, including the ones
   # that failed, so a leftover gpg-agent never outlives the step that made it.
@@ -51,19 +90,61 @@ _step_40_body() {
   #  1. Tools                                                           #
   # ------------------------------------------------------------------- #
   # Named now, all of them at once, rather than one 404 at a time later.
-  local -a needed=(tar xz)
-  if ! have curl && ! have wget; then
-    err "Neither curl nor wget is installed; there is no way to fetch a stage3"
-    err "       curl  what this module prefers: it reports the HTTP status, so a"
-    err "             404 can be told apart from a timeout and is not retried"
-    err "       wget  works, with a coarser idea of why a transfer failed"
-    err "       example:  emerge --ask net-misc/curl"
-    return "$EXIT_FAILURE"
-  fi
-  if stage_verifies; then
-    needed+=(gpg)
+  # What is needed depends on which of the two paths this run takes. Asking for
+  # gpg and xz before knowing that is how `--stage-file mine.tar` came to be
+  # refused on a machine with neither, for a download it was not going to make
+  # and a signature it was not going to check.
+  local -a needed=(tar)
+  local local_kind
+  local_kind="$(stage_local_source)" || return "$EXIT_FAILURE"
+
+  if [[ -z "$local_kind" ]]; then
+    # The catalogue path: always fetches, always .tar.xz, and verifies unless
+    # told otherwise.
+    needed+=(xz)
+    if ! have curl && ! have wget; then
+      err "Neither curl nor wget is installed; there is no way to fetch a stage3"
+      err "       curl  what this module prefers: it reports the HTTP status, so a"
+      err "             404 can be told apart from a timeout and is not retried"
+      err "       wget  works, with a coarser idea of why a transfer failed"
+      err "       example:  emerge --ask net-misc/curl"
+      return "$EXIT_FAILURE"
+    fi
+    if stage_verifies; then
+      needed+=(gpg)
+    fi
+  else
+    # A stage of one's own: the compressor follows the archive's own suffix, a
+    # fetcher is only needed for a URL, and gpg only if a signature was brought.
+    case "${CFG[stage_file]:-${CFG[stage_url]}}" in
+      *.xz | *.txz) needed+=(xz) ;;
+      *.bz2 | *.tbz2) needed+=(bzip2) ;;
+      *.zst) needed+=(zstd) ;;
+    esac
+    if [[ "$local_kind" == "url" ]] && ! have curl && ! have wget; then
+      err "stage_url needs curl or wget, and neither is installed"
+      err "       example:  emerge --ask net-misc/curl"
+      return "$EXIT_FAILURE"
+    fi
+    if [[ -n "${CFG[stage_signature]:-}" ]]; then
+      needed+=(gpg)
+    fi
+    if [[ -n "${CFG[stage_checksum]:-}" ]]; then
+      needed+=(sha256sum)
+    fi
   fi
   require_cmds "${needed[@]}" || return "$EXIT_FAILURE"
+
+  # ------------------------------------------------------------------- #
+  #  1b. A stage of one's own, which skips everything below              #
+  # ------------------------------------------------------------------- #
+  # No catalogue, no signed pointer, no variant: the operator named an
+  # archive and that archive is what gets unpacked. Verification becomes
+  # opt-in, because there is nothing this project can check on its own.
+  if [[ -n "$local_kind" ]]; then
+    _step_40_local "$root" "$local_kind"
+    return $?
+  fi
 
   # ------------------------------------------------------------------- #
   #  2. Which variant                                                   #

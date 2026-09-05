@@ -2,16 +2,19 @@
 #
 # gentoo-install — step 90: system configuration inside the target tree
 # ----------------------------------------------------------------------------
-# Timezone, locales, console keymap, hostname, /etc/hosts, fstab, root
-# password, one user with its groups, sudo or doas, a network service that
+# Timezone, locales, console keymap, hostname, /etc/hosts, fstab, the root
+# password, the groups and the accounts this machine is to have, the privilege
+# each account is granted, an optional lock on root, a network service that
 # matches the init system, an optional hardened sshd, and the services those
 # choices imply.
 #
-# Two rules hold everywhere in this file. Every mount in fstab is named by
+# Three rules hold everywhere in this file. Every mount in fstab is named by
 # UUID, never by /dev/sdX, because the kernel is free to renumber disks between
 # boots. And fstab is written, then handed to findmnt --verify, then rolled
 # back if findmnt objects: a broken fstab is a machine that does not boot, and
 # it is the one file here with a checker good enough to catch that beforehand.
+# And root is never locked until another account has been shown to escalate and
+# to be able to log in: that proof is a proof, so --force does not lift it.
 #
 # The target tree is never "/". Step 90 configures the system being installed,
 # not the one running the installer, and it refuses to confuse the two.
@@ -579,14 +582,14 @@ _sys_root_password() {
   # The value is read straight into chpasswd's stdin. It is never an argument,
   # never a log line, never a journal entry: argv shows up in ps, and the state
   # journal refuses a key that looks like a secret in the first place.
-  local root="$1" secret=""
+  local root="$1" secret="" tool
 
   if [[ "$DRY_RUN" == "yes" ]]; then
     log "dry-run: would ask for the root password and set it with chpasswd"
     return 0
   fi
 
-  if ! _sys_target_has "$root" /usr/sbin/chpasswd && ! _sys_target_has "$root" /bin/chpasswd; then
+  if ! tool="$(_sys_chpasswd_path "$root")"; then
     warn "chpasswd is not in the target tree; the root password was not set"
     _sys_todo "set the root password: chroot ${root} /bin/bash -lc 'passwd root'"
     return 0
@@ -600,7 +603,7 @@ _sys_root_password() {
     return 0
   fi
 
-  if printf 'root:%s\n' "$secret" | chroot "$root" /usr/sbin/chpasswd; then
+  if printf 'root:%s\n' "$secret" | chroot "$root" "$tool"; then
     secret=""
     ok "root password set"
     _sys_record root_auth "password"
@@ -614,99 +617,587 @@ _sys_root_password() {
 }
 
 # --------------------------------------------------------------------------- #
-#  The user                                                                   #
+#  Accounts — the record format                                               #
 # --------------------------------------------------------------------------- #
-_sys_user_groups() {
-  # Keep only the groups that exist in the target: useradd fails outright on a
-  # single unknown group, and refuses the whole account with it.
-  local root="$1" wanted="$2" group
-  local -a keep=()
-  # shellcheck disable=SC2020  # character-for-character is what is wanted here:
-  # ',' and ' ' each become a newline, which is how the list gets split. The
-  # directive sits before the whole compound command, not before its 'done'.
-  while IFS= read -r group; do
+# One record per account, on the model of disk_volumes (lib/disk.sh):
+#
+#   accounts = "alice:wheel,audio,video:/bin/bash:sudo;bob::/bin/sh:none"
+#
+# The fields are name:groups:shell:privilege, ';' separates records, and an
+# empty field takes the default — user_groups, user_shell and privilege, which
+# are the settings that described the single account this step used to create.
+# accounts_file holds the same records, one per line, '#' starts a comment.
+#
+# Everything is checked before anything is created. useradd refuses a whole
+# account over one unknown group, and an account list that is half applied is
+# harder to reason about than one that was refused outright.
+#
+# The privilege is per account and it is never a group rule. A
+# '%wheel ALL=(ALL:ALL) ALL' line also hands root to an account that asked for
+# 'none' and is in wheel for its ordinary memberships; what this step writes is
+# what was asked for, account by account, and nothing else.
+
+# Filled by _sys_accounts_load, read by the four parts below. Parallel arrays,
+# indexed together, like lib/disk.sh does for the volume plan.
+_SYS_ACC_NAME=()
+_SYS_ACC_GROUPS=()
+_SYS_ACC_SHELL=()
+_SYS_ACC_PRIV=()
+_SYS_GRP_NAME=()
+_SYS_GRP_GID=()
+
+# "" not read yet | ok | bad. The parse runs once per step and every part that
+# needs it reads the same answer, so a malformed record is reported once.
+_SYS_ACC_STATE=""
+
+_sys_priv_check() {
+  # Args: $1 = value, $2 = where it was written, for the message.
+  local value="$1" where="$2"
+  case "$value" in
+    none | sudo | sudo-nopasswd | doas | doas-nopasswd) return 0 ;;
+  esac
+  err "Unknown privilege in ${where}: ${value}"
+  err "       sudo            sudo, after the account types its own password"
+  err "       sudo-nopasswd   sudo, with no password asked, ever"
+  err "       doas            doas, after the account types its own password"
+  err "       doas-nopasswd   doas, with no password asked, ever"
+  err "       none            nothing escalates; root logs in on the console"
+  err "       example:  accounts = \"alice:wheel:/bin/bash:sudo\""
+  return 1
+}
+
+_sys_nopasswd_warning() {
+  # A warning, not a refusal: it is a legitimate choice for a service account
+  # or for a personal machine, and it is the operator's to make knowingly.
+  local name="$1" tool="$2"
+  warn "${name}: ${tool} with NOPASSWD — anything running as ${name} is root"
+  warn "       no secret stands between the account and the machine. A bug in a"
+  warn "       browser, a hostile dependency in a build script, one stray"
+  warn "       post-install hook: each of them reaches root knowing nothing that"
+  warn "       ${name} knows, because there is nothing to know."
+  warn "       That is a full compromise of this machine, not a lost session."
+  warn "       Plain '${tool}' asks for ${name}'s own password and costs one line"
+  warn "       of typing per escalation."
+  warn "       example:  accounts = \"${name}:wheel:/bin/bash:${tool}\""
+}
+
+# --------------------------------------------------------------------------- #
+#  What the target tree says                                                  #
+# --------------------------------------------------------------------------- #
+# /etc/passwd, /etc/group and /etc/shadow are read directly rather than through
+# `chroot ... id`. They are the same truth id consults, they are readable
+# without a chroot — which is what lets this whole path be exercised against a
+# throwaway tree — and reading them works in --dry-run.
+_sys_tree_readable() {
+  # A target worth asking questions about: not empty, not "/", and unpacked.
+  local root="$1"
+  [[ -n "$root" && "$root" != "/" && -d "${root}/etc" ]]
+}
+
+_sys_group_exists() {
+  local root="$1" name="$2"
+  [[ -r "${root}/etc/group" ]] || return 1
+  grep -q "^${name}:" "${root}/etc/group" 2>/dev/null
+}
+
+_sys_group_gid() {
+  local root="$1" name="$2"
+  awk -F: -v g="$name" '$1 == g { print $3; exit }' "${root}/etc/group" 2>/dev/null
+}
+
+_sys_group_planned() {
+  # A group this run is about to create counts as existing. The groups part
+  # runs before the accounts part for exactly this reason.
+  local name="$1" i
+  for ((i = 0; i < ${#_SYS_GRP_NAME[@]}; i++)); do
+    [[ "${_SYS_GRP_NAME[i]}" != "$name" ]] || return 0
+  done
+  return 1
+}
+
+_sys_account_exists() {
+  local root="$1" name="$2"
+  [[ -r "${root}/etc/passwd" ]] || return 1
+  grep -q "^${name}:" "${root}/etc/passwd" 2>/dev/null
+}
+
+_sys_account_has_password() {
+  # A usable hash starts with '$'. '!' is locked, '*' is disabled and an empty
+  # field is no password at all: none of the three is a way in. Step 95 reads
+  # the same file by the same rule.
+  local root="$1" name="$2"
+  [[ -r "${root}/etc/shadow" ]] || return 1
+  awk -F: -v u="$name" '$1 == u && $2 ~ /^\$/ { found = 1 } END { exit !found }' \
+    "${root}/etc/shadow" 2>/dev/null
+}
+
+_sys_account_has_key() {
+  local root="$1" name="$2"
+  local file="${root}/home/${name}/.ssh/authorized_keys"
+  [[ -f "$file" ]] || return 1
+  grep -qE '^[[:space:]]*(ssh-|ecdsa-|sk-|ssh_)' "$file" 2>/dev/null
+}
+
+_sys_root_is_locked() {
+  local root="$1" hash
+  [[ -r "${root}/etc/shadow" ]] || return 1
+  hash="$(awk -F: '$1 == "root" { print $2; exit }' "${root}/etc/shadow" 2>/dev/null)"
+  [[ "${hash:0:1}" == "!" ]]
+}
+
+_sys_account_in_group() {
+  # Primary group counts: useradd puts the account's own GID in /etc/passwd and
+  # never lists it among the members of the group line.
+  local root="$1" name="$2" group="$3" line gid members pgid
+  line="$(grep -m1 "^${group}:" "${root}/etc/group" 2>/dev/null)" || return 1
+  gid="$(printf '%s' "$line" | cut -d: -f3)"
+  members="$(printf '%s' "$line" | cut -d: -f4)"
+  pgid="$(awk -F: -v u="$name" '$1 == u { print $4; exit }' \
+    "${root}/etc/passwd" 2>/dev/null || true)"
+  [[ -z "$pgid" || "$pgid" != "$gid" ]] || return 0
+  printf '%s' ",${members}," | grep -qF ",${name},"
+}
+
+_sys_account_missing_groups() {
+  # The wanted groups an existing account is not in yet, comma-separated. A
+  # returned value, so stdout; empty means there is nothing to complete.
+  local root="$1" name="$2" wanted="$3" group
+  local -a missing=()
+  group=""
+  # `|| [[ -n "$group" ]]` because the last item carries no trailing newline:
+  # read returns 1 on it, having assigned it, and a plain `while read` would
+  # drop the last group of every list.
+  while IFS= read -r group || [[ -n "$group" ]]; do
     [[ -n "$group" ]] || continue
-    if grep -q "^${group}:" "${root}/etc/group" 2>/dev/null; then
-      keep+=("$group")
-    else
-      warn "group '${group}' does not exist in the target; not adding the user to it"
-    fi
-  done < <(printf '%s' "$wanted" | tr ', ' '\n\n')
-  if ((${#keep[@]} == 0)); then
-    return 1
-  fi
+    _sys_account_in_group "$root" "$name" "$group" || missing+=("$group")
+  done < <(printf '%s' "$wanted" | tr ',' '\n')
+  ((${#missing[@]} > 0)) || return 0
   printf '%s\n' "$(
     IFS=,
-    printf '%s' "${keep[*]}"
+    printf '%s' "${missing[*]}"
   )"
 }
 
-_sys_user() {
-  local root="$1" name shell groups secret=""
+# --------------------------------------------------------------------------- #
+#  Parsing                                                                    #
+# --------------------------------------------------------------------------- #
+_sys_groups_parse() {
+  # groups = "docker;media:1500" — a name, and a GID when one is needed.
+  # Args: $1 = the spec.
+  local spec="$1" record name gid extra
+  _SYS_GRP_NAME=()
+  _SYS_GRP_GID=()
+  [[ -n "$spec" ]] || return 0
 
-  if ! name="$(_sys_cfg_first user username)"; then
-    skip "no user configured; only root will exist on the new system"
-    _sys_todo "create a user: chroot ${root} /bin/bash -lc 'useradd -m -G wheel <name> && passwd <name>'"
+  while IFS= read -r record; do
+    record="${record#"${record%%[![:space:]]*}"}"
+    record="${record%"${record##*[![:space:]]}"}"
+    [[ -n "$record" ]] || continue
+
+    IFS=':' read -r name gid extra <<<"$record"
+    if [[ -n "${extra:-}" ]]; then
+      err "Malformed group record: ${record}"
+      err "       a record reads name, or name:gid, and nothing more"
+      err "       ';' separates one record from the next"
+      err "       example:  groups = \"docker;media:1500\""
+      return 1
+    fi
+    if [[ ! "$name" =~ ^[a-z_][a-z0-9_-]*$ ]] || ((${#name} > 32)); then
+      err "Invalid group name: ${name}"
+      err "       lowercase letters, digits, underscore and hyphen, at most 32"
+      err "       characters, not starting with a digit or a hyphen"
+      err "       example:  groups = \"docker;media:1500\""
+      return 1
+    fi
+    if [[ -n "$gid" && ! "$gid" =~ ^[0-9]+$ ]]; then
+      err "Invalid GID for group ${name}: ${gid}"
+      err "       a whole number, or nothing at all to let groupadd choose"
+      err "       example:  groups = \"media:1500\""
+      return 1
+    fi
+    _SYS_GRP_NAME+=("$name")
+    _SYS_GRP_GID+=("${gid:-}")
+  done < <(printf '%s\n' "${spec//;/$'\n'}")
+  return 0
+}
+
+_sys_accounts_records() {
+  # Every record this configuration asks for, one per line. A returned value.
+  # Three sources, and the first two are joined the way disk_volumes and
+  # disk_volumes_file are: accounts, then accounts_file, then — only when
+  # neither is set — the single-account settings this step started with.
+  local spec file legacy line
+  spec="$(_sys_cfg "" accounts)"
+  file="$(_sys_cfg "" accounts_file)"
+  legacy="$(_sys_cfg "" user username)"
+
+  if [[ -z "$spec" && -z "$file" ]]; then
+    [[ -n "$legacy" ]] || return 0
+    printf '%s:%s:%s:%s\n' "$legacy" \
+      "$(_sys_cfg "" user_groups)" \
+      "$(_sys_cfg "" user_shell shell)" \
+      "$(_sys_cfg "" privilege privilege_tool sudo_tool)"
     return 0
   fi
 
-  if [[ ! "$name" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
-    err "Invalid user name: ${name}"
-    err "       lowercase letters, digits, underscore and hyphen; not starting"
-    err "       with a digit or a hyphen"
-    err "       example:  user = alice"
+  if [[ -n "$legacy" ]]; then
+    warn "both 'accounts' and 'user' are set; 'accounts' wins and 'user' is ignored"
+    warn "       the two are not merged: joining two lists of accounts silently is"
+    warn "       how a machine ends up with a login nobody wrote down"
+    warn "       ${legacy} is not created unless it appears in 'accounts'"
+    warn "       example:  accounts = \"${legacy}:wheel:/bin/bash:sudo;<the rest>\""
+  fi
+
+  if [[ -n "$spec" ]]; then
+    # Split on ';' only. A record's own fields are separated by ':' and a shell
+    # is an absolute path, so neither may be used here.
+    printf '%s\n' "${spec//;/$'\n'}"
+  fi
+
+  if [[ -n "$file" ]]; then
+    if [[ ! -r "$file" ]]; then
+      err "Cannot read accounts_file: ${file}"
+      err "       expected a readable file of name:groups:shell:privilege records"
+      err "       one record per line, '#' starts a comment, blank lines ignored"
+      err "       example:  accounts_file = /root/accounts.txt"
+      return 1
+    fi
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      printf '%s\n' "$line"
+    done <"$file"
+  fi
+  return 0
+}
+
+_sys_accounts_parse() {
+  # Args: $1 = root, $2.. = the raw records. Fills the parallel arrays.
+  local root="$1"
+  shift
+  local record name groups shell priv extra group i normalized
+  local def_groups def_shell def_priv
+  local -a keep=()
+
+  def_groups="$(_sys_cfg "wheel,audio,video,usb,portage" user_groups)"
+  def_shell="$(_sys_cfg "/bin/bash" user_shell shell)"
+  def_priv="$(_sys_cfg "sudo" privilege privilege_tool sudo_tool)"
+
+  _SYS_ACC_NAME=()
+  _SYS_ACC_GROUPS=()
+  _SYS_ACC_SHELL=()
+  _SYS_ACC_PRIV=()
+
+  for record in "$@"; do
+    record="${record#"${record%%[![:space:]]*}"}"
+    record="${record%"${record##*[![:space:]]}"}"
+    [[ -n "$record" ]] || continue
+    [[ "${record:0:1}" != "#" ]] || continue
+
+    IFS=':' read -r name groups shell priv extra <<<"$record"
+    if [[ -n "${extra:-}" ]]; then
+      err "Malformed account record: ${record}"
+      err "       a record reads name:groups:shell:privilege and has four fields"
+      err "       an empty field takes the default; a missing one does too"
+      err "       ';' separates one record from the next"
+      err "       example:  accounts = \"alice:wheel,audio:/bin/bash:sudo\""
+      return 1
+    fi
+    if [[ ! "$name" =~ ^[a-z_][a-z0-9_-]*$ ]] || ((${#name} > 32)); then
+      err "Invalid account name: ${name:-<empty>}"
+      err "       lowercase letters, digits, underscore and hyphen, at most 32"
+      err "       characters, not starting with a digit or a hyphen"
+      err "       the name is the first field of the record"
+      err "       example:  accounts = \"alice:wheel:/bin/bash:sudo\""
+      return 1
+    fi
+    for ((i = 0; i < ${#_SYS_ACC_NAME[@]}; i++)); do
+      [[ "${_SYS_ACC_NAME[i]}" != "$name" ]] && continue
+      err "Account ${name} is declared twice"
+      err "       the second record would silently lose to the first"
+      err "       keep one record per account, with all of its groups on it"
+      err "       example:  accounts = \"${name}:wheel,audio,video:/bin/bash:sudo\""
+      return 1
+    done
+
+    groups="${groups:-$def_groups}"
+    shell="${shell:-$def_shell}"
+    priv="${priv:-$def_priv}"
+
+    _sys_priv_check "$priv" "the record for ${name}" || return 1
+
+    if [[ "${shell:0:1}" != "/" ]]; then
+      err "Invalid shell for ${name}: ${shell}"
+      err "       an absolute path, as the installed system will see it"
+      err "       example:  accounts = \"${name}::/bin/bash:${priv}\""
+      return 1
+    fi
+    if _sys_tree_readable "$root" && [[ ! -e "${root}${shell}" ]]; then
+      err "No such shell in the target: ${shell} (account ${name})"
+      err "       the path is resolved inside ${root}, and nothing is there"
+      err "       /bin/bash      the stage3 ships it"
+      err "       /bin/sh        always present"
+      err "       /sbin/nologin  for an account that must never log in"
+      err "       cat ${root}/etc/shells   lists what the target offers"
+      err "       example:  accounts = \"${name}::/bin/bash:${priv}\""
+      return 1
+    fi
+
+    keep=()
+    group=""
+    # shellcheck disable=SC2020  # character-for-character is what is wanted:
+    # ',' and ' ' each become a newline, which is how the list gets split.
+    # The `|| [[ -n ... ]]` catches the last item, which has no newline after it.
+    while IFS= read -r group || [[ -n "$group" ]]; do
+      [[ -n "$group" ]] || continue
+      if [[ ! "$group" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+        err "Invalid group name for ${name}: ${group}"
+        err "       lowercase letters, digits, underscore and hyphen"
+        err "       the groups field is a comma-separated list"
+        err "       example:  accounts = \"${name}:wheel,audio,video::${priv}\""
+        return 1
+      fi
+      if _sys_tree_readable "$root" && [[ -r "${root}/etc/group" ]] \
+        && ! _sys_group_exists "$root" "$group" && ! _sys_group_planned "$group"; then
+        err "No such group in the target: ${group} (account ${name})"
+        err "       useradd refuses the whole account over one unknown group, so"
+        err "       this is refused here instead of half-applied there"
+        err "       create it:  groups = \"${group}\""
+        err "       or drop it: accounts = \"${name}:<the groups that exist>::${priv}\""
+        err "       cut -d: -f1 ${root}/etc/group   lists what is there"
+        return 1
+      fi
+      keep+=("$group")
+    done < <(printf '%s' "$groups" | tr ', ' '\n\n')
+
+    normalized="$(
+      IFS=,
+      printf '%s' "${keep[*]-}"
+    )"
+
+    _SYS_ACC_NAME+=("$name")
+    _SYS_ACC_GROUPS+=("$normalized")
+    _SYS_ACC_SHELL+=("$shell")
+    _SYS_ACC_PRIV+=("$priv")
+  done
+  return 0
+}
+
+_sys_accounts_load() {
+  # Parse once per step. Returns 0 when the arrays are usable.
+  local root="$1" raw
+  local -a records=()
+
+  case "$_SYS_ACC_STATE" in
+    ok) return 0 ;;
+    bad) return 1 ;;
+  esac
+  _SYS_ACC_STATE="bad"
+
+  if ! _sys_groups_parse "$(_sys_cfg "" groups)"; then
+    return 1
+  fi
+  # Captured rather than piped, so that the failure of _sys_accounts_records
+  # is the failure of this function: the right-hand side of a pipe and the
+  # inside of a process substitution both lose their exit status here.
+  if ! raw="$(_sys_accounts_records)"; then
+    return 1
+  fi
+  # An empty list is not an error. It is a machine with root and nothing else,
+  # and _sys_accounts says so in its own voice.
+  mapfile -t records <<<"$raw"
+  if ! _sys_accounts_parse "$root" ${records[@]+"${records[@]}"}; then
+    return 1
+  fi
+  _SYS_ACC_STATE="ok"
+  return 0
+}
+
+# --------------------------------------------------------------------------- #
+#  Groups — created first, because useradd fails on an unknown one            #
+# --------------------------------------------------------------------------- #
+_sys_groups() {
+  local root="$1" i name gid existing
+  local -a argv=()
+
+  _sys_accounts_load "$root" || return 1
+  ((${#_SYS_GRP_NAME[@]} > 0)) || return 0
+
+  if ! _sys_target_has "$root" /usr/sbin/groupadd \
+    && ! _sys_target_has "$root" /usr/bin/groupadd && [[ "$DRY_RUN" != "yes" ]]; then
+    warn "groupadd is not in the target tree; no group was created"
+    for ((i = 0; i < ${#_SYS_GRP_NAME[@]}; i++)); do
+      _sys_todo "create the group: chroot ${root} /bin/bash -lc 'groupadd ${_SYS_GRP_NAME[i]}'"
+    done
     return 1
   fi
 
-  shell="$(_sys_cfg "/bin/bash" user_shell shell)"
-  groups="$(_sys_cfg "wheel,audio,video,usb,portage" user_groups groups)"
+  for ((i = 0; i < ${#_SYS_GRP_NAME[@]}; i++)); do
+    name="${_SYS_GRP_NAME[i]}"
+    gid="${_SYS_GRP_GID[i]}"
 
-  if [[ "$DRY_RUN" != "yes" ]] && chroot "$root" id -u "$name" >/dev/null 2>&1; then
-    skip "user ${name} already exists in the target"
-  else
-    if [[ "$DRY_RUN" != "yes" ]]; then
-      groups="$(_sys_user_groups "$root" "$groups")" || {
-        err "none of the requested groups exist in ${root}/etc/group"
-        err "       groups = ${groups}"
-        return 1
-      }
+    if _sys_group_exists "$root" "$name"; then
+      existing="$(_sys_group_gid "$root" "$name")"
+      if [[ -n "$gid" && "$existing" != "$gid" ]]; then
+        warn "group ${name} already exists with GID ${existing}, not ${gid}"
+        warn "       the GID is left alone: changing it orphans every file that"
+        warn "       already carries the old one, and nothing here knows which"
+        warn "       chroot ${root} /bin/bash -lc 'groupmod -g ${gid} ${name}'"
+      else
+        skip "group ${name} already exists in the target"
+      fi
+      continue
     fi
-    if ! _sys_in_chroot "$root" useradd -m -G "$groups" -s "$shell" "$name"; then
-      err "useradd refused to create ${name}"
-      err "       groups: ${groups}"
-      err "       shell:  ${shell}"
-      err "       chroot ${root} /bin/bash -lc 'useradd -m -G ${groups} -s ${shell} ${name}'"
+
+    argv=(groupadd)
+    [[ -z "$gid" ]] || argv+=(-g "$gid")
+    argv+=("$name")
+    if ! _sys_in_chroot "$root" "${argv[@]}"; then
+      err "groupadd refused to create ${name}"
+      err "       chroot ${root} /bin/bash -lc '$(_cmdline "${argv[@]}")'"
       return 1
     fi
-    ok "user ${name} created, groups ${groups}"
+    ok "group ${name} created${gid:+ with GID ${gid}}"
     _SYS_CHANGED=$((_SYS_CHANGED + 1))
-  fi
+  done
 
-  _sys_record user "$name"
-  _sys_record user_groups "$groups"
+  _sys_record groups "$(
+    IFS=' '
+    printf '%s' "${_SYS_GRP_NAME[*]}"
+  )"
+}
+
+# --------------------------------------------------------------------------- #
+#  The accounts                                                               #
+# --------------------------------------------------------------------------- #
+_sys_chpasswd_path() {
+  # Where chpasswd lives inside the target, or nothing. A returned value.
+  local root="$1" path
+  for path in /usr/sbin/chpasswd /usr/bin/chpasswd /sbin/chpasswd /bin/chpasswd; do
+    if _sys_target_has "$root" "$path"; then
+      printf '%s\n' "$path"
+      return 0
+    fi
+  done
+  return 1
+}
+
+_sys_set_password() {
+  # The value is read straight into chpasswd's stdin. It is never an argument,
+  # never a log line, never a journal entry: argv shows up in ps, and the state
+  # journal refuses a key that looks like a secret in the first place.
+  # Args: $1 = root, $2 = account name.
+  local root="$1" name="$2" secret="" tool
 
   if [[ "$DRY_RUN" == "yes" ]]; then
     log "dry-run: would ask for ${name}'s password and set it with chpasswd"
     return 0
   fi
-
+  if _sys_account_has_password "$root" "$name"; then
+    skip "account ${name} already has a password; not asking again"
+    return 0
+  fi
+  if ! tool="$(_sys_chpasswd_path "$root")"; then
+    warn "chpasswd is not in the target tree; ${name} has no password"
+    _sys_todo "set ${name}'s password: chroot ${root} /bin/bash -lc 'passwd ${name}'"
+    return 0
+  fi
   if ! prompt_secret secret "Password for ${name}"; then
     warn "no password set for ${name}; the account cannot log in yet"
     _sys_todo "set ${name}'s password: chroot ${root} /bin/bash -lc 'passwd ${name}'"
     return 0
   fi
-  if printf '%s:%s\n' "$name" "$secret" | chroot "$root" /usr/sbin/chpasswd; then
+  if printf '%s:%s\n' "$name" "$secret" | chroot "$root" "$tool"; then
     secret=""
     ok "password set for ${name}"
-  else
-    secret=""
-    err "chpasswd refused the password for ${name}"
-    _sys_todo "set ${name}'s password: chroot ${root} /bin/bash -lc 'passwd ${name}'"
+    return 0
   fi
+  secret=""
+  err "chpasswd refused the password for ${name}"
+  _sys_todo "set ${name}'s password: chroot ${root} /bin/bash -lc 'passwd ${name}'"
+  return 1
+}
+
+_sys_account_one() {
+  # Args: $1 = root, $2 = name, $3 = groups, $4 = shell, $5 = privilege.
+  local root="$1" name="$2" groups="$3" shell="$4" priv="$5" missing
+  local -a argv=()
+
+  if _sys_account_exists "$root" "$name"; then
+    skip "account ${name} already exists in the target"
+    missing="$(_sys_account_missing_groups "$root" "$name" "$groups")"
+    if [[ -n "$missing" ]]; then
+      if _sys_in_chroot "$root" usermod -a -G "$missing" "$name"; then
+        ok "account ${name}: added to ${missing}"
+        _SYS_CHANGED=$((_SYS_CHANGED + 1))
+      else
+        err "usermod could not add ${name} to ${missing}"
+        err "       chroot ${root} /bin/bash -lc 'usermod -a -G ${missing} ${name}'"
+        return 1
+      fi
+    fi
+  else
+    argv=(useradd -m)
+    [[ -z "$groups" ]] || argv+=(-G "$groups")
+    argv+=(-s "$shell" "$name")
+    if ! _sys_in_chroot "$root" "${argv[@]}"; then
+      err "useradd refused to create ${name}"
+      err "       groups: ${groups:-<none>}"
+      err "       shell:  ${shell}"
+      err "       chroot ${root} /bin/bash -lc '$(_cmdline "${argv[@]}")'"
+      return 1
+    fi
+    ok "account ${name} created — groups ${groups:-<none>}, shell ${shell}, ${priv}"
+    _SYS_CHANGED=$((_SYS_CHANGED + 1))
+  fi
+
+  case "$priv" in
+    sudo-nopasswd) _sys_nopasswd_warning "$name" "sudo" ;;
+    doas-nopasswd) _sys_nopasswd_warning "$name" "doas" ;;
+  esac
+
+  _sys_set_password "$root" "$name"
+}
+
+_sys_accounts() {
+  local root="$1" i failed=0
+
+  _sys_accounts_load "$root" || return 1
+
+  if ((${#_SYS_ACC_NAME[@]} == 0)); then
+    skip "no account configured; only root will exist on the new system"
+    _sys_todo "create an account: chroot ${root} /bin/bash -lc 'useradd -m -G wheel <name> && passwd <name>'"
+    return 0
+  fi
+
+  if ! _sys_target_has "$root" /usr/sbin/useradd \
+    && ! _sys_target_has "$root" /usr/bin/useradd && [[ "$DRY_RUN" != "yes" ]]; then
+    warn "useradd is not in the target tree; no account was created"
+    for ((i = 0; i < ${#_SYS_ACC_NAME[@]}; i++)); do
+      _sys_todo "create the account: chroot ${root} /bin/bash -lc 'useradd -m -G ${_SYS_ACC_GROUPS[i]} -s ${_SYS_ACC_SHELL[i]} ${_SYS_ACC_NAME[i]}'"
+    done
+    return 1
+  fi
+
+  for ((i = 0; i < ${#_SYS_ACC_NAME[@]}; i++)); do
+    if ! _sys_account_one "$root" "${_SYS_ACC_NAME[i]}" "${_SYS_ACC_GROUPS[i]}" \
+      "${_SYS_ACC_SHELL[i]}" "${_SYS_ACC_PRIV[i]}"; then
+      failed=$((failed + 1))
+    fi
+  done
+
+  _sys_record accounts "$(
+    IFS=' '
+    printf '%s' "${_SYS_ACC_NAME[*]}"
+  )"
+  # The first account keeps the key step 95 and the README already read.
+  _sys_record user "${_SYS_ACC_NAME[0]}"
+  _sys_record user_groups "${_SYS_ACC_GROUPS[0]}"
+
+  ((failed == 0)) || return 1
+  return 0
 }
 
 # --------------------------------------------------------------------------- #
-#  sudo or doas                                                               #
+#  sudo and doas — one rule per account, and both files are validated         #
 # --------------------------------------------------------------------------- #
 _sys_visudo_check() {
   # Args: $1 = root, $2 = path inside the target.
@@ -721,45 +1212,64 @@ _sys_doas_check() {
   chroot "$root" /usr/bin/doas -C /etc/doas.conf >/dev/null 2>&1
 }
 
+_sys_privilege_summary() {
+  # What step 95 reads to answer "is there a way to become root": the tool, not
+  # the per-account detail, which goes in its own key next to it.
+  local i any_sudo="no" any_doas="no"
+  for ((i = 0; i < ${#_SYS_ACC_PRIV[@]}; i++)); do
+    case "${_SYS_ACC_PRIV[i]}" in
+      sudo | sudo-nopasswd) any_sudo="yes" ;;
+      doas | doas-nopasswd) any_doas="yes" ;;
+    esac
+  done
+  if [[ "$any_sudo" == "yes" ]]; then
+    printf 'sudo\n'
+  elif [[ "$any_doas" == "yes" ]]; then
+    printf 'doas\n'
+  else
+    printf 'none\n'
+  fi
+}
+
 _sys_privilege() {
-  local root="$1" mode user path
-  mode="$(_sys_cfg "sudo" privilege privilege_tool sudo_tool)"
-  user="$(_sys_cfg "" user username)"
+  local root="$1" i name priv path detail=""
+  local -a sudo_rules=() doas_rules=()
 
-  case "$mode" in
-    sudo | doas | none) ;;
-    *)
-      err "Unknown privilege tool: ${mode}"
-      err "       sudo  the usual one, configured for the wheel group"
-      err "       doas  smaller, one line of configuration, OpenBSD's"
-      err "       none  neither; root logs in directly and nothing escalates"
-      err "       example:  privilege = doas"
-      return 1
-      ;;
-  esac
-
-  if [[ "$mode" == "none" ]]; then
-    skip "no privilege escalation configured (privilege = none)"
-    if [[ -n "$user" ]]; then
-      _sys_todo "${user} cannot become root; log in as root on the console instead"
-    fi
-    _sys_record privilege "none"
+  if ! _sys_accounts_load "$root"; then
+    skip "sudo/doas: the account list did not parse, so nothing is granted"
     return 0
   fi
 
-  if [[ "$mode" == "sudo" ]]; then
-    path="/etc/sudoers.d/10-gentoo-install"
+  for ((i = 0; i < ${#_SYS_ACC_NAME[@]}; i++)); do
+    name="${_SYS_ACC_NAME[i]}"
+    priv="${_SYS_ACC_PRIV[i]}"
+    detail+="${detail:+ }${name}:${priv}"
+    case "$priv" in
+      sudo) sudo_rules+=("${name} ALL=(ALL:ALL) ALL") ;;
+      sudo-nopasswd) sudo_rules+=("${name} ALL=(ALL:ALL) NOPASSWD: ALL") ;;
+      doas) doas_rules+=("permit persist ${name}") ;;
+      doas-nopasswd) doas_rules+=("permit nopass ${name}") ;;
+    esac
+  done
+
+  path="/etc/sudoers.d/10-gentoo-install"
+  if ((${#sudo_rules[@]} > 0)); then
     # A drop-in, not an edit of /etc/sudoers: a rerun replaces its own file and
     # a hand edit of the main file survives untouched.
     if [[ "$DRY_RUN" != "yes" ]]; then
       run_cmd mkdir -p -- "${root}/etc/sudoers.d" || return 1
     fi
     if ! write_validated "${root}${path}" _sys_visudo_check "$root" "$path" <<EOF
-# Members of wheel may become root, after typing their own password.
-%wheel ALL=(ALL:ALL) ALL
+# Written by gentoo-install. One rule per account, named explicitly.
+#
+# There is deliberately no '%wheel ALL=(ALL:ALL) ALL' line: a group rule would
+# also hand root to an account that asked for privilege 'none' and is in wheel
+# for its ordinary memberships, which is a grant nobody wrote down.
+$(printf '%s\n' "${sudo_rules[@]}")
 EOF
     then
       err "visudo refused ${path}; the previous content is back"
+      err "       a sudoers file that does not parse is a machine nobody administers"
       return 1
     fi
     _sys_note_change
@@ -768,28 +1278,165 @@ EOF
       warn "sudo is not installed in the target, so the file was written unverified"
       _sys_todo "emerge app-admin/sudo, then: chroot ${root} visudo -c"
     fi
-    _sys_record privilege "sudo"
-    ok "sudo: members of wheel may become root"
+    ok "sudo: ${#sudo_rules[@]} account(s) may become root"
+  elif [[ -f "${root}${path}" ]]; then
+    # An earlier run granted sudo and this one does not. Leaving the file would
+    # leave the grant, and idempotence that only ever adds is not idempotence.
+    if ! write_validated "${root}${path}" _sys_visudo_check "$root" "$path" <<EOF
+# Written by gentoo-install. No account asks for sudo, so this file grants
+# nothing. Removing it changes nothing.
+EOF
+    then
+      err "visudo refused ${path}; the previous content is back"
+      return 1
+    fi
+    _sys_note_change
+    run_cmd chmod 0440 -- "${root}${path}" || true
+    ok "sudo: the drop-in grants nothing any more"
+  else
+    skip "sudo: no account asked for it"
+  fi
+
+  if ((${#doas_rules[@]} > 0)); then
+    if ! write_validated "${root}/etc/doas.conf" _sys_doas_check "$root" <<EOF
+# Written by gentoo-install. One rule per account.
+# persist remembers the answer for five minutes, like sudo does.
+$(printf '%s\n' "${doas_rules[@]}")
+EOF
+    then
+      err "doas -C refused /etc/doas.conf; the previous content is back"
+      return 1
+    fi
+    _sys_note_change
+    run_cmd chmod 0400 -- "${root}/etc/doas.conf" || true
+    if ! _sys_target_has "$root" /usr/bin/doas && [[ "$DRY_RUN" != "yes" ]]; then
+      warn "doas is not installed in the target, so the file was written unverified"
+      _sys_todo "emerge app-admin/doas, then: chroot ${root} doas -C /etc/doas.conf"
+    fi
+    ok "doas: ${#doas_rules[@]} account(s) may become root"
+  else
+    # /etc/doas.conf is not a drop-in and it is not ours outright, so an
+    # unwanted grant there is named rather than rewritten.
+    if [[ -f "${root}/etc/doas.conf" && "$DRY_RUN" != "yes" ]]; then
+      warn "${root}/etc/doas.conf exists and no account asks for doas"
+      warn "       it is not a drop-in and may be somebody's own file, so it is"
+      warn "       left alone; read it before trusting root_lock"
+    fi
+    skip "doas: no account asked for it"
+  fi
+
+  if ((${#_SYS_ACC_NAME[@]} > 0)) && [[ "$(_sys_privilege_summary)" == "none" ]]; then
+    _sys_todo "no account can become root; log in as root on the console instead"
+  fi
+
+  _sys_record privilege "$(_sys_privilege_summary)"
+  _sys_record privilege_by_account "$detail"
+}
+
+# --------------------------------------------------------------------------- #
+#  root_lock — the proof, and --force does not lift it (DESIGN.md §12)        #
+# --------------------------------------------------------------------------- #
+# Locking root without another way to become root gives a machine nobody can
+# administer, and the only recourse is a LiveUSB. That is the accident this
+# whole project is written against, so root_lock = yes is refused unless an
+# account both escalates and can log in.
+_sys_root_lock() {
+  local root="$1" mode i name priv
+  local -a escalating=() unusable=()
+
+  mode="$(_sys_cfg "no" root_lock)"
+  case "$mode" in
+    yes | no) ;;
+    *)
+      err "Unknown root_lock: ${mode}"
+      err "       yes  passwd -l root, once another account is shown to escalate"
+      err "       no   root keeps whatever password it was given"
+      err "       example:  root_lock = no"
+      return 1
+      ;;
+  esac
+
+  if [[ "$mode" != "yes" ]]; then
+    skip "root is left as it is (root_lock = no)"
     return 0
   fi
 
-  if ! write_validated "${root}/etc/doas.conf" _sys_doas_check "$root" <<EOF
-# Members of wheel may become root, after typing their own password.
-# persist remembers the answer for five minutes, like sudo does.
-permit persist :wheel
-EOF
-  then
-    err "doas -C refused /etc/doas.conf; the previous content is back"
+  if ! _sys_accounts_load "$root"; then
+    err "Refusing root_lock = yes: the account list above did not parse"
+    err "       nothing can be shown to escalate, so nothing proves this machine"
+    err "       would still be administrable with root locked"
+    err "       fix the record the previous error names, then rerun"
+    err "       ./gentoo-install.sh --steps 90"
     return 1
   fi
-  _sys_note_change
-  run_cmd chmod 0400 -- "${root}/etc/doas.conf" || true
-  if ! _sys_target_has "$root" /usr/bin/doas && [[ "$DRY_RUN" != "yes" ]]; then
-    warn "doas is not installed in the target, so the file was written unverified"
-    _sys_todo "emerge app-admin/doas, then: chroot ${root} doas -C /etc/doas.conf"
+
+  for ((i = 0; i < ${#_SYS_ACC_NAME[@]}; i++)); do
+    priv="${_SYS_ACC_PRIV[i]}"
+    [[ "$priv" != "none" ]] || continue
+    name="${_SYS_ACC_NAME[i]}"
+    if [[ "$DRY_RUN" == "yes" ]]; then
+      # Nothing has been created yet, so the credential half of the proof has
+      # nothing to read. The half that comes from the configuration is checked
+      # here; the other half is checked for real on the run that installs.
+      escalating+=("$name")
+      continue
+    fi
+    if _sys_account_has_password "$root" "$name"; then
+      escalating+=("${name} (password)")
+    elif _sys_account_has_key "$root" "$name"; then
+      escalating+=("${name} (ssh key)")
+    else
+      unusable+=("$name")
+    fi
+  done
+
+  if ((${#escalating[@]} == 0)); then
+    err "Refusing root_lock = yes: no account could administer this machine"
+    if ((${#unusable[@]} > 0)); then
+      err "       ${unusable[*]} can become root, and cannot log in: no password"
+      err "       and no authorized_keys with a key in it"
+      err "       chroot ${root} /bin/bash -lc 'passwd ${unusable[0]}'"
+    else
+      err "       no account has a privilege other than 'none', so locking root"
+      err "       leaves nothing on this machine that can become root"
+      err "       accounts = \"alice:wheel:/bin/bash:sudo\""
+      err "       then:  chroot ${root} /bin/bash -lc 'passwd alice'"
+    fi
+    err "       a locked root with no way up is recovered from a LiveUSB and a"
+    err "       chroot, and from nowhere else"
+    err "       --force does not lift this. --force lifts confirmations, never"
+    err "       proofs (docs/DESIGN.md §12)"
+    err "       or leave the machine as it is:  root_lock = no"
+    _sys_record root_lock "refused"
+    return 1
   fi
-  _sys_record privilege "doas"
-  ok "doas: members of wheel may become root"
+
+  if [[ "$DRY_RUN" == "yes" ]]; then
+    log "dry-run: would run passwd -l root, once ${escalating[*]} is shown to"
+    log "         have a password or an ssh key on the run that installs"
+    return 0
+  fi
+
+  if _sys_root_is_locked "$root"; then
+    skip "root is already locked; ${escalating[*]} is the way in"
+    _sys_record root_lock "yes"
+    return 0
+  fi
+
+  if ! _sys_target_has "$root" /usr/bin/passwd && ! _sys_target_has "$root" /bin/passwd; then
+    warn "passwd is not in the target tree; root was not locked"
+    _sys_todo "lock root: chroot ${root} /bin/bash -lc 'passwd -l root'"
+    return 0
+  fi
+
+  if ! _sys_in_chroot "$root" passwd -l root; then
+    err "passwd -l root failed inside ${root}"
+    err "       chroot ${root} /bin/bash -lc 'passwd -l root'"
+    return 1
+  fi
+  _SYS_CHANGED=$((_SYS_CHANGED + 1))
+  ok "root locked; the way in is ${escalating[*]}"
+  _sys_record root_lock "yes"
 }
 
 # --------------------------------------------------------------------------- #
@@ -1032,12 +1679,13 @@ step_90_system() {
   local root part failed=0
   local -a parts=(
     timezone locales keymap hostname fstab
-    root_password user privilege network sshd
+    root_password groups accounts privilege root_lock network sshd
   )
 
   root="$(_sys_root)"
   _SYS_CHANGED=0
   _SYS_TODO_N=0
+  _SYS_ACC_STATE=""
 
   if [[ "$root" == "/" || -z "$root" ]]; then
     err "Refusing to configure / as the target system"

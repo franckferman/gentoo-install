@@ -79,6 +79,15 @@ stage_init_defaults() {
   set_default stage_cache_dir "/var/cache/gentoo-install" # where tarballs live between runs
   set_default keyring ""                                  # empty: look in the usual places
   set_default root "/mnt/gentoo"                          # where the stage is unpacked
+
+  # A stage of one's own. Either a file already on this machine, or a URL that
+  # is not the Gentoo autobuilds tree. Both bypass the catalogue: no variant is
+  # resolved, no signed pointer is read, and what the operator names is what
+  # gets unpacked.
+  set_default stage_file ""      # path to an archive already here
+  set_default stage_url ""       # direct URL to an archive
+  set_default stage_signature "" # a detached .asc to check it against
+  set_default stage_checksum ""  # an expected sha256, lowercase hex
 }
 
 stage_cache_dir() { printf '%s\n' "${CFG[stage_cache_dir]:-/var/cache/gentoo-install}"; }
@@ -838,6 +847,115 @@ _stage_verify_all() {
   fi
   if [[ -s "$plain" ]]; then
     stage_verify_sha256 "$plain" "$tarball" || return 1
+  fi
+  return 0
+}
+
+# --------------------------------------------------------------------------- #
+#  A stage of one's own                                                       #
+# --------------------------------------------------------------------------- #
+stage_local_source() {
+  # Prints "file", "url" or nothing. Refuses both at once: they name two
+  # different archives, and guessing which one wins is how an operator installs
+  # a system he did not choose.
+  local f="${CFG[stage_file]:-}" u="${CFG[stage_url]:-}"
+
+  if [[ -n "$f" && -n "$u" ]]; then
+    err "stage_file and stage_url both name a stage"
+    err "       stage_file  an archive already on this machine"
+    err "       stage_url   an archive to fetch from somewhere else"
+    err "       example:  --stage-file /srv/stage3-custom.tar.xz"
+    return 1
+  fi
+  if [[ -n "$f" ]]; then
+    printf 'file\n'
+  elif [[ -n "$u" ]]; then
+    printf 'url\n'
+  fi
+  return 0
+}
+
+stage_local_check_file() {
+  # Args: $1 = path. The archive has to exist, be readable, and look like a tar
+  # of a kind tar can open. Everything else is the operator's business.
+  local path="$1"
+
+  if [[ ! -f "$path" ]]; then
+    err "No such stage archive: ${path}"
+    err "       stage_file names an archive that is already on this machine"
+    err "       example:  --stage-file /srv/stage3-amd64-openrc.tar.xz"
+    return 1
+  fi
+  if [[ ! -r "$path" ]]; then
+    err "Cannot read the stage archive: ${path}"
+    err "       check its permissions, or run this as root"
+    return 1
+  fi
+  case "$path" in
+    *.tar | *.tar.xz | *.tar.gz | *.tar.bz2 | *.tar.zst | *.txz | *.tgz | *.tbz2) ;;
+    *)
+      warn "${path##*/} does not end in a tar suffix this project recognises"
+      warn "       tar will be asked to open it anyway; it decides, not the name"
+      ;;
+  esac
+  return 0
+}
+
+stage_local_verify() {
+  # Args: $1 = the archive on disk.
+  #
+  # A stage of one's own carries no promise. The catalogue path verifies a
+  # signed pointer and then a detached signature, because Gentoo signs both;
+  # here there is nothing to check against unless the operator brings it. So
+  # verification is opt-in, and its absence is said out loud rather than
+  # implied by silence.
+  local tarball="$1" sig="${CFG[stage_signature]:-}" want="${CFG[stage_checksum]:-}"
+  local checked=0 got
+
+  if [[ -z "$sig" && -f "${tarball}.asc" ]]; then
+    sig="${tarball}.asc"
+    log "found ${sig##*/} beside the archive"
+  fi
+
+  if [[ -n "$sig" ]]; then
+    if [[ ! -r "$sig" ]]; then
+      err "Cannot read the signature: ${sig}"
+      return 1
+    fi
+    if ! stage_verify_detached "$sig" "$tarball"; then
+      err "the signature does not match ${tarball##*/}"
+      err "       this archive is not what whoever signed it signed"
+      return 1
+    fi
+    ok "signature verified against ${sig##*/}"
+    checked=1
+  fi
+
+  if [[ -n "$want" ]]; then
+    if [[ ! "$want" =~ ^[0-9a-f]{64}$ ]]; then
+      err "Invalid sha256: ${want}"
+      err "       sixty-four lowercase hexadecimal characters"
+      err "       example:  --stage-checksum $(printf 'a%.0s' {1..64})"
+      return 1
+    fi
+    got="$(sha256sum -- "$tarball" 2>/dev/null | cut -d" " -f1)"
+    if [[ "$got" != "$want" ]]; then
+      err "sha256 mismatch on ${tarball##*/}"
+      err "       expected  ${want}"
+      err "       got       ${got:-<unreadable>}"
+      return 1
+    fi
+    ok "sha256 matches"
+    checked=1
+  fi
+
+  if ((checked == 0)); then
+    warn "nothing verified this archive"
+    warn "       a stage of one's own carries no signature this project can"
+    warn "       check on its own. Bring one and it will be used:"
+    warn "         --stage-signature FILE   a detached .asc"
+    warn "         --stage-checksum  SHA    an expected sha256"
+    warn "       Unpacking it anyway, because that is what was asked."
   fi
   return 0
 }

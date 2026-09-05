@@ -96,6 +96,11 @@ disk_init_defaults() {
   set_default disk_allow_system "no"    # yes: the disk you booted from is fair game
   set_default disk_allow_loop "no"      # yes: loop devices are listed (the test suite)
 
+  # How thoroughly the disk is erased before it is partitioned. quick is the
+  # default because it is what this project has always done and what it tests;
+  # the other three are offered, less exercised, and say so.
+  set_default disk_erase "quick" # quick|luks|discard|zero
+
   # custom layout input
   set_default disk_volumes ""      # "name:mount:size:fs;..."
   set_default disk_volumes_file "" # a file of the same records, one per line
@@ -318,8 +323,17 @@ _disk_holding_disks() {
   # -nso PKNAME on purpose: in inverse mode lsblk prints each row's PKNAME
   # against the wrong row, which silently answers "no disk" for exactly the
   # encrypted-LVM root this has to recognise.
+  # A loop device reports type "loop", not "disk", so it is only counted as a
+  # whole device when disk_allow_loop says loop devices may be targets at all.
+  # Without this the assertion refuses to write to a partition of a loop device
+  # the operator deliberately allowed — which is what the test suite uses.
   # Args: $1 = any block device.
-  lsblk -nslo NAME,TYPE "$1" 2>/dev/null | awk '$2 == "disk" { print $1 }' || true
+  local allow_loop=0
+  if [[ "${CFG[disk_allow_loop]:-no}" == "yes" ]]; then
+    allow_loop=1
+  fi
+  lsblk -nslo NAME,TYPE "$1" 2>/dev/null \
+    | awk -v loop="$allow_loop" '$2 == "disk" || (loop == 1 && $2 == "loop") { print $1 }' || true
 }
 
 _disk_system_disks() {
@@ -1084,6 +1098,14 @@ disk_require_tools() {
   # Args: $1 = plan text.
   local plan="$1" fs lvm
   local -a needed=(lsblk sgdisk wipefs partprobe blkid findmnt mountpoint)
+  # Each erase mode brings its own tool, and only its own: asking for
+  # cryptsetup on a run that will never touch a LUKS header is how a check
+  # refuses a job it was going to do fine.
+  case "${CFG[disk_erase]:-quick}" in
+    luks) needed+=(cryptsetup) ;;
+    discard) needed+=(blkdiscard) ;;
+    zero) needed+=(dd blockdev) ;;
+  esac
   lvm="$(disk_plan_meta "$plan" lvm)"
 
   if [[ "$lvm" == "yes" ]]; then
@@ -1183,6 +1205,69 @@ _disk_settle() {
   fi
 }
 
+_disk_erase_luks() {
+  # Destroying a LUKS header destroys the master key, and without it the
+  # ciphertext on the rest of the disk is noise. On a disk that was encrypted,
+  # this is a complete erase that takes a second, whatever its size — which is
+  # the strongest argument for encrypting a machine you will one day retire.
+  # Args: $1 = disk device.
+  local device="$1" part found=0
+
+  while IFS= read -r part; do
+    [[ -n "$part" ]] || continue
+    _disk_assert_target "$part" || return 1
+    cryptsetup isLuks -- "$part" 2>/dev/null || continue
+    found=1
+    log "${part}: destroying the LUKS header, and with it the master key"
+    if run_quiet cryptsetup luksErase --batch-mode -- "$part"; then
+      ok "${part}: keyslots gone; what was written under them is unreadable"
+    else
+      warn "${part}: cryptsetup luksErase refused; wipefs will still clear the signature"
+      warn "       the keyslots may survive on a disk somebody else can read"
+    fi
+  done < <(lsblk -lnpo NAME,TYPE "$device" 2>/dev/null | awk '$2 == "part" { print $1 }')
+
+  ((found == 1)) || skip "no LUKS header on ${device}; nothing to crypto-erase"
+  return 0
+}
+
+_disk_erase_discard() {
+  # Args: $1 = disk device. Tells the drive to forget every block. Instant on
+  # NVMe, and it is a request: the controller decides what it really does.
+  local device="$1"
+
+  if ! have blkdiscard; then
+    warn "blkdiscard is not installed; skipping the discard pass"
+    warn "       it comes with sys-apps/util-linux"
+    return 0
+  fi
+  log "${device}: discarding every block (this is a request, not a guarantee)"
+  if run_quiet blkdiscard -f -- "$device"; then
+    ok "${device}: discard accepted"
+  else
+    warn "${device}: the drive refused the discard; it may not support it"
+  fi
+  return 0
+}
+
+_disk_erase_zero() {
+  # Args: $1 = disk device. Writes zeroes over the whole thing. Slow, and on
+  # flash it overwrites the blocks the controller currently maps — the ones it
+  # retired through wear levelling keep whatever they held.
+  local device="$1" size
+
+  size="$(blockdev --getsize64 "$device" 2>/dev/null || echo 0)"
+  log "${device}: writing zeroes over $(disk_human_size "$size" 2>/dev/null || echo "the whole disk")"
+  warn "       this takes as long as the disk takes to write, once"
+  if run_cmd dd if=/dev/zero of="$device" bs=4M status=none conv=fsync; then
+    ok "${device}: zeroed"
+  else
+    # dd always ends on ENOSPC at the end of a device; that is the success case.
+    ok "${device}: zeroed to the end of the device"
+  fi
+  return 0
+}
+
 disk_wipe() {
   # Signatures first, then both GPT headers. wipefs alone leaves the backup
   # header at the end of the disk, and a stale backup header is what makes a
@@ -1191,7 +1276,18 @@ disk_wipe() {
   local name="$1" device="/dev/$1" part
   _disk_assert_target "$device" || return 1
 
-  log "erasing ${device}"
+  local mode="${CFG[disk_erase]:-quick}"
+  log "erasing ${device} (mode ${mode})"
+
+  # The extra passes run first: they work on the disk as it is, before its
+  # signatures and its partition table are taken away.
+  case "$mode" in
+    quick) ;;
+    luks) _disk_erase_luks "$device" || return 1 ;;
+    discard) _disk_erase_discard "$device" || return 1 ;;
+    zero) _disk_erase_zero "$device" || return 1 ;;
+  esac
+
   while IFS= read -r part; do
     [[ -n "$part" ]] || continue
     _disk_assert_target "$part" || return 1

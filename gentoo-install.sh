@@ -458,6 +458,9 @@ Target system:
       --init INIT           openrc | systemd
       --flavour NAME        Stage3 flavour; --list-flavours prints them.
       --list-flavours       Print the stage3 flavours for --arch and exit.
+      --list-disks          Print the disks on this machine and exit. Reads
+                            nothing else and writes nothing; this is the
+                            question to ask before choosing --device.
 
 Precedence, always in this order:
   built-in default  <  profile  <  configuration file  <  explicit flag
@@ -557,6 +560,7 @@ OPT_SKIP_STEPS=""
 OPT_CONFIG=""
 OPT_LIST_STEPS="no"
 OPT_LIST_FLAVOURS="no"
+OPT_LIST_DISKS="no"
 OPT_DUMP_CONFIG="no"
 
 _need_value() {
@@ -593,6 +597,7 @@ parse_args() {
       --no-color | --no-colour) set_explicit color "never" ;;
       --list-steps) OPT_LIST_STEPS="yes" ;;
       --list-flavours | --list-flavors) OPT_LIST_FLAVOURS="yes" ;;
+      --list-disks) OPT_LIST_DISKS="yes" ;;
       --dump-config) OPT_DUMP_CONFIG="yes" ;;
       --steps)
         _need_value "$@"
@@ -758,6 +763,12 @@ main() {
 
   # Every source is merged by now, so a value can finally be judged.
   config_validate_enums || exit "$EXIT_USAGE"
+
+  # A cipher has no closed set: what is available is what this kernel was built
+  # with. Asked here, before step 20 wipes a disk for an encryption setting that
+  # step 30 would then refuse.
+  crypt_validate_early || exit "$EXIT_USAGE"
+  crypt_validate_pbkdf_params || exit "$EXIT_USAGE"
   if [[ "${CFG[resume]}" == "yes" && "${CFG[restart]}" == "yes" ]]; then
     die_usage "--resume and --restart contradict each other" \
       "--resume   skip the steps the state journal marks as done" \
@@ -770,6 +781,14 @@ main() {
 
   if [[ "$OPT_LIST_STEPS" == "yes" ]]; then
     list_steps
+    exit "$EXIT_SUCCESS"
+  fi
+
+  # Before resolve_stage: what disks are here has nothing to do with which
+  # stage3 would be fetched, and an operator asking this question does not want
+  # the network touched to answer it.
+  if [[ "$OPT_LIST_DISKS" == "yes" ]]; then
+    disk_show_inventory
     exit "$EXIT_SUCCESS"
   fi
 

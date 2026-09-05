@@ -33,6 +33,10 @@ and not done is in [`CHANGELOG.md`](CHANGELOG.md).
 
 ---
 
+The procedure that would change this is written down and ready to run:
+[`docs/TESTING.md`](docs/TESTING.md). Five runs, from the simplest path that
+can possibly work to the TPM one, with what has to hold for each to count.
+
 ## Table of contents
 
 The table of contents is the table of the steps, in the order they run.
@@ -182,6 +186,31 @@ declare percentages with soft minima and maxima, and the plan turns them into
 real sizes you read before confirming. See [Safety](#safety) for the refusals
 and the typed confirmation.
 
+### Erasing what was there
+
+`disk_erase` decides how much is done before the new table is written. `quick`
+is the default because it is what this project has always done and what its
+tests exercise; the other three are offered and less travelled.
+
+| Mode | What it does | What it costs |
+|---|---|---|
+| `quick` | signatures, then both GPT headers | a second |
+| `luks` | destroys the LUKS header of every encrypted partition first | a second, whatever the disk holds |
+| `discard` | asks the drive to forget every block | instant on NVMe |
+| `zero` | writes zeroes over the whole device | as long as one full write takes |
+
+**`luks` is the one worth knowing about.** Destroying a LUKS header destroys
+the master key, and without it the ciphertext on the rest of the disk is noise.
+On a machine that was encrypted, that is a complete erase in one second, whether
+the disk holds 256 GB or 8 TB. It is the strongest practical argument for
+encrypting a machine you will one day hand on.
+
+**Neither `discard` nor `zero` is a guarantee on flash.** `discard` is a request
+the controller is free to interpret. `zero` overwrites the blocks the controller
+currently maps, and the ones it retired through wear levelling keep whatever
+they held. If the data mattered, the answer was to encrypt it before writing it,
+not to scrub it afterwards — which is what `luks` above is for.
+
 ## 30 crypt
 
 Loads one of the variants under `variants/crypt/` and runs it. The step itself
@@ -214,6 +243,47 @@ The mounts stay up: steps 60 to 90 run inside them and step 95 releases them.
 The `EXIT` trap releases them too, so an interrupted run does not leave the
 target half-mounted.
 
+### Choosing the cipher and the key derivation
+
+The defaults are `aes-xts-plain64` at 512 bits with `argon2id`, and they are the
+right answer on any machine built this decade: AES has hardware acceleration
+almost everywhere, and 512 bits in XTS means **two AES-256 keys**, not AES-512.
+
+They are also only defaults. What the kernel offers is what you may use:
+
+| Setting | Default | Also accepted |
+|---|---|---|
+| `crypt_cipher` | `aes-xts-plain64` | `serpent-xts-plain64`, `twofish-xts-plain64`, and whatever else `cryptsetup benchmark` lists here |
+| `crypt_key_size` | `512` | `256` for AES-128 in XTS |
+| `crypt_hash` | `sha512` | any digest cryptsetup knows |
+| `crypt_pbkdf` | `argon2id` | `argon2i`, `pbkdf2` |
+
+```bash
+./gentoo-install.sh --crypt luks-passphrase \
+  --crypt-cipher serpent-xts-plain64 --crypt-pbkdf argon2i
+```
+
+A cipher is not checked against a list, because the right list differs between
+kernels. It is put to `cryptsetup benchmark` — and only when it is not the
+default, since an unknown cipher fails in twenty milliseconds while a valid one
+costs two seconds to measure. Paying that once for a deliberate choice, before
+step 20 wipes anything, is worth it; paying it on every run to re-confirm the
+cipher this project ships is not.
+
+Two things are worth knowing before you change these:
+
+**Serpent and Twofish are slower, by a lot.** On the machine this was written
+on, `cryptsetup benchmark` reports 7076 MiB/s for `aes-xts` against 655 MiB/s
+for `serpent-xts` — a factor of ten, and it is the speed of every read and write
+for the life of the disk. Choose them because you distrust AES, not because
+more names sound safer.
+
+**`pbkdf2` takes no memory parameter.** Memory and parallelism are argon2's;
+pbkdf2 is an iteration count and nothing else, and cryptsetup refuses the pair.
+Setting `crypt_pbkdf = pbkdf2` together with `crypt_pbkdf_memory` is refused at
+parse time rather than by `luksFormat` in step 30 — which would be after step 20
+had already wiped the disk.
+
 ## 60 portage
 
 Everything `/etc/portage` has to say before a single package is built: the
@@ -239,6 +309,26 @@ line, both composed from what steps 20 and 30 recorded rather than hardcoded.
 genkernel does not use dracut: its initramfs reads `crypt_root=`, `root_key=`
 and `dolvm` where dracut reads `rd.luks.uuid=` and `rd.luks.key=`. The step
 composes the right dialect rather than assuming one.
+
+### Why there is no third initramfs
+
+`dracut` is the default and `genkernel` comes with the genkernel kernel route.
+Nothing else is offered, and `initramfs = booster` is refused at parse time
+rather than accepted and discovered at the next boot.
+
+Booster is faster and smaller, and on an unencrypted machine it would be a fine
+third option. The reason it is not here is that two of the four encryption
+variants depend on dracut modules by name: `clevis` and `clevis-pin-tpm2` for
+the TPM, `crypt-gpg` for the wrapped key file on the ESP. Those are dracut's,
+not a standard every generator implements, and an initramfs that silently
+cannot open the container produces exactly one symptom — a machine that asks
+for nothing, finds no root, and drops to a shell the operator cannot type a
+passphrase into.
+
+If that changes, the way in is to prove it before offering it: build an
+initramfs with the alternative, boot a machine encrypted each of the four ways,
+and only then add the name to the list. Adding it first and finding out later is
+how an installer earns a reputation it deserves.
 
 ## 80 boot
 

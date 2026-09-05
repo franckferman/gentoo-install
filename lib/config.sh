@@ -193,22 +193,27 @@ declare -A CFG_ENUM=(
   [bootloader]="grub|efistub|systemd-boot"
   [color]="auto|never"
   [crypt]="none|luks-passphrase|luks-tpm|luks-keyfile-gpg"
+  [crypt_pbkdf]="argon2id|argon2i|pbkdf2"
   [crypt_recovery]="yes|no"
   [crypt_wipe_luks]="ask|yes|no"
   [disk_filesystem]="ext4|xfs|btrfs|f2fs"
+  [disk_erase]="quick|luks|discard|zero"
   [disk_layout]="minimal|server|desktop|custom"
   [disk_lvm]="auto|yes|no"
   [dry_run]="yes|no"
   [force]="yes|no"
   [init]="openrc|systemd"
+  [initramfs]="dracut|genkernel"
   [json]="yes|no"
   [kernel]="dist-kernel|genkernel|manual"
   [non_interactive]="yes|no"
   [on_conflict]="overwrite|skip|prompt|backup"
   [portage_sync]="webrsync|rsync|none"
+  [privilege]="sudo|sudo-nopasswd|doas|doas-nopasswd|none"
   [reboot]="ask|yes|no"
   [restart]="yes|no"
   [resume]="yes|no"
+  [root_lock]="yes|no"
   [wipe_disk]="ask|yes|no"
   [wipe_foreign]="ask|yes|no"
 )
@@ -326,8 +331,25 @@ config_init_defaults() {
   set_default timezone ""
   set_default locale ""
   set_default keymap ""
+
+  # Accounts. `accounts` is the declarative form and it takes precedence; the
+  # three single-account settings below it are the shorthand for one account and
+  # supply the defaults an empty field in a record takes.
+  #
+  #   accounts = "alice:wheel,audio:/bin/bash:sudo;svc:docker:/bin/sh:none"
+  set_default accounts ""      # "name:groups:shell:privilege;..."
+  set_default accounts_file "" # a file of the same records, one per line
+  set_default groups ""        # "name;name:gid;..." — created before the accounts
   set_default user ""
-  set_default privilege ""
+  set_default user_shell ""  # empty: /bin/bash
+  set_default user_groups "" # empty: wheel,audio,video,usb,portage
+  set_default privilege ""   # sudo|sudo-nopasswd|doas|doas-nopasswd|none
+
+  # Conservative by default: locking root is refused unless another account is
+  # shown to escalate and to be able to log in, because a machine where neither
+  # is true is recovered from a LiveUSB and from nowhere else.
+  set_default root_lock "no" # yes|no
+
   set_default network ""
   set_default sshd ""
   # Build
