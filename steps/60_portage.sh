@@ -1169,7 +1169,7 @@ step_60_portage() {
     err "Refusing to configure Portage on /"
     err "       step 60 writes /etc/portage of the system being installed"
     err "       on / it would replace the make.conf of the machine you are using"
-    err "       example:  --target /mnt/gentoo"
+    err "       example:  --root /mnt/gentoo"
     return "$EXIT_FAILURE"
   fi
 

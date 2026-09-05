@@ -123,7 +123,7 @@ chroot_attach() {
   if [[ -z "$CHROOT_ROOT" || "$CHROOT_ROOT" == "/" ]]; then
     err "Refusing to treat / as a chroot target"
     err "       every mount and every unmount below would land on the running system"
-    err "       example:  --target /mnt/gentoo"
+    err "       example:  --root /mnt/gentoo"
     return 1
   fi
 }

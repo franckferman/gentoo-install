@@ -243,25 +243,21 @@ GI_INTERNAL_TOKENS='trinity|cagip|ca-gip|matric|gundabad|thrain|keepass|gps_'
   # an encrypted install created /dev/mapper/gentoo and told the kernel
   # root=/dev/mapper/cryptroot, so the machine could not boot.
   #
-  # The allowed list is for keys no step writes on purpose, where a declared
-  # setting and a fallback carry the value instead. Adding to it is a decision,
-  # not a reflex: the journal exists so that --resume knows what the first run
-  # chose, and a key only ever read is a value --resume forgets.
+  # There is no allowed list, and that is the point. There was one, of eight
+  # keys that no step wrote because a declared setting and a fallback carried
+  # the value instead — which is exactly a --resume that forgets what the first
+  # run chose: the kernel it built binary or from source, the initramfs
+  # generator, the key file the initramfs looks for, the logical volume holding
+  # root. All eight are journalled now. If this test ever needs an exception
+  # again, write down which decision a resumed run is allowed to make
+  # differently from the run it is resuming, because that is what is being
+  # asked for.
   local allowed written read_keys missing
   written="${BATS_TEST_TMPDIR}/written"
   read_keys="${BATS_TEST_TMPDIR}/read"
   allowed="${BATS_TEST_TMPDIR}/allowed"
 
-  cat >"$allowed" <<'EOF'
-boot.efistub_cmdline
-boot.secureboot_cert
-crypt.keyfile
-crypt.keyfile_uuid
-disk.boot_device
-disk.root_lv
-kernel.build
-kernel.initramfs_generator
-EOF
+  : >"$allowed"
 
   {
     grep -rhoE 'state_set +["'"'"']?[a-z_]+\.[a-z_]+' \
@@ -281,6 +277,46 @@ EOF
   missing="$(comm -23 "$read_keys" "$written")"
   if [[ -n "$missing" ]]; then
     printf 'state keys read by a step, written by none:\n%s\n' "$missing" >&2
+    return 1
+  fi
+}
+
+@test "every flag an error message offers as an example must exist" {
+  # An error that ends "example: --layout minimal" is worse than no example when
+  # the setting is called disk_layout: the operator types what they were told,
+  # gets "Unknown option", and now doubts the diagnosis as well. Five messages
+  # said --layout, --filesystem or --target, none of which this program accepts.
+  #
+  # Only `example:` lines are read, because messages also quote gpg, curl and
+  # grub-install, whose flags are none of this test's business.
+  local declared offered flag key bad=""
+  declared="${BATS_TEST_TMPDIR}/declared"
+  "$GI_ENTRY" --dump-config 2>&1 \
+    | sed 's/\x1b\[[0-9;]*m//g' \
+    | awk '/^[a-z_]+ +=/ {print $1}' | sort -u >"$declared"
+  [ -s "$declared" ]
+
+  offered="$(grep -rhoE '"[^"]*example:[^"]*"' \
+    "${GI_ROOT}/lib" "${GI_ROOT}/steps" "${GI_ROOT}/variants" "${GI_ENTRY}" \
+    | grep -oE '(^|[^a-z-])--[a-z][a-z0-9-]+' \
+    | grep -oE '\-\-[a-z][a-z0-9-]+' | sed 's/^--//' | sort -u)"
+
+  for flag in $offered; do
+    case "$flag" in
+      # The behaviour flags, which are not settings, and the flags of the
+      # commands an example tells the operator to run by hand.
+      help | version | dry-run | yes | force | non-interactive | resume | \
+        restart | json | no-color | steps | skip-steps | list-steps | config | \
+        profile | dump-config | on-conflict | log-file | state-dir | \
+        list-flavours | list-disks) continue ;;
+      ask | oneshot | show-keys | sync | deep | newuse | update | quiet) continue ;;
+    esac
+    key="${flag//-/_}"
+    grep -qx "$key" "$declared" || bad+="  --${flag} (no setting named ${key})"$'\n'
+  done
+
+  if [[ -n "$bad" ]]; then
+    printf 'error messages offer flags this program does not accept:\n%s' "$bad" >&2
     return 1
   fi
 }

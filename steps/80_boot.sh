@@ -493,4 +493,9 @@ step_80_boot() {
   state_set boot.variant "$variant"
   state_set boot.firmware "$firmware"
   state_set boot.label "$(boot_label)"
+  # Same reasoning as the kernel facts: what this run put in the NVRAM entry,
+  # and which certificate it signed with, are read back by name and must not be
+  # re-derived from a default on the next run.
+  state_set boot.efistub_cmdline "$(target_fact efistub_cmdline boot.efistub_cmdline "")"
+  state_set boot.secureboot_cert "$(boot_secureboot_cert)"
 }

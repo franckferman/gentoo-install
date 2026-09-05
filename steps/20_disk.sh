@@ -99,6 +99,20 @@ _step20_record() {
   uuid="$(_step20_uuid "$esp")"
   [[ -z "$uuid" ]] || state_set disk.esp_uuid "$uuid"
 
+  # A /boot of its own, when the layout gives it one. The GRUB variant asks for
+  # this before deciding whether it needs cryptodisk: with /boot outside the
+  # container the kernel is reachable without unlocking anything, and turning
+  # cryptodisk on anyway only adds a second passphrase prompt at every boot.
+  state_set disk.boot_device "$(disk_plan_device_for "$plan" /boot)"
+
+  # The logical volume carrying /, so that step 70 composes
+  # root=/dev/mapper/<vg>-<lv> from what step 20 created. Without it the kernel
+  # command line falls back to the name "root", which is right until someone
+  # asks for a layout that calls it anything else.
+  if [[ "$(disk_plan_meta "$plan" lvm)" == "yes" ]]; then
+    state_set disk.root_lv "$(disk_plan_name_for "$plan" /)"
+  fi
+
   # The plan and the fstab records go to a file rather than into the journal:
   # they are tables, and a key=value journal is not where a table belongs.
   path="${CFG[state_dir]}/disk-plan.tsv"

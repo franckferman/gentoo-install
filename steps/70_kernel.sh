@@ -622,6 +622,12 @@ kernel_verify() {
   state_set kernel.initramfs "${initrd:-none}"
   state_set kernel.cmdline "$(kernel_cmdline)"
   state_set kernel.variant "$(kernel_variant)"
+  # Both of these are decisions this run made from a setting that may be empty,
+  # and both are read back by name on the next one. Unrecorded, a --resume
+  # three hours later re-derives them from the defaults and can reach a
+  # different answer than the kernel already on the disk was built with.
+  state_set kernel.build "$(target_fact kernel_build kernel.build "binary")"
+  state_set kernel.initramfs_generator "$(kernel_initramfs_generator)"
 }
 
 # --------------------------------------------------------------------------- #

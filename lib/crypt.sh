@@ -1024,5 +1024,20 @@ crypt_state_record() {
     if (($# > 0)); then
       state_set 'crypt.slots' "$*"
     fi
+    # Where the initramfs will look for the key file, and on which filesystem.
+    # The path, never the key: this says where the file is, not what is in it,
+    # exactly as crypt.device says which container was made and not how to open
+    # it. Step 70 reads both back by name, and without them a --resume rebuilds
+    # an initramfs pointing at the default path rather than the one in use.
+    if [[ "$variant" == *keyfile* ]]; then
+      local key_uuid="${CFG[crypt_keyfile_uuid]:-}"
+      state_set 'crypt.keyfile' "${CFG[crypt_keyfile]:-/luks-key.gpg}"
+      if [[ -z "$key_uuid" ]] && declare -F state_get >/dev/null 2>&1; then
+        key_uuid="$(state_get disk.esp_uuid 2>/dev/null || true)"
+      fi
+      if [[ -n "$key_uuid" ]]; then
+        state_set 'crypt.keyfile_uuid' "$key_uuid"
+      fi
+    fi
   fi
 }

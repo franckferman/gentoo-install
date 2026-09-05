@@ -905,7 +905,7 @@ disk_plan() {
       err "       $(disk_human_size "$avail") to share out after the ESP and swap"
       err "       the ${#_DISK_N[@]} volumes need $(disk_human_size "$((sum + rest_floor))") even shrunk to their floors"
       err "       a layout with fewer volumes fits: minimal is one root and nothing else"
-      err "       example:  --layout minimal"
+      err "       example:  --disk-layout minimal"
       return 1
     fi
     for ((i = 0; i < ${#_DISK_N[@]}; i++)); do
@@ -1000,6 +1000,16 @@ disk_plan_rows() {
   else
     awk -F'\t' -v k="$want" '$1 == k { print }' <<<"$1"
   fi
+}
+
+disk_plan_name_for() {
+  # The name a plan gives the volume or partition backing a mountpoint — the
+  # logical volume name for an LVM layout, the partition label otherwise. A
+  # returned value. Step 20 journals it so that step 70 can compose
+  # root=/dev/mapper/<vg>-<lv> from what was actually created rather than from
+  # a default that happens to be right most of the time.
+  # Args: $1 = plan text, $2 = mountpoint.
+  awk -F'\t' -v m="$2" '($1 == "esp" || $1 == "part" || $1 == "lv") && $3 == m { print $2; exit }' <<<"$1"
 }
 
 disk_plan_device_for() {
@@ -1178,7 +1188,7 @@ disk_require_tools() {
   if ! require_cmds "${needed[@]}"; then
     err "       on a Gentoo live image: sys-fs/lvm2 sys-apps/gptfdisk sys-fs/dosfstools"
     err "       xfs needs sys-fs/xfsprogs, btrfs sys-fs/btrfs-progs, f2fs sys-fs/f2fs-tools"
-    err "       example:  --filesystem ext4"
+    err "       example:  --disk-filesystem ext4"
     return 1
   fi
   return 0
@@ -1504,7 +1514,7 @@ disk_create_volumes() {
         err "lvcreate failed for ${vg}/${name} ($(disk_human_size "$mib"))"
         err "       the group holds $(vgs --noheadings --nosuffix --units m -o vg_free "$vg" 2>/dev/null | tr -d ' ' || printf '?')  MiB free"
         err "       the plan was computed against the disk, not the group"
-        err "       example:  --layout minimal"
+        err "       example:  --disk-layout minimal"
         return 1
       fi
     fi
