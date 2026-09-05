@@ -1,0 +1,15 @@
+# gentoo-install — package set: init-systemd
+# inherits: -
+# ----------------------------------------------------------------------------
+# Overlaid on the chosen set when --init systemd, and deliberately empty.
+#
+# systemd-journald is the system log and systemd timers are the cron, both
+# already part of @system on a systemd profile. Adding syslog-ng or cronie
+# beside them gives the machine two of each, with the logs split across the
+# two and no error anywhere to say so.
+#
+# The file exists rather than being absent because "nothing to add" is an
+# answer, and an empty file makes the asymmetry with init-openrc.list visible
+# to whoever reads data/packages/sets.tsv.
+#
+# One atom per line, # starts a comment.

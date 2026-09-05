@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gentoo-install</title>
+<meta name="description" content="A modular Gentoo installer in bash: ten numbered steps, a signed stage3, and a plan you can read before anything is written.">
+<style>
+  :root {
+    --bg:      #fbfbfa;
+    --panel:   #ffffff;
+    --ink:     #1c1c1a;
+    --muted:   #5d5d57;
+    --line:    #e2e2dc;
+    --accent:  #54487a;
+    --warn-bg: #fdf6e6;
+    --warn-ln: #e5cf95;
+    --warn-ink:#6b5416;
+    --mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:      #131316;
+      --panel:   #1a1a1f;
+      --ink:     #e8e8e4;
+      --muted:   #9d9d96;
+      --line:    #2e2e35;
+      --accent:  #b3a3e6;
+      --warn-bg: #221d10;
+      --warn-ln: #4d411f;
+      --warn-ink:#e0cd92;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.65 var(--sans);
+  }
+  .wrap { max-width: 46rem; margin: 0 auto; padding: 4rem 1.5rem 5rem; }
+  header { border-bottom: 1px solid var(--line); padding-bottom: 2rem; margin-bottom: 2.5rem; }
+  h1 {
+    font-family: var(--mono);
+    font-size: 2rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0 0 0.6rem;
+  }
+  .tagline { color: var(--muted); font-size: 1.05rem; margin: 0; max-width: 34rem; }
+  h2 {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    font-weight: 600;
+    margin: 3rem 0 1rem;
+  }
+  p { margin: 0 0 1rem; }
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px solid currentColor; }
+  a:hover { opacity: 0.75; }
+  code, kbd { font-family: var(--mono); font-size: 0.9em; }
+  .note {
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-ln);
+    color: var(--warn-ink);
+    border-radius: 6px;
+    padding: 1rem 1.15rem;
+    font-size: 0.95rem;
+  }
+  .note strong { font-weight: 600; }
+  .note p:last-child { margin-bottom: 0; }
+  .choices { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  @media (min-width: 34rem) { .choices { grid-template-columns: 1fr 1fr; } }
+  .choice { background: var(--panel); padding: 1.1rem 1.2rem; }
+  .choice h3 { margin: 0 0 0.5rem; font-size: 0.95rem; font-weight: 600; }
+  .choice ul { margin: 0; padding-left: 1.1rem; color: var(--muted); font-size: 0.92rem; }
+  .choice li { margin-bottom: 0.15rem; }
+  .choice code { color: var(--ink); }
+  .choice .def { color: var(--ink); font-weight: 600; }
+  pre {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 1rem 1.15rem;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 0.88rem;
+    line-height: 1.6;
+    margin: 0 0 1rem;
+  }
+  pre .c { color: var(--muted); }
+  footer {
+    margin-top: 4rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.88rem;
+  }
+  footer a { border-bottom-color: var(--line); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>gentoo-install</h1>
+    <p class="tagline">A modular Gentoo installer in bash: ten numbered steps, a signed stage3,
+    and a plan you can read before anything is written.</p>
+  </header>
+
+  <div class="note">
+    <p><strong>Status: 0.1.0, not yet proven end to end on real hardware.</strong>
+    Every module has been exercised on its own; the full ten-step sequence has
+    only ever run under <code>--dry-run</code>. No machine has been installed by
+    this script from an empty disk to a first boot. Read the plan before you
+    point it at anything you would miss.</p>
+  </div>
+
+  <h2>What it is</h2>
+  <p>An installer for Gentoo on amd64, written as ten numbered steps that can be
+  run together, selected individually, or resumed after an interruption. The step
+  number is the public API and does not change.</p>
+
+  <p>It fetches a stage3 through a signature chain rather than a checksum, keeps
+  every setting in one place where a file, a flag and a profile all reach it under
+  a stated precedence, and refuses a disk that carries the running system, is
+  mounted, or is removable — each refusal with its own switch, never one blanket
+  flag. The confirmation for erasing a disk is the device path typed out; neither
+  <code>--yes</code> nor <code>--force</code> lifts it.</p>
+
+  <pre><span class="c"># the plan, on this machine, changing nothing — no root needed</span>
+./gentoo-install.sh --dry-run</pre>
+
+  <h2>The choices</h2>
+  <div class="choices">
+    <div class="choice">
+      <h3>Encryption</h3>
+      <ul>
+        <li><code class="def">luks-passphrase</code> — default</li>
+        <li><code>luks-tpm</code></li>
+        <li><code>luks-keyfile-gpg</code></li>
+        <li><code>none</code></li>
+      </ul>
+    </div>
+    <div class="choice">
+      <h3>Bootloader</h3>
+      <ul>
+        <li><code class="def">grub</code> — default, boots everywhere</li>
+        <li><code>efistub</code></li>
+        <li><code>systemd-boot</code></li>
+      </ul>
+    </div>
+    <div class="choice">
+      <h3>Kernel</h3>
+      <ul>
+        <li><code class="def">dist-kernel</code> — default</li>
+        <li><code>genkernel</code></li>
+        <li><code>manual</code></li>
+      </ul>
+    </div>
+    <div class="choice">
+      <h3>Disk layout</h3>
+      <ul>
+        <li><code>minimal</code> — one root, no LVM</li>
+        <li><code>server</code> — /var and /var/log split</li>
+        <li><code class="def">desktop</code> — default, /home takes the rest</li>
+        <li><code>custom</code></li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Also in the repository</h2>
+  <p>Ten standalone rescue scripts for a machine that is already installed and no
+  longer boots: LUKS diagnostics, unlocking and chrooting from a live medium,
+  keyslot and header management, TPM inspection and resealing, and a firmware
+  update that proves it can be survived before it runs. None of them sources a
+  library, so any one can be copied alone onto a USB stick.</p>
+
+  <h2>Read on</h2>
+  <p>
+    <a href="https://github.com/franckferman/gentoo-install">The repository</a> —
+    source, the step-by-step README, and the design contract every file follows.
+  </p>
+
+  <footer>
+    <p>AGPL-3.0 · <a href="https://github.com/franckferman/gentoo-install">github.com/franckferman/gentoo-install</a></p>
+  </footer>
+
+</div>
+</body>
+</html>

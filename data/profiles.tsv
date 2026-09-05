@@ -1,0 +1,60 @@
+# gentoo-install — Portage profile catalogue
+# ----------------------------------------------------------------------------
+# One record per (flavour, init) pair of data/stages.tsv. The flavour column
+# here and the flavour column there are the same vocabulary on purpose: the
+# stage3 you unpack and the profile you select have to agree, and a table that
+# uses two different names for the same thing is how they stop agreeing.
+#
+# The profile column holds the exact name `eselect profile set` takes, which is
+# also the path under <repo>/profiles. The installer never sets it on trust:
+# it checks that the directory exists in the synced tree first, then walks the
+# fallbacks column in order, and only then reports that nothing matches. An
+# `eselect profile set` that fails is a bad error message ("invalid profile")
+# on a machine that is three steps into an install; a directory test costs
+# nothing and can name every candidate it tried.
+#
+# fallbacks is a comma-separated list of older names, tried left to right. The
+# 23.0 profiles were introduced in 2023 and the 17.x ones outlived them by a
+# while in real trees; a snapshot from before the switch still installs.
+#
+# status repeats what <repo>/profiles/profiles.desc says about the profile:
+#   stable   supported, the arch team keeps it working
+#   dev      usable, moves faster than stable
+#   exp      experimental upstream, and the installer says so out loud
+#
+# use holds the USE flags gentoo-install adds to make.conf for that
+# combination, or - for none. Most rows are -, and that is the point: the
+# profile already carries the distribution's opinion, USE in make.conf is a
+# delta on top of it, and an installer that fills that delta with its author's
+# taste is an installer nobody else can use (DESIGN.md §15). The two rows that
+# are not - fix something the profile genuinely leaves undone: an OpenRC
+# desktop has no seat management without elogind, and a systemd desktop must
+# not pull it in beside logind.
+#
+# The desktop flavour selects the plain desktop profile. The DE-specific ones
+# (default/linux/amd64/23.0/desktop/gnome, .../desktop/plasma, and their
+# systemd variants) are a choice this table does not make for you; name one
+# through the configuration to override everything below:
+#
+#     portage_profile = default/linux/amd64/23.0/desktop/plasma/systemd
+#
+# columns: flavour	init	arch	libc	profile	fallbacks	status	use	description
+base	openrc	amd64	glibc	default/linux/amd64/23.0	default/linux/amd64/17.1	stable	-	The default Gentoo profile, OpenRC
+base	systemd	amd64	glibc	default/linux/amd64/23.0/systemd	default/linux/amd64/17.1/systemd	stable	-	The default profile with systemd as init
+desktop	openrc	amd64	glibc	default/linux/amd64/23.0/desktop	default/linux/amd64/17.1/desktop	stable	elogind	Desktop USE preset, OpenRC — elogind provides the seat management logind would
+desktop	systemd	amd64	glibc	default/linux/amd64/23.0/desktop/systemd	default/linux/amd64/17.1/desktop/systemd	stable	-elogind	Desktop USE preset, systemd — logind is already there, elogind would collide
+nomultilib	openrc	amd64	glibc	default/linux/amd64/23.0/no-multilib	default/linux/amd64/17.1/no-multilib	stable	-	Pure 64-bit, no 32-bit ABI, OpenRC
+nomultilib	systemd	amd64	glibc	default/linux/amd64/23.0/no-multilib/systemd	default/linux/amd64/17.1/no-multilib/systemd	stable	-	Pure 64-bit, no 32-bit ABI, systemd
+hardened	openrc	amd64	glibc	default/linux/amd64/23.0/hardened	default/linux/amd64/17.1/hardened	stable	-	Hardened toolchain, OpenRC
+hardened	systemd	amd64	glibc	default/linux/amd64/23.0/hardened/systemd	-	stable	-	Hardened toolchain, systemd
+hardened-selinux	openrc	amd64	glibc	default/linux/amd64/23.0/hardened/selinux	default/linux/amd64/17.1/hardened/selinux	stable	-	Hardened toolchain with SELinux, OpenRC
+hardened-selinux	systemd	amd64	glibc	default/linux/amd64/23.0/hardened/selinux/systemd	-	stable	-	Hardened toolchain with SELinux, systemd
+musl	openrc	amd64	musl	default/linux/amd64/23.0/musl	default/linux/amd64/17.0/musl	dev	-	musl libc instead of glibc, OpenRC
+musl	systemd	amd64	musl	default/linux/amd64/23.0/musl/systemd	-	dev	-	musl libc instead of glibc, systemd
+musl-hardened	openrc	amd64	musl	default/linux/amd64/23.0/musl/hardened	default/linux/amd64/17.0/musl/hardened	exp	-	musl with a hardened toolchain, OpenRC
+musl-hardened	systemd	amd64	musl	default/linux/amd64/23.0/musl/hardened/systemd	-	exp	-	musl with a hardened toolchain, systemd
+llvm	openrc	amd64	glibc	default/linux/amd64/23.0/llvm	-	exp	-	Clang/libc++ userland, OpenRC
+llvm	systemd	amd64	glibc	default/linux/amd64/23.0/llvm/systemd	-	exp	-	Clang/libc++ userland, systemd
+musl-llvm	openrc	amd64	musl	default/linux/amd64/23.0/musl/llvm	-	exp	-	musl with a Clang/libc++ userland, OpenRC
+musl-llvm	systemd	amd64	musl	default/linux/amd64/23.0/musl/llvm/systemd	-	exp	-	musl with a Clang/libc++ userland, systemd
+splitusr	openrc	amd64	glibc	default/linux/amd64/23.0/split-usr	-	stable	-	Unmerged /usr, published for OpenRC only

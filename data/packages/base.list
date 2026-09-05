@@ -1,0 +1,18 @@
+# gentoo-install — package set: base
+# inherits: -
+# ----------------------------------------------------------------------------
+# What every gentoo-install system gets, whatever it is for. The rule for this
+# file: a package earns its place here only if the installer itself, or the
+# first hour of owning the machine, would be worse without it.
+#
+# @system already provides the toolchain, coreutils, an editor and Portage. It
+# is not repeated here — a list that restates @system is a list nobody trusts
+# to be the delta it claims to be.
+#
+# One atom per line, # starts a comment.
+
+app-portage/gentoolkit          # equery, revdep-rebuild, eclean-dist
+app-portage/portage-utils       # qlist and qfile, without Python's startup cost
+dev-vcs/git                     # ::guru, kernel sources, dotfiles: something always needs it
+sys-apps/pciutils               # lspci, which the VIDEO_CARDS detection reads
+sys-apps/usbutils               # lsusb, the other half of the hardware inventory

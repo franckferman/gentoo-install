@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: shellcheck + shfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax
+        run: bash -n gentoo-install.sh lib/*.sh
+
+      - name: ShellCheck
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends shellcheck
+          shellcheck gentoo-install.sh lib/*.sh
+
+      - name: shfmt
+        uses: mfinelli/setup-shfmt@v3
+
+      - name: Formatting
+        run: shfmt --diff --indent 2 --case-indent --binary-next-line gentoo-install.sh lib/*.sh
+
+  smoke:
+    name: Smoke
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: --help, --version, --list-steps
+        run: |
+          ./gentoo-install.sh --help
+          ./gentoo-install.sh --version
+          ./gentoo-install.sh --list-steps
+
+      - name: Nothing but --json writes on stdout
+        run: |
+          out="$(./gentoo-install.sh --dry-run --non-interactive 2>/dev/null)"
+          test -z "$out" || { echo "unexpected stdout: $out" >&2; exit 1; }
+
+      - name: --json is valid JSON
+        run: ./gentoo-install.sh --json | python3 -m json.tool > /dev/null
+
+      - name: An unknown option exits 2
+        run: |
+          ./gentoo-install.sh --no-such-flag && exit 1
+          test $? -ne 0
+
+  test:
+    name: bats
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install bats
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bats
+
+      - name: Run
+        run: |
+          if compgen -G 'tests/*.bats' > /dev/null; then
+            bats tests
+          else
+            echo "no tests yet under tests/"
+          fi

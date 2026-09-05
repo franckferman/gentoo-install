@@ -1,0 +1,52 @@
+# gentoo-install — stage3 catalogue
+# ----------------------------------------------------------------------------
+# One record per published stage3 variant. The id is the exact suffix Gentoo
+# uses in its autobuild filenames, so the whole chain composes from it:
+#
+#   <mirror>/releases/<arch>/autobuilds/latest-stage3-<arch>-<id>.txt
+#   <mirror>/releases/<arch>/autobuilds/<timestamp>/stage3-<arch>-<id>.tar.xz
+#   ... plus .asc (detached signature of the tarball — the strong guarantee),
+#       .sha256, .DIGESTS and .CONTENTS.gz beside it.
+#
+# The latest-*.txt file is clearsigned. Verify that signature before trusting
+# the path it names, then verify the tarball's own .asc, then cross-check the
+# byte count the txt announces. The keyring is app-crypt/openpgp-keys-gentoo-release
+# (/usr/share/openpgp-keys/gentoo-release.asc); it ships on the Gentoo live
+# media, and fetching it anywhere else is itself a trust problem worth stating
+# out loud rather than hiding.
+#
+# Two axes describe almost everything: init (openrc|systemd) and flavour. The
+# names compose. The one exception is splitusr, which is published for openrc
+# only — the selector must know that and refuse the combination at parse time
+# instead of walking into a 404 after the disks have been wiped.
+#
+# constraints is a comma-separated set drawn from:
+#   none                nothing special
+#   openrc-only         no systemd counterpart is published
+#   no-multilib         no 32-bit ABI, so no wine, no steam, no 32-bit binaries
+#   hardened-toolchain  toolchain built with the hardened profile
+#   selinux             expects a SELinux policy and a labelled filesystem
+#   libcxx-abi          Clang/libc++ userland, ABI-incompatible with libstdc++
+#   split-usr           /usr is not merged into /
+#   experimental        upstream publishes it as such
+#
+# columns: id	init	libc	flavour	arch	constraints	description
+openrc	openrc	glibc	base	amd64	none	The default Gentoo base system
+systemd	systemd	glibc	base	amd64	none	Base system with systemd as init
+desktop-openrc	openrc	glibc	desktop	amd64	none	Desktop profile preset, OpenRC
+desktop-systemd	systemd	glibc	desktop	amd64	none	Desktop profile preset, systemd
+nomultilib-openrc	openrc	glibc	nomultilib	amd64	no-multilib	Pure 64-bit, no 32-bit ABI, OpenRC
+nomultilib-systemd	systemd	glibc	nomultilib	amd64	no-multilib	Pure 64-bit, no 32-bit ABI, systemd
+hardened-openrc	openrc	glibc	hardened	amd64	hardened-toolchain	Hardened toolchain, OpenRC
+hardened-systemd	systemd	glibc	hardened	amd64	hardened-toolchain	Hardened toolchain, systemd
+hardened-selinux-openrc	openrc	glibc	hardened-selinux	amd64	hardened-toolchain,selinux	Hardened toolchain with SELinux, OpenRC
+hardened-selinux-systemd	systemd	glibc	hardened-selinux	amd64	hardened-toolchain,selinux	Hardened toolchain with SELinux, systemd
+musl-openrc	openrc	musl	musl	amd64	no-multilib	musl libc instead of glibc, OpenRC
+musl-systemd	systemd	musl	musl	amd64	no-multilib	musl libc instead of glibc, systemd
+musl-hardened-openrc	openrc	musl	musl-hardened	amd64	no-multilib,hardened-toolchain	musl libc with a hardened toolchain, OpenRC
+musl-hardened-systemd	systemd	musl	musl-hardened	amd64	no-multilib,hardened-toolchain	musl libc with a hardened toolchain, systemd
+llvm-openrc	openrc	glibc	llvm	amd64	libcxx-abi	Clang/libc++ userland, OpenRC
+llvm-systemd	systemd	glibc	llvm	amd64	libcxx-abi	Clang/libc++ userland, systemd
+musl-llvm-openrc	openrc	musl	musl-llvm	amd64	no-multilib,libcxx-abi,experimental	musl with a Clang/libc++ userland, OpenRC
+musl-llvm-systemd	systemd	musl	musl-llvm	amd64	no-multilib,libcxx-abi,experimental	musl with a Clang/libc++ userland, systemd
+openrc-splitusr	openrc	glibc	splitusr	amd64	openrc-only,split-usr	Unmerged /usr, published for OpenRC only

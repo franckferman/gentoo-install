@@ -1,0 +1,19 @@
+# gentoo-install — shellcheck configuration
+#
+# The libraries under lib/ are sourced, never executed, so shellcheck has to be
+# told which shell they are and allowed to follow the source directives that
+# gentoo-install.sh carries.
+
+shell=bash
+external-sources=true
+
+# Opt-in checks that catch the exact defects docs/DESIGN.md was written against.
+#
+# check-set-e-suppressed and check-extra-masked-returns are deliberately NOT
+# enabled: this project uses predicate functions (have, state_is_done, confirm,
+# cfg_is) inside conditions everywhere, which is exactly what they flag, and
+# thirty informational lines per run is how a lint step stops being read.
+enable=avoid-x-comparison
+enable=deprecate-which
+enable=quote-safe-variables
+enable=require-double-brackets

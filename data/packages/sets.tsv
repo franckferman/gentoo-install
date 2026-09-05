@@ -1,0 +1,29 @@
+# gentoo-install — package set inheritance
+# ----------------------------------------------------------------------------
+# This file is the inheritance table. It is data, not a comment in a script,
+# because the question a reader actually asks is "what does desktop add over
+# server" and the answer has to be readable without opening any code
+# (DESIGN.md §10).
+#
+#     base ──▶ minimal ──▶ server ──▶ desktop
+#
+# Each level adds to the one before it and removes nothing. Resolving a set
+# means walking the inherits column up to the root and concatenating the
+# .list files from the root down, so a package named twice is installed once
+# and the order stays readable in the generated Portage set.
+#
+# The two init sets are not part of that chain. They are overlaid on whatever
+# level was chosen, according to --init, because the answer to "what provides
+# cron and the system log" is the one thing the init system genuinely decides.
+#
+# Every set has a data/packages/<set>.list beside this file, and each of those
+# files repeats its parent in an "# inherits: <parent>" header. The installer
+# cross-checks the two and complains if they drift.
+#
+# columns: set	inherits	description
+base	-	Portage tooling and hardware inventory: the packages every install gets
+minimal	base	A machine that boots, reaches the network, and can be repaired from its own console
+server	minimal	Headless and always on: time, logs, firewall, disk health, remote work
+desktop	server	A graphical session: X, audio, fonts, a terminal that always works
+init-openrc	-	Overlay for --init openrc: the cron and syslog daemons systemd would provide itself
+init-systemd	-	Overlay for --init systemd: deliberately empty, and the file says why

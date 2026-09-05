@@ -1,0 +1,11 @@
+# gentoo-install — package set: init-openrc
+# inherits: -
+# ----------------------------------------------------------------------------
+# Overlaid on the chosen set when --init openrc. These are the two services
+# systemd would otherwise provide itself, and a machine without either of them
+# has no scheduled jobs and no system log.
+#
+# One atom per line, # starts a comment.
+
+app-admin/syslog-ng             # /var/log/messages; without it the kernel talks to nobody
+sys-process/cronie              # logrotate, eclean and every maintenance job need a cron

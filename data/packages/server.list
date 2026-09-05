@@ -1,0 +1,16 @@
+# gentoo-install — package set: server
+# inherits: minimal
+# ----------------------------------------------------------------------------
+# minimal, plus what a machine that stays powered on and unattended needs:
+# correct time, rotated logs, a firewall, disks that report their own health,
+# and a session that survives a dropped connection.
+#
+# One atom per line, # starts a comment.
+
+app-admin/logrotate             # a /var/log that fills up takes the machine with it
+app-misc/tmux                   # an ssh drop must not kill a three-hour emerge
+net-firewall/nftables           # the kernel's own firewall; iptables is the compatibility layer
+net-misc/chrony                 # wrong time breaks TLS, logs and every certificate check
+sys-apps/dmidecode              # what this hardware claims to be, without opening the case
+sys-apps/smartmontools          # the only warning a disk gives before it stops
+sys-process/lsof                # what is holding that mountpoint

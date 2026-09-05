@@ -1,0 +1,23 @@
+# gentoo-install — package set: desktop
+# inherits: server
+# ----------------------------------------------------------------------------
+# server, plus a graphical session that works before any desktop environment
+# is installed: a display server, audio, fonts and a terminal.
+#
+# No desktop environment is listed, and that is deliberate. GNOME, Plasma,
+# Xfce and the rest are a choice with a Portage profile attached
+# (default/linux/amd64/23.0/desktop/plasma and friends, see data/profiles.tsv);
+# an installer that picks one promotes its author's taste to a default
+# (DESIGN.md §15). Select the profile, then emerge the meta-package.
+#
+# One atom per line, # starts a comment.
+
+media-fonts/dejavu              # without a font, a graphical session shows empty boxes
+media-fonts/noto                # the rest of the world's scripts
+media-sound/pipewire            # audio and screen sharing, replacing pulseaudio and jack
+media-video/wireplumber         # pipewire does nothing without a session manager
+net-misc/networkmanager         # roaming between networks, which dhcpcd alone does not do
+x11-apps/xrandr                 # the display is on the wrong output more often than not
+x11-base/xorg-server            # Wayland compositors come with their DE; X is the floor
+x11-misc/xdg-utils              # xdg-open, which half the applications shell out to
+x11-terms/xterm                 # ugly, tiny, and it starts when nothing else will

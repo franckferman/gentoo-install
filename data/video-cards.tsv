@@ -1,0 +1,33 @@
+# gentoo-install — VIDEO_CARDS detection table
+# ----------------------------------------------------------------------------
+# VIDEO_CARDS decides which DRI/DDX drivers mesa, xorg-server and the kernel
+# firmware packages build. Getting it wrong costs a rebuild of mesa and of
+# every package that links against it, which is why it is worth detecting
+# rather than leaving to the profile default.
+#
+# The match column is a fixed string, compared case-insensitively against the
+# VGA and Display controller lines of `lspci`. First match wins, so the rows
+# are ordered from the most specific to the most general: a virtual machine
+# reports a vendor that would otherwise match a real card.
+#
+# Nothing here selects a proprietary driver. x11-drivers/nvidia-drivers is a
+# licence decision and a kernel-module decision, and an installer that makes
+# either of them silently is an installer that surprises people (DESIGN.md
+# §15). The nouveau row installs the free driver; switch it by hand:
+#
+#     video_cards = nvidia
+#
+# When nothing matches, VIDEO_CARDS is left out of make.conf entirely rather
+# than guessed: the profile's own default is a better answer than a wrong one.
+#
+# columns: match	video_cards	description
+QXL	qxl	SPICE/QXL paravirtual display (libvirt, oVirt)
+Virtio	virgl	virtio-gpu, the modern QEMU/KVM display
+Red Hat	virgl	QEMU standard VGA and virtio-gpu both report Red Hat
+VMware	vmware	VMware SVGA II
+Microsoft	fbdev	Hyper-V synthetic video, framebuffer only
+InnoTek	vmware	VirtualBox VBoxVGA/VBoxSVGA, driven by the vmware DDX
+Advanced Micro Devices	amdgpu radeonsi	AMD GCN and newer; add radeon r600 for pre-GCN cards
+ATI Technologies	radeon r600	Pre-GCN Radeon, the legacy radeon driver
+NVIDIA	nouveau	The free NVIDIA driver; the proprietary one is a licence decision
+Intel Corporation	intel i965 iris	Intel integrated graphics: i965 for Gen4-8, iris for Gen8 and newer

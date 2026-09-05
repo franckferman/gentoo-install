@@ -1,0 +1,34 @@
+# Runtime artefacts
+*.log
+*.bak
+*.gi-*.bak
+/state
+/tmp/
+
+# Build and test output
+/build/
+/dist/
+*.tar.xz
+*.tar.gz
+tests/tmp/
+.bats-*
+
+# Editors and desktops
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+.DS_Store
+
+# Working artefacts of the build, deliberately out of the repository.
+#
+# docs/research/ holds analyses of other public repositories, written to shape
+# this project's conventions. They are candid, they name defects, and they were
+# never meant to be published under anyone's name. Delete the line to include
+# them; nothing here decides that for you.
+docs/research/
+
+# docs/REPRISE.md is the build journal: French, chronological, and about the
+# work rather than the tool. Same treatment, same one-line reversal.
+docs/REPRISE.md

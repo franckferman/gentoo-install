@@ -1,0 +1,18 @@
+# gentoo-install — package set: minimal
+# inherits: base
+# ----------------------------------------------------------------------------
+# base, plus what turns an unpacked stage3 into a machine somebody can boot,
+# put on the network and repair from its own console.
+#
+# net-misc/openssh is not listed: it is part of @system on the default
+# profiles, and listing it again would suggest this file is what installs it.
+#
+# One atom per line, # starts a comment.
+
+app-admin/sudo                  # the alternative is working as root, which is not one
+app-editors/vim                 # nano comes with @system; vim is what fixes a broken fstab
+app-portage/cpuid2cpuflags      # prints the CPU_FLAGS_X86 line make.conf wants
+net-misc/dhcpcd                 # one wire, one address; NetworkManager arrives with desktop
+sys-fs/dosfstools               # fsck.vfat: the ESP is the one filesystem nothing else checks
+sys-process/htop                # what is this machine doing, answered in one command
+sys-kernel/linux-firmware       # LICENCE: needs @BINARY-REDISTRIBUTABLE, see /etc/portage/package.license
