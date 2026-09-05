@@ -500,7 +500,9 @@ cleanup_on_failure() {
     warn "Cleaning up: closing $OPENED_CONTAINER"
     # Only the tree this run mounted. A target that was already mounted
     # when open started belongs to someone else, failure or not.
-    [[ "$OWN_TARGET" == "$TARGET" ]] && umount -R "$TARGET" 2>/dev/null || true
+    if [[ "$OWN_TARGET" == "$TARGET" ]]; then
+      umount -R "$TARGET" 2>/dev/null || true
+    fi
     vgchange -an "$VG_NAME" >/dev/null 2>&1 || true
     cryptsetup luksClose "$OPENED_CONTAINER" 2>/dev/null || true
     OPENED_CONTAINER=""
@@ -615,7 +617,9 @@ mount_tree() {
 
   log "Activating the volume group $VG_NAME"
   vgchange -ay "$VG_NAME" >/dev/null 2>&1 || true
-  command -v udevadm >/dev/null 2>&1 && udevadm settle --timeout=10 2>/dev/null || true
+  if command -v udevadm >/dev/null 2>&1; then
+    udevadm settle --timeout=10 2>/dev/null || true
+  fi
 
   if ! vgs "$VG_NAME" >/dev/null 2>&1; then
     err "Volume group $VG_NAME not found inside the container"

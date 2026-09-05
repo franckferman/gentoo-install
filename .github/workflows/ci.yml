@@ -27,16 +27,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install shellcheck
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends shellcheck
-
-      - name: Install shfmt
-        uses: mfinelli/setup-shfmt@v3
-
-      # The Makefile falls back to a container when a tool is missing; both are
-      # installed above, so this runs them natively and stays fast.
+      # No tool is installed here on purpose. The Makefile runs each check
+      # natively when the tool is present and in a pinned container when it is
+      # not, so leaving the runner bare makes CI execute exactly what a
+      # contributor with none of them installed executes.
+      #
+      # This is not hypothetical tidiness: CI installed shellcheck from apt
+      # while the Makefile used koalaman/shellcheck:stable, the two versions
+      # disagreed about SC2015, and a push went red on four lines that were
+      # green on every developer machine.
       - name: make lint
         run: make lint
 
@@ -47,29 +46,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install bats
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends bats
-
-      # tests/helper.bash declares the version the suite needs, with
-      # bats_require_minimum_version. Reading it from there rather than
-      # repeating it means the two cannot disagree, and a runner image that
-      # ships something older fails here — saying so — instead of failing in
-      # forty tests whose output explains nothing.
-      - name: bats must be new enough
-        run: |
-          bats --version
-          need="$(sed -n 's/^bats_require_minimum_version \([0-9.]*\).*/\1/p' \
-                  tests/helper.bash | head -n1)"
-          test -n "$need" || { echo "helper.bash declares no minimum bats version" >&2; exit 1; }
-          have="$(bats --version | awk '{print $2}')"
-          lowest="$(printf '%s\n%s\n' "$need" "$have" | sort -V | head -n1)"
-          if [ "$lowest" != "$need" ]; then
-            echo "bats ${have} is older than the ${need} tests/helper.bash requires" >&2
-            exit 1
-          fi
-
+      # Same reasoning, and the version requirement enforces itself:
+      # tests/helper.bash calls bats_require_minimum_version, so a bats too old
+      # to run the suite says so in one line instead of failing forty tests.
       - name: make test
         run: make test
 

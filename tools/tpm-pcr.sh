@@ -773,10 +773,10 @@ do_show() {
 
   if [[ ${#ARGS[@]} -gt 0 ]]; then
     for n in "${ARGS[@]}"; do
-      [[ "$n" =~ ^[0-9]+$ ]] && [[ "$n" -le 23 ]] || {
+      if ! [[ "$n" =~ ^[0-9]+$ ]] || [[ "$n" -gt 23 ]]; then
         err "Not a PCR number: $n (0 to 23)"
         exit "$EXIT_USAGE"
-      }
+      fi
       wanted+=("$n")
     done
   else
@@ -1117,10 +1117,10 @@ do_explain() {
 
   if [[ ${#ARGS[@]} -gt 0 ]]; then
     for n in "${ARGS[@]}"; do
-      [[ "$n" =~ ^[0-9]+$ ]] && [[ "$n" -le 23 ]] || {
+      if ! [[ "$n" =~ ^[0-9]+$ ]] || [[ "$n" -gt 23 ]]; then
         err "Not a PCR number: $n (0 to 23)"
         exit "$EXIT_USAGE"
-      }
+      fi
       wanted+=("$n")
     done
   else
