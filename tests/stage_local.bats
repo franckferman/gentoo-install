@@ -31,3 +31,33 @@ load helper
     }
   done
 }
+
+@test "unpacking refuses a target the disk plan says should be mounted but is not" {
+  # The runner accumulates failures instead of stopping (DESIGN.md §4), so a
+  # failed step 20 leaves step 40 pointed at an unmounted directory. Found by
+  # running it: 1.3 GB of stage3 landed on the installer's own disk, then went
+  # invisible when the next run mounted the real filesystem over it.
+  local dir
+  dir="$(gi_tmp)"
+  mkdir -p "${dir}/state" "${dir}/target"
+  printf 'disk.mountpoint=%s\n' "${dir}/target" >"${dir}/state/state"
+  chmod 600 "${dir}/state/state"
+
+  gi_bash 'STATE_DIR="$1"; STATE_FILE="$1/state"; stage_unpack /nonexistent.tar "$2"' \
+    "${dir}/state" "${dir}/target"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"nothing is mounted on"* ]]
+}
+
+@test "unpacking into a plain --root with no disk plan stays allowed" {
+  # The guard must not break installing into a directory on purpose: it only
+  # bites when step 20 recorded that very path as a mountpoint.
+  local dir
+  dir="$(gi_tmp)"
+  mkdir -p "${dir}/state" "${dir}/target"
+  : >"${dir}/state/state"
+
+  gi_bash 'STATE_DIR="$1"; STATE_FILE="$1/state"; _stage_assert_target_mounted "$2"' \
+    "${dir}/state" "${dir}/target"
+  [ "$status" -eq 0 ]
+}

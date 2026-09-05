@@ -20,22 +20,46 @@ step, until the device path has been typed out by hand.
 
 ## Status
 
-**Not yet proven end to end on real hardware.** Every module has been exercised
-on its own — loop devices, throwaway targets, a chroot that is not this
-machine's — and the full ten-step sequence has only ever been run under
-`--dry-run`. No machine has been installed by this script from an empty disk to
-a first boot.
+**One machine has been installed by this script and booted.** On 2026-09-05 a
+24 GiB disk image was taken from an empty GPT to a login prompt by the ten steps
+in order — `minimal` layout, no encryption, GRUB on UEFI, the distribution
+kernel — and then started under QEMU with OVMF firmware, where it reached:
 
-Treat it accordingly: read the plan, run `--dry-run` first, and do not point
-version `0.1.0` at a disk holding anything you would miss. The design contract
-it is written against is [`docs/DESIGN.md`](docs/DESIGN.md), and what is done
-and not done is in [`CHANGELOG.md`](CHANGELOG.md).
+```
+This is gitest (Linux x86_64 6.18.48-gentoo-dist-bin)
+gitest login: tester
+```
 
----
+What was checked once it was up, from inside the running system:
 
-The procedure that would change this is written down and ready to run:
-[`docs/TESTING.md`](docs/TESTING.md). Five runs, from the simplest path that
-can possibly work to the TPM one, with what has to hold for each to count.
+| | |
+|---|---|
+| boots from its own disk, unaided | yes |
+| `findmnt --verify` | 0 parse errors, 0 errors |
+| `lsblk -f` | `vda1 → /boot`, `vda2 → /`, the layout that was asked for |
+| `uname -r` | `6.18.48-gentoo-dist-bin`, the kernel step 70 emerged |
+| the account step 90 created | `tester` logs in, `uid=1000`, in `wheel` |
+| privilege escalation | `sudo id` → `uid=0(root)` |
+
+**What that does not cover.** Only one of the five runs in
+[`docs/TESTING.md`](docs/TESTING.md) has been made. Nothing encrypted has been
+booted: `luks-passphrase`, `luks-tpm` and `luks-keyfile-gpg` have been exercised
+against throwaway containers, never carried through to a machine that asks for a
+passphrase at power-on. `efistub` and `systemd-boot` have not been booted either,
+nor has an LVM layout, nor a `musl` or `hardened` stage. Version `0.1.0` should
+still meet a disk you would miss with `--dry-run` first.
+
+One finding from that run is worth repeating here, because it is the difference
+between a disk that boots and a disk that does not. A UEFI firmware with no
+NVRAM entry pointing at your loader tries exactly one path: the removable one,
+`\EFI\BOOT\BOOTX64.EFI`. The first image this project produced had a working
+GRUB, a valid `grub.cfg` and a correct `fstab`, and dropped straight to PXE —
+because nothing was at that path. The installer now writes it whenever it cannot
+create an NVRAM entry, and `--boot-removable yes` asks for it outright.
+
+The design contract this is written against is
+[`docs/DESIGN.md`](docs/DESIGN.md); what is done and not done is in
+[`CHANGELOG.md`](CHANGELOG.md).
 
 ## Table of contents
 

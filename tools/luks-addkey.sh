@@ -835,7 +835,9 @@ write_new_passphrase_out() {
     return 1
   }
   umask "$previous_umask"
-  chmod 600 "$target"
+  if [[ -f "$target" && ! -L "$target" ]]; then
+    chmod 600 "$target"
+  fi
 
   back="$(head -n 1 "$target")" || {
     err "Cannot read $target back"; return 1

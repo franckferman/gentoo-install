@@ -28,7 +28,7 @@ kernel_manual_required_options() {
   # read without a kernel tree in sight.
   local crypt layout
   crypt="$(target_crypt)"
-  layout="$(target_layout)"
+  layout="$(target_topology)"
 
   printf '%s\n' "CONFIG_BLK_DEV_INITRD=y"
 

@@ -51,7 +51,7 @@ boot_grub_default_body() {
   if boot_grub_needs_cryptodisk; then
     crypto="y"
   fi
-  if [[ "$(target_layout)" == "lvm" ]]; then
+  if [[ "$(target_topology)" == "lvm" ]]; then
     preload="lvm"
   fi
   if [[ -n "$crypto" ]]; then

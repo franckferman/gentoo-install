@@ -16,6 +16,11 @@
 # Usage:  load helper   (from a .bats file)
 #
 
+# The suite uses `run --separate-stderr`, which bats gained in 1.5.0. Declaring
+# it here turns "flags on run require 1.5.0" from a warning printed after every
+# test into a single, early, readable failure.
+bats_require_minimum_version 1.5.0
+
 # Absolute, because a bats test's working directory is not promised.
 GI_ROOT="$(cd -- "${BATS_TEST_DIRNAME}/.." && pwd)"
 GI_ENTRY="${GI_ROOT}/gentoo-install.sh"

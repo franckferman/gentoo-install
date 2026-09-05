@@ -316,6 +316,62 @@ disk_mountpoints() {
     | sed '/^[[:space:]]*$/d' || true
 }
 
+disk_root_ancestors() {
+  # Every block device under / on the machine running this installer, one name
+  # per line, walking LVM and LUKS down to the whole disk. Empty when / is not
+  # on a block device at all, which is what a live ISO looks like.
+  local src
+  src="$(findmnt -rno SOURCE --mountpoint / 2>/dev/null || true)"
+  [[ -n "$src" && -b "$src" ]] || return 0
+  lsblk -nso NAME -- "$src" 2>/dev/null | tr -d ' ' || true
+}
+
+disk_on_live_medium() {
+  # True when this installer runs from a live image rather than from an
+  # installed system. A live ISO mounts / as an overlay over squashfs; an
+  # installed system mounts it from a partition, an LVM volume or a LUKS map.
+  local fstype
+  fstype="$(findmnt -rno FSTYPE --mountpoint / 2>/dev/null || true)"
+  case "$fstype" in
+    overlay | squashfs | iso9660 | tmpfs | rootfs | "") return 0 ;;
+  esac
+  return 1
+}
+
+disk_target_carries_this_system() {
+  # True when the disk being installed to is the disk this machine booted from.
+  # Args: $1 = the target disk (/dev/nvme0n1, /dev/loop0, ...).
+  local target="${1:-}" base name
+  [[ -n "$target" ]] || return 1
+  base="${target##*/}"
+  while read -r name; do
+    [[ -n "$name" ]] || continue
+    if [[ "$name" == "$base" ]]; then
+      return 0
+    fi
+  done < <(disk_root_ancestors)
+  return 1
+}
+
+disk_may_write_firmware_state() {
+  # The one question steps 80 and 95 must ask before touching anything outside
+  # the target tree: an NVRAM boot entry, and the reboot itself.
+  #
+  # Both are safe in exactly two situations — the installer runs from a live
+  # medium, or it is reinstalling the very machine it runs on. Anything else
+  # means writing firmware state about a disk that will not be there afterwards.
+  # That is not hypothetical. An install to a loop image, run on a working
+  # machine, replaced that machine's own 'gentoo' NVRAM entry with one pointing
+  # at the loop device's ESP; the installer then rebooted, and the firmware
+  # found nothing to boot. The disk was never touched and no data was lost, but
+  # the machine needed a live USB and a chroot to come back.
+  # Args: $1 = the target disk. Returns 0 when it is safe to proceed.
+  if disk_on_live_medium; then
+    return 0
+  fi
+  disk_target_carries_this_system "${1:-}"
+}
+
 _disk_holding_disks() {
   # Every whole disk underneath a device, one name per line. `lsblk -s` walks
   # the tree upwards, so an LVM volume on a LUKS container on a partition

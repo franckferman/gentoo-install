@@ -220,7 +220,13 @@ _sys_fstab_render() {
       '<device>' '<mountpoint>' '<type>' '<options>' 'dump' 'pass'
   }
 
-  while IFS=$'\t' read -r target source fstype live; do
+  # findmnt --raw separates columns with a single space, not a tab, and escapes
+  # any space inside a path as \x20 — which is precisely what makes splitting
+  # on space safe here. Reading with IFS=$'\t' put the whole line into $target:
+  # the /boot line then failed with an empty source, and the root line was
+  # dropped in silence by the leading-slash test below, so a generated fstab
+  # had no root filesystem in it at all.
+  while IFS=' ' read -r target source fstype live; do
     [[ -n "$target" ]] || continue
     # findmnt escapes spaces and tabs in paths as \x20 / \011; undo that here
     # so the comparison below sees the real path.
@@ -233,6 +239,14 @@ _sys_fstab_render() {
       target="${target#"$root"}"
     fi
     [[ "${target:0:1}" == "/" ]] || continue
+
+    # Only a filesystem the installed machine will mount from a block device
+    # belongs in its fstab. Step 50 binds /proc, /sys, /dev and /run into the
+    # target so the chroot works, and findmnt --real still reports devtmpfs
+    # among them; none of that is the new system's business. The test is on the
+    # source being a block device rather than on a list of type names, so a
+    # block device that genuinely has no UUID still raises the error below.
+    [[ -b "$source" ]] || continue
 
     if ! uuid="$(_sys_uuid_of "$source")"; then
       err "no UUID for ${source} (mounted at ${target})"
@@ -438,7 +452,7 @@ _sys_timezone() {
 #  Locales                                                                    #
 # --------------------------------------------------------------------------- #
 _sys_locale_lines() {
-  # One "<locale> <charmap>" per line. CFG[locales] is a comma-separated list
+  # One "<locale> <charmap>" per line. CFG[locale] is a comma-separated list
   # of full entries; CFG[locale] names the one that becomes LANG.
   local primary="$1" extra entry
   extra="$(_sys_cfg "" locales)"

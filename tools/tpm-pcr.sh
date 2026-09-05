@@ -875,7 +875,9 @@ do_snapshot() {
   ); then
     die "Could not write $file"
   fi
-  chmod 600 "$file" 2>/dev/null || true
+  if [[ -f "$file" && ! -L "$file" ]]; then
+    chmod 600 "$file" 2>/dev/null || true
+  fi
 
   if verbose_enough; then
     echo ""

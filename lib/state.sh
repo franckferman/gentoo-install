@@ -65,14 +65,26 @@ state_init() {
     log "dry-run: would use the state journal ${STATE_FILE}"
     return 0
   fi
+  local dir_existed="yes"
+  [[ -e "$STATE_DIR" ]] || dir_existed="no"
   if ! mkdir -p -- "$STATE_DIR"; then
     die "cannot create the state directory ${STATE_DIR}"
   fi
-  chmod 0700 -- "$STATE_DIR" 2>/dev/null || true
+  # Tighten only a directory this run created. --state-dir names a path the
+  # caller chose, and this runs as root: chmod 0700 on a directory that was
+  # already there and shared (/tmp, /var/lib, /) would strip its sticky bit
+  # and lock every other user out of it.
+  if [[ "$dir_existed" == "no" ]]; then
+    chmod 0700 -- "$STATE_DIR" 2>/dev/null || true
+  fi
   if [[ ! -e "$STATE_FILE" ]]; then
     : >"$STATE_FILE"
   fi
-  chmod 0600 -- "$STATE_FILE" 2>/dev/null || true
+  # Same reasoning one level down: only a regular file gets its mode changed,
+  # never a device node or a symlink someone pointed here.
+  if _core_plain_file "$STATE_FILE"; then
+    chmod 0600 -- "$STATE_FILE" 2>/dev/null || true
+  fi
 }
 
 state_reset() {

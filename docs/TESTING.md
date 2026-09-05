@@ -1,8 +1,33 @@
 # Testing this installer on a virtual machine
 
-Everything in this repository has been exercised on loop images, throwaway LUKS
-containers and fake target trees. **None of it has ever installed a machine that
-then booted.** This page is how that changes.
+**Run 1 has been made and passed** (2026-09-05): an image taken from an empty
+GPT to a login prompt, then booted under QEMU with OVMF. What it proved, and
+what it did not, is in the README's Status section. Runs 2 to 5 — the encrypted
+ones, the other bootloaders, a stage of your own — have not.
+
+---
+
+## Before you start: do not run this against a machine you are using
+
+Two things this installer does are not confined to the target tree. They reach
+the firmware of the machine the installer is running on, and they outlive the
+run:
+
+- **the NVRAM boot entry**, written by `efibootmgr` in step 80;
+- **the reboot** offered by step 95.
+
+Both are correct from a live medium. Both are dangerous from a working system.
+Run on a booted Gentoo laptop against a loop image, they replaced that laptop's
+own `gentoo` entry with a pointer to the loop device's ESP, and then rebooted
+it. The disk was untouched and no data was lost, and it still cost a live USB, a
+`grub-install` and an `efibootmgr` to get the machine back.
+
+Since then the installer refuses both unless it is running from a live medium or
+reinstalling the very disk it booted from, and `--yes` no longer answers the
+reboot question — only `--reboot yes` does. Those guards are in
+`lib/disk.sh:disk_may_write_firmware_state` and they are covered by
+`tests/firmware_guard.bats`. **They are a safety net, not a licence:** test in a
+VM, which is what this page is for.
 
 It is written to be run, not read. Every command here was checked on the machine
 this project was written on; where something is specific to that machine, it
@@ -108,7 +133,7 @@ distribution kernel: the fewest moving parts.
 ```bash
 ./gentoo-install.sh --list-disks          # expect: vda, 30 GiB, virtio
 ./gentoo-install.sh --dry-run \
-  --device /dev/vda --disk-layout minimal --crypt none \
+  --disk /dev/vda --disk-layout minimal --crypt none \
   --bootloader grub --kernel dist-kernel \
   --hostname gitest --user tester
 ```
@@ -141,7 +166,7 @@ The one most people will use.
 
 ```bash
 ./gentoo-install.sh \
-  --device /dev/vda --disk-layout server --crypt luks-passphrase \
+  --disk /dev/vda --disk-layout server --crypt luks-passphrase \
   --bootloader grub --kernel dist-kernel \
   --hostname gicrypt --user tester
 ```
@@ -193,7 +218,7 @@ and the one whose failure mode this whole project was shaped by.
 
 ```bash
 ./gentoo-install.sh \
-  --device /dev/vda --crypt luks-tpm --bootloader grub \
+  --disk /dev/vda --crypt luks-tpm --bootloader grub \
   --hostname gitpm --user tester
 ```
 
@@ -221,7 +246,7 @@ and should refuse to claim success unless the TPM actually releases the key.
 ```bash
 # on the host, or in the VM
 wget <a stage3 url>
-./gentoo-install.sh --device /dev/vda --stage-file ./stage3-*.tar.xz \
+./gentoo-install.sh --disk /dev/vda --stage-file ./stage3-*.tar.xz \
   --stage-checksum "$(sha256sum stage3-*.tar.xz | cut -d' ' -f1)"
 ```
 

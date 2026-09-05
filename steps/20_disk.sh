@@ -54,6 +54,15 @@ _step20_already_provisioned() {
 # --------------------------------------------------------------------------- #
 #  Hand-over to the later steps                                               #
 # --------------------------------------------------------------------------- #
+_step20_uuid() {
+  # Args: $1 = device. Prints its UUID on stdout, or nothing at all. Never
+  # fails: an unreadable UUID costs the run a fallback, not the install.
+  local dev="${1:-}"
+  [[ -n "$dev" && -b "$dev" ]] || return 0
+  command -v blkid >/dev/null 2>&1 || return 0
+  blkid -s UUID -o value -- "$dev" 2>/dev/null || true
+}
+
 _step20_record() {
   # What steps 30, 50, 80 and 90 need, and nothing they do not. The journal
   # records what was done, never with what: no passphrase, no key.
@@ -63,15 +72,32 @@ _step20_record() {
   root="$(disk_plan_meta "$plan" mountpoint)"
   esp="$(disk_plan_device_for "$plan" "${CFG[disk_esp_mount]}")"
 
+  local root_dev uuid
+  root_dev="$(disk_plan_device_for "$plan" /)"
+
+  # The names are the contract with the later steps, and they were wrong.
+  # This wrote disk.root, disk.vg, disk.esp and disk.filesystem — names no
+  # consumer reads — while step 70 asked for disk.root_uuid and disk.root_device
+  # and step 80 for disk.esp_device. Every one of them fell through to its empty
+  # default, and step 70 refused with "nothing says where the root filesystem is"
+  # on an install whose disk had just been partitioned correctly.
   state_set disk.device "$(disk_plan_meta "$plan" device)"
   state_set disk.layout "$(disk_plan_meta "$plan" layout)"
   state_set disk.lvm "$(disk_plan_meta "$plan" lvm)"
-  state_set disk.vg "$(disk_plan_meta "$plan" vg)"
+  state_set disk.vg_name "$(disk_plan_meta "$plan" vg)"
   state_set disk.mountpoint "$root"
-  state_set disk.filesystem "${CFG[disk_filesystem]}"
-  state_set disk.esp "${esp}"
+  state_set disk.root_fstype "${CFG[disk_filesystem]}"
+  state_set disk.esp_device "${esp}"
   state_set disk.esp_mount "${CFG[disk_esp_mount]}"
-  state_set disk.root "$(disk_plan_device_for "$plan" /)"
+  state_set disk.root_device "$root_dev"
+
+  # A UUID survives the disk moving from sda to nvme0n1, and that reorder is
+  # exactly what the reboot after an install can bring. Step 70 prefers it and
+  # falls back to the device name, so a missing UUID degrades rather than fails.
+  uuid="$(_step20_uuid "$root_dev")"
+  [[ -z "$uuid" ]] || state_set disk.root_uuid "$uuid"
+  uuid="$(_step20_uuid "$esp")"
+  [[ -z "$uuid" ]] || state_set disk.esp_uuid "$uuid"
 
   # The plan and the fstab records go to a file rather than into the journal:
   # they are tables, and a key=value journal is not where a table belongs.

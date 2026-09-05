@@ -56,12 +56,12 @@ load helper
 }
 
 @test "the fallback is reached last, when neither the journal nor a default has anything" {
-  # luks_name is declared with an empty default on purpose, exactly so that
+  # crypt_keyfile is declared with an empty default on purpose, exactly so that
   # target_fact falls through to the journal and then to the caller's fallback.
   gi_bash '
     config_init_defaults
     state_attach "$1"; state_init "$1"
-    target_fact luks_name luks.name cryptroot
+    target_fact crypt_keyfile crypt.keyfile cryptroot
   ' "$(gi_tmp)/journal"
 
   [ "$status" -eq 0 ]

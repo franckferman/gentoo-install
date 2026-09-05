@@ -460,7 +460,7 @@ Target system:
       --list-flavours       Print the stage3 flavours for --arch and exit.
       --list-disks          Print the disks on this machine and exit. Reads
                             nothing else and writes nothing; this is the
-                            question to ask before choosing --device.
+                            question to ask before choosing --disk.
 
 Precedence, always in this order:
   built-in default  <  profile  <  configuration file  <  explicit flag

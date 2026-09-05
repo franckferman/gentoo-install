@@ -43,7 +43,7 @@ boot_efistub_removable() {
 boot_efistub_needs_initramfs() {
   # An encrypted container or a root on LVM cannot be opened by the kernel
   # alone. Anything else can, provided the drivers are built in.
-  [[ "$(target_crypt)" != "none" || "$(target_layout)" == "lvm" ]]
+  [[ "$(target_crypt)" != "none" || "$(target_topology)" == "lvm" ]]
 }
 
 boot_efistub_cmdline_source() {
@@ -207,7 +207,7 @@ boot_efistub_check_plan() {
   if boot_efistub_needs_initramfs; then
     err "boot_removable = yes cannot hand the kernel an initramfs either"
     err "       initrd= is a load option too, and the fallback path is launched without any"
-    err "       crypt = $(target_crypt) and layout = $(target_layout) cannot reach the root without one"
+    err "       crypt = $(target_crypt) and topology = $(target_topology) cannot reach the root without one"
     err "       boot_removable = no  the NVRAM entry carries initrd= and the command line"
     err "       bootloader = grub    if this machine forgets NVRAM entries, which is what removable is for"
     err "       example:  --bootloader grub"
@@ -260,7 +260,7 @@ boot_efistub_write_images() {
   if [[ -z "$initrd" ]]; then
     if boot_efistub_needs_initramfs; then
       err "No initramfs for kernel ${version} under ${root%/}/boot"
-      err "       crypt = $(target_crypt) and layout = $(target_layout) cannot reach the root without one"
+      err "       crypt = $(target_crypt) and topology = $(target_topology) cannot reach the root without one"
       err "       dracut --force --kver ${version} inside the chroot builds it"
       err "       example:  ./gentoo-install.sh --steps 70,80"
       return 1

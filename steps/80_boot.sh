@@ -46,7 +46,7 @@ boot_firmware() {
   # which is right until someone starts the installer in legacy mode on a
   # machine that will run UEFI. That is what the setting is for.
   local mode
-  mode="$(target_fact firmware disk.firmware "auto")"
+  mode="$(target_fact firmware preflight.firmware "auto")"
   if [[ "$mode" == "auto" ]]; then
     if [[ -d /sys/firmware/efi ]]; then
       mode="uefi"
@@ -98,7 +98,6 @@ boot_secureboot_keyfile() {
   # and a setting that half works is worse than one that does not.
   local value
   value="$(cfg secureboot_keyfile)"
-  [[ -n "$value" ]] || value="$(cfg secureboot_key)"
   printf '%s\n' "$value"
 }
 
@@ -222,6 +221,33 @@ boot_install_efi() {
 # --------------------------------------------------------------------------- #
 #  NVRAM boot entries                                                         #
 # --------------------------------------------------------------------------- #
+boot_install_removable_fallback() {
+  # \EFI\BOOT\BOOTX64.EFI — the one path a UEFI firmware tries with no NVRAM
+  # entry to guide it. Copying the loader there costs a megabyte and is the
+  # difference between a disk that boots anywhere and a disk that boots only on
+  # the machine whose firmware still remembers it.
+  # Args: $1 = ESP mountpoint, $2 = loader path relative to the ESP.
+  local esp="$1" loader="$2" src dst
+  src="${esp}${loader}"
+  dst="${esp}/EFI/BOOT/BOOTX64.EFI"
+
+  if [[ "$DRY_RUN" != "yes" && ! -f "$src" ]]; then
+    err "no loader at ${src} to copy to the removable path"
+    return 1
+  fi
+  if [[ "$DRY_RUN" != "yes" && -f "$dst" ]]; then
+    skip "removable path already present: ${dst}"
+    return 0
+  fi
+
+  run_cmd mkdir -p -- "${esp}/EFI/BOOT" || return 1
+  run_cmd cp -- "$src" "$dst" || {
+    err "could not copy ${src} to ${dst}"
+    return 1
+  }
+  ok "removable path: ${dst} — the firmware finds this one with no entry"
+}
+
 boot_esp_disk_and_part() {
   # efibootmgr wants the disk and the partition number, not the partition.
   # Prints "disk<TAB>number", or returns 1 and says what is missing.
@@ -280,6 +306,27 @@ boot_create_entry() {
 
   record="$(boot_esp_disk_and_part "$esp")" || return 1
   IFS=$'\t' read -r disk part <<<"$record"
+
+  # An NVRAM entry is firmware state about a disk, not a file in the target
+  # tree: it outlives this run and it is global to the machine. Writing one for
+  # a disk this machine did not boot from, while running on an installed system,
+  # replaces that machine's own entry of the same label with a pointer to a disk
+  # that may not exist at the next power-on. That happened here — an install to
+  # a loop image took the host's 'gentoo' entry with it — and the machine had to
+  # be recovered from a live USB.
+  if ! disk_may_write_firmware_state "$disk"; then
+    warn "not writing an NVRAM entry: ${disk} is not the disk this machine booted from"
+    warn "       and this is not a live medium, so the entry would name a disk the"
+    warn "       firmware may not find, over the label this machine already uses"
+    log "       write it yourself once the target is the machine being booted:"
+    log "         efibootmgr --create --disk ${disk} --part ${part} --label ${label} --loader ${efi_loader}"
+    # Without an entry the firmware has only one way left to find a loader: the
+    # removable-media path. Leaving the target with neither is how an install
+    # that reported success produced a disk that drops straight to PXE — which
+    # is what a fresh OVMF did with the first image this project ever built.
+    boot_install_removable_fallback "$esp" "$efi_loader" || return 1
+    return 0
+  fi
 
   argv=(efibootmgr --create --disk "$disk" --part "$part" --label "$label" --loader "$efi_loader")
   if [[ -n "$options" ]]; then

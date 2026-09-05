@@ -960,6 +960,32 @@ stage_local_verify() {
   return 0
 }
 
+_stage_assert_target_mounted() {
+  # The runner accumulates failures rather than stopping (DESIGN.md §4), which
+  # is deliberate: one broken step must not hide the state of the rest. But it
+  # leaves a hole this guard closes. When step 20 fails, the target filesystem
+  # is never mounted, and step 40 then unpacks the stage into what is still an
+  # ordinary directory on the machine running the installer. That happened:
+  # 1.3 GB of stage3 landed on the installer's own disk, invisible afterwards
+  # because the next successful run mounted the real filesystem on top of it.
+  #
+  # The check only bites when step 20 recorded a mountpoint and it is the very
+  # path about to be written. Installing into a plain directory with --root,
+  # with no disk plan at all, stays a supported thing to do.
+  # Args: $1 = the root about to be unpacked into. Returns 1 to refuse.
+  local root="$1" planned=""
+  planned="$(state_get disk.mountpoint 2>/dev/null || true)"
+  [[ -n "$planned" && "$planned" == "$root" ]] || return 0
+  if findmnt -rno TARGET --mountpoint "$root" >/dev/null 2>&1; then
+    return 0
+  fi
+  err "nothing is mounted on ${root}, but the disk plan says step 20 mounted the target there"
+  err "       step 20 failed or has not run, so this would unpack the stage onto"
+  err "       the disk of the machine running the installer, not onto the target"
+  err "       run:  ./gentoo-install.sh --steps 20 --resume"
+  return 1
+}
+
 stage_unpack() {
   # The last step, with the options the Gentoo handbook requires:
   #   --xattrs-include='*.*'  capabilities and SELinux labels survive; without
@@ -976,6 +1002,8 @@ stage_unpack() {
     err "       example:  --steps 20,40"
     return 1
   fi
+
+  _stage_assert_target_mounted "$root" || return 1
 
   if [[ -e "${root}/etc/gentoo-release" ]]; then
     skip "${root} already holds an unpacked stage (etc/gentoo-release exists)"

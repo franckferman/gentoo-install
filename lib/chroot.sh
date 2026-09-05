@@ -74,9 +74,22 @@ chroot_target() {
     printf '%s\n' "${GI_TARGET%/}"
     return 0
   fi
-  if declare -p CFG >/dev/null 2>&1 && [[ -n "${CFG[target]:-}" ]]; then
-    printf '%s\n' "${CFG[target]%/}"
-    return 0
+  # chroot_dir first, because it exists precisely to point the chroot somewhere
+  # other than where the stage was unpacked; then root, which is what --root
+  # sets and what steps 40 and 60 already use.
+  #
+  # This read CFG[target] until it was found by running an install: no such
+  # setting is declared, so the lookup was always empty and every run chrooted
+  # into /mnt/gentoo whatever --root said. Step 50 then failed with "Target root
+  # does not exist" while step 60 was working on the real target three lines
+  # further down.
+  if declare -p CFG >/dev/null 2>&1; then
+    local dir="${CFG[chroot_dir]:-}"
+    [[ -n "$dir" ]] || dir="${CFG[root]:-}"
+    if [[ -n "$dir" ]]; then
+      printf '%s\n' "${dir%/}"
+      return 0
+    fi
   fi
   printf '%s\n' "/mnt/gentoo"
 }
@@ -87,11 +100,19 @@ chroot_esp_mountpoint() {
     printf '%s\n' "$GI_ESP_MOUNTPOINT"
     return 0
   fi
-  if declare -p CFG >/dev/null 2>&1 && [[ -n "${CFG[esp_mountpoint]:-}" ]]; then
-    printf '%s\n' "${CFG[esp_mountpoint]}"
-    return 0
+  # The same source of truth steps 70 and 95 use: the operator's esp_mount when
+  # they set one, otherwise where step 20 actually mounted the ESP, otherwise the
+  # disk layer's own default. Reading CFG[esp_mount] alone fell through to
+  # /boot/efi and mounted the ESP a second time there when step 20 had put it on
+  # /boot — which surfaced as two fstab lines carrying the same UUID.
+  local value=""
+  if declare -F target_fact >/dev/null 2>&1; then
+    value="$(target_fact esp_mount disk.esp_mount "")"
   fi
-  printf '%s\n' "$CHROOT_ESP_MOUNTPOINT_DEFAULT"
+  if [[ -z "$value" ]] && declare -p CFG >/dev/null 2>&1; then
+    value="${CFG[disk_esp_mount]:-}"
+  fi
+  printf '%s\n' "${value:-$CHROOT_ESP_MOUNTPOINT_DEFAULT}"
 }
 
 chroot_attach() {
@@ -264,8 +285,8 @@ _chroot_esp_from_config() {
       printf '%s\n' "${CFG[esp_device]}"
       return 0
     fi
-    if [[ -n "${CFG[efi_device]:-}" ]]; then
-      printf '%s\n' "${CFG[efi_device]}"
+    if [[ -n "${CFG[esp_device]:-}" ]]; then
+      printf '%s\n' "${CFG[esp_device]}"
       return 0
     fi
   fi

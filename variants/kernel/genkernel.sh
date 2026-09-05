@@ -28,7 +28,7 @@ kernel_genkernel_args() {
   # Takes no argument: it reads the same facts every other composer reads.
   local crypt layout config jobs
   crypt="$(target_crypt)"
-  layout="$(target_layout)"
+  layout="$(target_topology)"
 
   printf '%s\n' "--bootdir=/boot"
   printf '%s\n' "--no-mountboot"

@@ -60,7 +60,7 @@ fi
 target_root() {
   # The mounted target, /mnt/gentoo during an install and / inside a chroot.
   local root
-  root="$(target_fact root chroot.root "${GI_ROOT:-/mnt/gentoo}")"
+  root="$(target_fact root chroot.target "${GI_ROOT:-/mnt/gentoo}")"
   # Strip a trailing slash so that "${root}/boot" never becomes "//boot":
   # cosmetic in a path, load-bearing in a log line an operator has to compare.
   printf '%s\n' "${root%/}"
@@ -68,6 +68,23 @@ target_root() {
 
 target_crypt() { target_fact crypt crypt.variant "none"; }
 target_layout() { target_fact disk_layout disk.layout "minimal"; }
+
+target_topology() {
+  # plain | lvm — the storage shape the kernel command line, the initramfs and
+  # the bootloaders have to speak to.
+  #
+  # Not the same question as disk_layout, and confusing the two cost a whole
+  # install: disk_layout names a partitioning profile (minimal, desktop,
+  # server, custom), while every consumer here compares against "lvm" or
+  # "plain". A profile name matched neither, so kernel_cmdline() fell to its
+  # `*)` arm and refused with "Unknown disk layout: minimal" for every layout
+  # this installer offers. Step 20 records the real answer as disk.lvm.
+  if [[ "$(target_fact disk_lvm disk.lvm "no")" == "yes" ]]; then
+    printf 'lvm\n'
+  else
+    printf 'plain\n'
+  fi
+}
 
 kernel_initramfs_generator() {
   # Which initramfs the command line has to speak to. dracut and genkernel do
@@ -114,7 +131,7 @@ kernel_cmdline() {
   local -a parts=()
 
   crypt="$(target_crypt)"
-  layout="$(target_layout)"
+  layout="$(target_topology)"
   generator="$(kernel_initramfs_generator)"
 
   case "$layout" in
@@ -158,7 +175,12 @@ kernel_cmdline() {
         parts+=("root=/dev/mapper/root")
       else
         local name
-        name="$(target_fact luks_name crypt.luks_name "cryptroot")"
+        # crypt_name is the setting the three crypt variants actually open the
+        # container under, and step 30 journals it as crypt.name. This asked for
+        # luks_name / crypt.luks_name, which nothing writes and nothing else
+        # sets: an encrypted install with the defaults created /dev/mapper/gentoo
+        # and told the kernel root=/dev/mapper/cryptroot, so it could not boot.
+        name="$(target_fact crypt_name crypt.name "gentoo")"
         parts+=("root=/dev/mapper/${name}")
       fi
       ;;
@@ -195,7 +217,7 @@ kernel_cmdline() {
     none) ;;
     passphrase | tpm | keyfile)
       local luks_uuid
-      luks_uuid="$(target_fact luks_uuid crypt.luks_uuid "")"
+      luks_uuid="$(target_fact luks_uuid crypt.uuid "")"
       if [[ -z "$luks_uuid" ]]; then
         err "Cannot compose a kernel command line: crypt is '${crypt}' but no LUKS UUID is known"
         err "       step 30 records crypt.luks_uuid in the state journal"
@@ -274,7 +296,7 @@ kernel_dracut_modules() {
   local -a mods=()
 
   crypt="$(target_crypt)"
-  layout="$(target_layout)"
+  layout="$(target_topology)"
 
   if [[ "$crypt" != "none" ]]; then
     # lvm goes in even for a plain LUKS root: it costs a few kilobytes and it
@@ -572,11 +594,11 @@ kernel_verify() {
 
   crypt="$(target_crypt)"
   if [[ -z "$initrd" ]]; then
-    if [[ "$crypt" == "none" && "$(target_layout)" == "plain" ]]; then
+    if [[ "$crypt" == "none" && "$(target_topology)" == "plain" ]]; then
       warn "no initramfs for ${version}; an unencrypted root on a plain partition can boot without one"
     else
       err "No initramfs for kernel ${version} under ${root}/boot"
-      err "       crypt=${crypt} layout=$(target_layout) cannot boot without one"
+      err "       crypt=${crypt} topology=$(target_topology) cannot boot without one"
       err "       dracut --force --kver ${version} builds it from the configuration just written"
       return 1
     fi
@@ -722,7 +744,7 @@ show_kernel_plan() {
   local root="$1" variant="$2"
   log "kernel variant   ${variant}"
   log "target root      ${root}"
-  log "crypt / layout   $(target_crypt) / $(target_layout)"
+  log "crypt / layout   $(target_crypt) / $(target_layout) ($(target_topology))"
   log "dracut modules   $(kernel_dracut_modules)"
   log "dracut omits     $(kernel_dracut_omit)"
   show_kernel_cmdline

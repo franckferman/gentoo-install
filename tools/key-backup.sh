@@ -554,7 +554,11 @@ do_backup() {
   umask 077
   cp -p "$key" "$out"
   umask "$previous_umask"
-  chmod 600 "$out"
+  # Only a regular file: see the note in luks-header.sh. A device node named
+  # as --out must not have its mode changed by a root-run tool.
+  if [[ -f "$out" && ! -L "$out" ]]; then
+    chmod 600 "$out"
+  fi
 
   ok "Copied to $out (mode 600)"
 

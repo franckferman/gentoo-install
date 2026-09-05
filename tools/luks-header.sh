@@ -835,7 +835,11 @@ write_header_backup() {
     warn "  Raw copy of the first $bytes bytes of $dev"
   fi
 
-  chmod 600 "$out" 2>/dev/null || true
+  # Only a regular file. Running as root, chmod on a device node the caller
+  # named (--out /dev/null) would change a node the whole system shares.
+  if [[ -f "$out" && ! -L "$out" ]]; then
+    chmod 600 "$out" 2>/dev/null || true
+  fi
   [[ -s "$out" ]] || {
     err "The written file is empty: $out"; return 1
   }
@@ -871,7 +875,9 @@ write_meta_file() {
     warn "Could not write $meta"; return 1
   }
 
-  chmod 644 "$meta" 2>/dev/null || true
+  if [[ -f "$meta" && ! -L "$meta" ]]; then
+    chmod 644 "$meta" 2>/dev/null || true
+  fi
   return 0
 }
 

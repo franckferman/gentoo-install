@@ -287,7 +287,6 @@ config_init_defaults() {
   # and it settles the four keys whose call sites disagreed with each other.
   # ------------------------------------------------------------------------- #
   # Disk and layout
-  set_default device ""
   set_default root_fstype ""
   set_default vg_name ""
   set_default root_lv ""
@@ -304,7 +303,6 @@ config_init_defaults() {
   # Encryption
   set_default crypt_keyfile ""
   set_default crypt_keyfile_uuid ""
-  set_default luks_name ""
   set_default luks_uuid ""
   # Kernel and initramfs
   set_default kernel "dist-kernel" # dist-kernel|genkernel|manual
@@ -326,6 +324,7 @@ config_init_defaults() {
   set_default boot_removable ""
   set_default efistub_cmdline ""
   set_default secureboot_cert ""
+  set_default secureboot_keyfile ""
   # System
   set_default hostname ""
   set_default timezone ""

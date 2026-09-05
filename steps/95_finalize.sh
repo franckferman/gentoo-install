@@ -210,7 +210,7 @@ _fin_root() {
     root="$(_fin_fact chroot_dir disk.mountpoint "")"
   fi
   if [[ -z "$root" ]]; then
-    root="$(_fin_fact target_root chroot.root "${GI_ROOT:-/mnt/gentoo}")"
+    root="$(_fin_fact target_root chroot.target "${GI_ROOT:-/mnt/gentoo}")"
   fi
   printf '%s\n' "${root%/}"
 }
@@ -252,7 +252,7 @@ _fin_uses_lvm() {
   if [[ "$value" == "yes" ]]; then
     return 0
   fi
-  [[ "$(_fin_fact layout disk.layout "")" == "lvm" ]]
+  [[ "$(_fin_fact disk_layout disk.layout "")" == "lvm" ]]
 }
 
 _fin_esp_dir() {
@@ -739,8 +739,8 @@ _fin_check_bootentry() {
         if [[ ! -f "$primary" ]]; then
           _fin_verdict FAIL bootentry "Boot entry" "no BIOS core.img under ${root}/boot/grub"
           _fin_note "A legacy BIOS install needs GRUB's i386-pc image, and the"
-          _fin_note "boot sector that chain-loads it, on $(_fin_fact device disk.device '<the disk>')."
-          _fin_fix "chroot ${root} grub-install --target=i386-pc $(_fin_fact device disk.device '/dev/sdX')"
+          _fin_note "boot sector that chain-loads it, on $(_fin_fact disk disk.device '<the disk>')."
+          _fin_fix "chroot ${root} grub-install --target=i386-pc $(_fin_fact disk disk.device '/dev/sdX')"
           return 0
         fi
       fi
@@ -791,6 +791,17 @@ _fin_check_bootentry() {
     nvram="yes"
   fi
 
+  # An NVRAM entry lives in the firmware of the machine running this check, not
+  # on the disk being checked. When the target is some other disk, that entry
+  # says nothing about whether the target can boot — and counting it as proof is
+  # exactly how a run reported a healthy "Boot entry" for an image whose ESP
+  # held no loader any firmware would look for. The image then dropped straight
+  # to PXE on its first power-on.
+  if [[ "$nvram" == "yes" ]] \
+    && ! disk_may_write_firmware_state "$(_fin_fact disk disk.device "")"; then
+    nvram="no"
+  fi
+
   # An efistub install has no configuration file: the NVRAM entry carries the
   # command line, and without it the firmware has nothing to start.
   if [[ "$variant" == "efistub" && "$firmware" == "uefi" && "$nvram" == "no" ]]; then
@@ -800,7 +811,7 @@ _fin_check_bootentry() {
       _fin_note "The kernel is on the ESP and nothing points the firmware at it."
       _fin_note "There is no removable fallback either, so this machine will boot"
       _fin_note "into the firmware menu and stay there."
-      _fin_fix "efibootmgr --create --disk $(_fin_fact device disk.device '/dev/sdX') --part 1 --label '${label}' --loader $(_fin_efi_spelling "${primary#"$esp"}")"
+      _fin_fix "efibootmgr --create --disk $(_fin_fact disk disk.device '/dev/sdX') --part 1 --label '${label}' --loader $(_fin_efi_spelling "${primary#"$esp"}")"
       return 0
     fi
   fi
@@ -813,6 +824,16 @@ _fin_check_bootentry() {
     _fin_note "may no longer be there."
     _fin_fix "grep -n vmlinuz ${configs[0]}"
     _fin_fix "./gentoo-install.sh --steps 80"
+    return 0
+  fi
+
+  if [[ "$firmware" == "uefi" && "$nvram" == "no" ]] \
+    && [[ -z "$(_fin_find_efi "$esp" 'bootx64.efi' || true)" ]]; then
+    _fin_verdict FAIL bootentry "Boot entry" "${variant} installed, no NVRAM entry and no removable fallback"
+    _fin_note "Nothing on this disk tells a firmware where to start, and there is"
+    _fin_note "no EFI/BOOT/BOOTX64.EFI for it to fall back to. The machine will"
+    _fin_note "reach its own boot menu and stop there."
+    _fin_fix "./gentoo-install.sh --steps 80 --boot-removable yes"
     return 0
   fi
 
@@ -915,8 +936,14 @@ _fin_check_fstab() {
   # is the expensive one — the machine boots, and the next kernel update writes
   # into an empty directory on the root filesystem instead.
   if have findmnt; then
-    while IFS= read -r live; do
+    # SOURCE comes along so that pseudo-filesystems can be told apart from
+    # the machine's own. Step 50 binds /proc, /sys, /dev and /run into the
+    # target to make the chroot work; none of them are mounted from fstab at
+    # boot, and counting them as missing turned a correct fstab into a
+    # blocking failure naming fifteen filesystems no fstab should ever list.
+    while IFS=' ' read -r live source; do
       [[ -n "$live" ]] || continue
+      [[ -b "$source" ]] || continue
       live="${live//\\x20/ }"
       if [[ "$live" == "$root" ]]; then
         rel="/"
@@ -928,7 +955,7 @@ _fin_check_fstab() {
         < <(_fin_fstab_rows "$fstab"); then
         unlisted+=("$rel")
       fi
-    done < <(findmnt --real -nr -o TARGET -R -- "$root" 2>/dev/null || true)
+    done < <(findmnt --real -nr -o TARGET,SOURCE -R -- "$root" 2>/dev/null || true)
   fi
 
   if ((${#dangling[@]} > 0)); then
@@ -1067,7 +1094,7 @@ _fin_recap_installed() {
   log "what is on ${root}"
   _fin_item "stage" "$(_fin_recorded stage.variant)"
   _fin_item "verified" "$(_fin_recorded stage.verified)"
-  _fin_item "disk" "$(_fin_fact device disk.device "")"
+  _fin_item "disk" "$(_fin_fact disk disk.device "")"
 
   layout="$(_fin_recorded disk.layout)"
   if [[ -n "$layout" ]]; then
@@ -1298,11 +1325,47 @@ _fin_reboot() {
   # Reached only with an empty _FIN_FAILED: the caller returns before this when
   # a check or the unmount failed, because a machine that failed a proof is not
   # a machine to reboot into on the installer's initiative.
-  if ! ask_tri reboot "Reboot into the installed system now?" "no"; then
-    log "not rebooting. When you are ready:"
-    _fin_fix "reboot"
+  local target
+  target="$(_fin_fact disk disk.device "")"
+
+  # First question: would this reboot even enter the target? On a live medium,
+  # yes. Reinstalling the machine we are running on, yes. Anywhere else the
+  # reboot restarts the running system and enters nothing — and that is how a
+  # working machine got rebooted into a firmware entry pointing at a loop
+  # device that no longer existed.
+  if ! disk_may_write_firmware_state "$target"; then
+    skip "not rebooting: ${target:-the target} is not the disk this machine booted from"
+    log "       this installer is running on an installed system, not a live medium,"
+    log "       so a reboot would restart this machine rather than enter the target"
+    _fin_fix "reboot   # only when that is really what you want"
     return 0
   fi
+
+  # Second question: was it actually asked for? A reboot is irreversible in the
+  # same way wiping a disk is, so it follows the rule typed proofs follow
+  # (DESIGN.md §12): --yes and --force do not answer it. Only reboot = yes, set
+  # on purpose, or a person at a terminal.
+  case "${CFG[reboot]:-ask}" in
+    yes) ;;
+    no)
+      skip "not rebooting (reboot=no). When you are ready:"
+      _fin_fix "reboot"
+      return 0
+      ;;
+    *)
+      if [[ "$NON_INTERACTIVE" == "yes" || "$ASSUME_YES" == "yes" || ! -r /dev/tty ]]; then
+        skip "not rebooting: --yes does not answer this one"
+        log "       pass --reboot yes to mean it, or reboot by hand:"
+        _fin_fix "reboot"
+        return 0
+      fi
+      if ! confirm "Reboot into the installed system now?" "no"; then
+        log "not rebooting. When you are ready:"
+        _fin_fix "reboot"
+        return 0
+      fi
+      ;;
+  esac
 
   warn "rebooting in ${_FIN_REBOOT_DELAY}s — Ctrl-C now if that was not the answer"
   run_cmd sleep "$_FIN_REBOOT_DELAY"

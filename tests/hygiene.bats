@@ -98,6 +98,12 @@ GI_INTERNAL_TOKENS='trinity|cagip|ca-gip|matric|gundabad|thrain|keepass|gps_'
 
   # URLs are stripped first: a link to keepachangelog.com/en/1.1.0/ or to a
   # release tag names somebody else's version, or the same one twice.
+  #
+  # So is any version carrying a suffix. A kernel the README quotes from a
+  # real install — 6.18.48-gentoo-dist-bin — is not a claim about this
+  # project's version, and reading it as one pushes the documentation towards
+  # saying less about what was actually run, which is the opposite of the
+  # point. Only a bare N.N.N counts as a claim.
   for file in README.md CHANGELOG.md CONTRIBUTING.md Makefile \
     docs/DESIGN.md docs/index.html .github/workflows/ci.yml \
     .github/workflows/static.yml; do
@@ -105,6 +111,7 @@ GI_INTERNAL_TOKENS='trinity|cagip|ca-gip|matric|gundabad|thrain|keepass|gps_'
     while IFS= read -r found; do
       [[ "$found" == "$version" ]] || wrong+="  ${file}: ${found}"$'\n'
     done < <(sed -E 's#https?://[^[:space:])"]*##g' "${GI_ROOT}/${file}" \
+      | grep -oE '(^|[^0-9.-])[0-9]+\.[0-9]+\.[0-9]+([^0-9a-zA-Z-]|$)' \
       | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)
   done
 
@@ -189,4 +196,91 @@ GI_INTERNAL_TOKENS='trinity|cagip|ca-gip|matric|gundabad|thrain|keepass|gps_'
   gi_bash 'printf "%s %s %s %s\n" "$EXIT_SUCCESS" "$EXIT_FAILURE" "$EXIT_USAGE" "$EXIT_INTERRUPTED"'
   [ "$status" -eq 0 ]
   [ "$output" = "0 1 2 130" ]
+}
+
+@test "every configuration key the code reads is a key the code declares" {
+  # Three drifts of this shape shipped before this test existed: --device was
+  # declared and read by nobody while lib/disk.sh read `disk`; 95_finalize read
+  # `layout` where the setting is `disk_layout`; and 80_boot read
+  # `secureboot_keyfile`, which nothing declared — so Secure Boot signing could
+  # never be switched on, and the flag was rejected as an unknown setting.
+  #
+  # Direct CFG[key] reads count too: chroot_target() read CFG[target], which no
+  # setting declares, so every run chrooted into /mnt/gentoo whatever --root
+  # said. Comment lines are stripped, so prose naming a key is not a reference.
+  local declared refd missing
+  declared="${BATS_TEST_TMPDIR}/declared"
+  refd="${BATS_TEST_TMPDIR}/referenced"
+
+  "$GI_ENTRY" --dump-config 2>&1 \
+    | sed 's/\x1b\[[0-9;]*m//g' \
+    | awk '/^[a-z_]+ +=/ {print $1}' | sort -u >"$declared"
+  [ -s "$declared" ]
+
+  # Comment-only lines are dropped first: this file's own prose names the keys
+  # that used to be read under the wrong spelling, and that must not register
+  # as a reference.
+  grep -rhvE '^[[:space:]]*#' \
+    "${GI_ROOT}/lib" "${GI_ROOT}/steps" "${GI_ROOT}/variants" "${GI_ENTRY}" \
+    | grep -oE '\$\((cfg|target_fact|_fin_fact) [a-z_]+|CFG\[[a-z_]+\]' \
+    | sed -E 's/.*\((cfg|target_fact|_fin_fact) //; s/CFG\[//; s/\]//' \
+    | sort -u >"$refd"
+  [ -s "$refd" ]
+
+  missing="$(comm -23 "$refd" "$declared")"
+  if [[ -n "$missing" ]]; then
+    printf 'read by the code, declared by nothing:\n%s\n' "$missing" >&2
+    return 1
+  fi
+}
+
+@test "every state-journal key the code reads is a key some step writes" {
+  # The settings check above has a twin one level down, and this is it. Three
+  # drifts lived here: step 20 wrote disk.root/disk.vg/disk.esp while steps 70
+  # and 80 read disk.root_device/disk.vg_name/disk.esp_device; the chroot module
+  # wrote chroot.target while two steps read chroot.root; and step 30 wrote
+  # crypt.name while step 70 read crypt.luks_name. That last one was the worst:
+  # an encrypted install created /dev/mapper/gentoo and told the kernel
+  # root=/dev/mapper/cryptroot, so the machine could not boot.
+  #
+  # The allowed list is for keys no step writes on purpose, where a declared
+  # setting and a fallback carry the value instead. Adding to it is a decision,
+  # not a reflex: the journal exists so that --resume knows what the first run
+  # chose, and a key only ever read is a value --resume forgets.
+  local allowed written read_keys missing
+  written="${BATS_TEST_TMPDIR}/written"
+  read_keys="${BATS_TEST_TMPDIR}/read"
+  allowed="${BATS_TEST_TMPDIR}/allowed"
+
+  cat >"$allowed" <<'EOF'
+boot.efistub_cmdline
+boot.secureboot_cert
+crypt.keyfile
+crypt.keyfile_uuid
+disk.boot_device
+disk.root_lv
+kernel.build
+kernel.initramfs_generator
+EOF
+
+  {
+    grep -rhoE 'state_set +["'"'"']?[a-z_]+\.[a-z_]+' \
+      "${GI_ROOT}/lib" "${GI_ROOT}/steps" "${GI_ROOT}/variants" \
+      | sed -E 's/state_set +["'"'"']?//'
+    grep -rhoE '_sys_record +[a-z_]+' "${GI_ROOT}/steps" | sed -E 's/_sys_record +/system./'
+    grep -rhoE '_portage_record +[a-z_]+' "${GI_ROOT}/steps" | sed -E 's/_portage_record +/portage./'
+    cat "$allowed"
+  } | sort -u >"$written"
+
+  grep -rhvE '^[[:space:]]*#' \
+    "${GI_ROOT}/lib" "${GI_ROOT}/steps" "${GI_ROOT}/variants" \
+    | grep -oE 'state_get +"?[a-z_]+\.[a-z_]+|(target_fact|_fin_fact) +[a-z_"]+ +[a-z_]+\.[a-z_]+' \
+    | grep -oE '[a-z_]+\.[a-z_]+' | sort -u >"$read_keys"
+  [ -s "$read_keys" ]
+
+  missing="$(comm -23 "$read_keys" "$written")"
+  if [[ -n "$missing" ]]; then
+    printf 'state keys read by a step, written by none:\n%s\n' "$missing" >&2
+    return 1
+  fi
 }

@@ -95,6 +95,20 @@ core_init_colours() {
 # core_open_log() succeeds, so the helpers are usable before the log exists.
 LOG_FILE=""
 
+_core_plain_file() {
+  # True only for a regular file that is not a symlink.
+  #
+  # Every chmod in this project on a path the caller chose goes through this.
+  # The installer runs as root, and `chmod 0600 /dev/null` succeeds when it
+  # does: the node then refuses writes from every unprivileged process, and
+  # each shell that redirects to it dies before running its command. That is
+  # not hypothetical — it happened, from `--log-file /dev/null`, and it took
+  # the machine's shells down with it. A device node or a tty carries nothing
+  # of ours to protect, so there is never a reason to touch its mode.
+  # Args: $1 = path. Returns 0 when the path is a plain file.
+  [[ -f "$1" && ! -L "$1" ]]
+}
+
 core_open_log() {
   # Best effort: a run that cannot write its log is still a run worth having.
   # Args: $1 = path. Returns 0 always.
@@ -110,7 +124,16 @@ core_open_log() {
     warn "cannot write ${path}; continuing without a log file"
     return 0
   fi
-  chmod 0600 -- "$path" 2>/dev/null || true
+  # Only tighten a regular file. A caller is entitled to silence the log with
+  # --log-file /dev/null, or point it at a tty; those are nodes the whole
+  # system shares. Running as root, `chmod 0600 /dev/null` succeeds and leaves
+  # the machine with a /dev/null no unprivileged process can write — every
+  # shell that redirects to it then dies before running its command. Losing
+  # 0600 on a device node costs nothing: there is no log content in it to
+  # protect.
+  if _core_plain_file "$path"; then
+    chmod 0600 -- "$path" 2>/dev/null || true
+  fi
   LOG_FILE="$path"
   _journal '[*]' "gentoo-install log opened"
 }

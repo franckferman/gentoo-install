@@ -10,13 +10,73 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **The installer no longer rewrites the firmware state of the machine it runs
+  on.** Step 80 wrote an `efibootmgr` entry, and step 95 offered a reboot, with
+  nothing checking whether the target was the disk this machine booted from. Run
+  against a disk image on a working laptop, the two combined: the entry replaced
+  that laptop's own, pointing at an ESP that vanished with the loop device, and
+  the reboot followed. `lib/disk.sh:disk_may_write_firmware_state` now gates
+  both, and `--yes` no longer answers the reboot question — only `--reboot yes`
+  does, because a reboot is irreversible in the way a typed proof is
+  (`DESIGN.md` §12).
+- **A loader is left where a firmware with no NVRAM entry will look for it.**
+  When the entry cannot be written, the loader is copied to
+  `\EFI\BOOT\BOOTX64.EFI`. Without it the first image this project produced had
+  a working GRUB, a valid `grub.cfg` and a correct `fstab`, and dropped straight
+  to PXE.
+- **`chmod` no longer follows a caller-named path onto a device node.**
+  `--log-file /dev/null`, run as root, reached `chmod 0600 /dev/null` and left
+  the machine without a writable `/dev/null`; every shell that redirects to it
+  then dies before running its command. `_core_plain_file()` guards every such
+  `chmod`, and `state_init()` only tightens a directory it created — `--state-dir
+  /tmp` as root would otherwise have stripped the sticky bit off `/tmp`.
+- **Eight settings and state-journal keys were read under names nothing wrote.**
+  Found by running the installer rather than reading it: `--device` was accepted
+  and ignored (`disk` was the real name); `secureboot_keyfile` was read and never
+  declared, so Secure Boot signing could not be switched on at all; step 20 wrote
+  `disk.root`/`disk.vg`/`disk.esp` while steps 70 and 80 read
+  `disk.root_device`/`disk.vg_name`/`disk.esp_device`; `chroot_target()` read
+  `CFG[target]`, a setting that does not exist, so `--root` never reached step 50;
+  and step 30 journalled `crypt.name` while step 70 read `crypt.luks_name` —
+  which meant an encrypted install created `/dev/mapper/gentoo` and told the
+  kernel `root=/dev/mapper/cryptroot`.
+- **`target_layout()` answered the wrong question.** Ten call sites compared it
+  against `lvm` and `plain`, but it returned the partitioning profile
+  (`minimal`, `server`, …), so `kernel_cmdline()` refused with "Unknown disk
+  layout" for every layout the installer offers. `target_topology()` now derives
+  the storage shape from `disk.lvm`.
+- **fstab was generated from a mis-split `findmnt`.** `--raw` separates columns
+  with a space, not a tab; read with `IFS=$'\t'` the whole line landed in the
+  target field, the `/boot` line failed and the root line was dropped in
+  silence. Pseudo-filesystems are excluded from both the generator and the
+  finalize check.
+- **Unpacking a stage refuses a target the disk plan says should be mounted and
+  is not** — 1.3 GB of stage3 had landed on the installer's own filesystem after
+  step 20 failed and the run carried on.
+
+### Added
+
+- `tests/firmware_guard.bats`, `tests/mode_guard.bats`, and two hygiene tests
+  that fail when a setting or a state-journal key is read under a name nothing
+  declares or writes. Every one of them exists because of a defect above.
+- CI runs `make lint` and `make test` rather than keeping its own file list; the
+  copy had drifted to a quarter of the project.
+
+### Not done yet
+
+- A UKI variant (`ukify`/`dracut --uefi`, `sbctl` signing, a fallback at
+  `\EFI\BOOT\BOOTX64.EFI`). It would remove this class of boot failure rather
+  than guard against it.
 
 ## [0.1.0] — unreleased
 
-First shape of the project. **Not published, and not yet proven end to end on
-real hardware**: every module has been exercised on its own, and the full
-ten-step sequence has only ever run under `--dry-run`.
+First shape of the project. The ten-step sequence has been run through once
+end to end, producing a disk image that booted to a login prompt under QEMU with
+OVMF; the encrypted variants, the other bootloaders and the LVM layouts have not
+been carried through to a boot. The README's Status section says exactly what
+was and was not covered.
 
 ### Added
 
