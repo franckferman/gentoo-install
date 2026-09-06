@@ -12,6 +12,19 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **A Gentoo `/var` ran out of inodes, not bytes.** The default desktop layout
+  on a 24 GiB disk gives `/var` 3 GiB, mke2fs sizes the inode table by bytes —
+  one per 16 KiB, so 196,608 of them — and the ebuild repository is 160,000
+  files holding 120 MiB. `emerge --sync` stopped partway through with "No space
+  left on device" while `df` reported 2.7 GiB free. A filesystem that will hold
+  the repository is now made with inodes for it, and only when mke2fs would not
+  have made enough on its own.
+- **Then it ran out of bytes.** `sys-kernel/linux-firmware` unpacks 2.5 GiB into
+  `/var/tmp/portage`, which is where every package is built. The desktop
+  layout's floor for `/var` is 6 GiB rather than 3, and the plan now says, before
+  the typed confirmation, when the filesystem that will hold `/var/tmp/portage`
+  is too small to build in — naming the number, and refusing nothing.
+
 - **The installer no longer rewrites the firmware state of the machine it runs
   on.** Step 80 wrote an `efibootmgr` entry, and step 95 offered a reboot, with
   nothing checking whether the target was the disk this machine booted from. Run

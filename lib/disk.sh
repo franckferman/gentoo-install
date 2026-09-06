@@ -55,8 +55,31 @@ readonly DISK_LVM_OVERHEAD_MIB=8
 readonly DISK_FLOOR_ROOT_MIB=3072
 readonly DISK_FLOOR_OTHER_MIB=512
 
+# What it takes to build a package, as opposed to store one.
+#
+# Every emerge unpacks into /var/tmp/portage, and sys-kernel/linux-firmware —
+# in the default package set, because a machine without firmware may have no
+# network to fetch it with — unpacks 2.5 GiB. The ebuild repository beside it
+# is another 1.4 GiB, and the distfiles it came from sit in the same
+# filesystem. Below this, an install does not fail at the plan: it fails
+# twenty minutes in, with ENOSPC, halfway through a package.
+readonly DISK_BUILD_SPACE_MIB=6144
+
 # The mountpoint that means "not a mountpoint".
 readonly DISK_SWAP_MOUNT="swap"
+
+# What a Gentoo /var runs out of first, and it is not bytes.
+#
+# The ebuild repository is about 160,000 files holding 120 MiB. mke2fs sizes
+# the inode table by bytes — one inode per 16 KiB by default — so a 3 GiB /var
+# is made with 196,608 inodes, and after a stage3 has used some, the sync stops
+# partway through with "No space left on device" while df reports 2.7 GiB free.
+# That is the default desktop layout on a 24 GiB disk, and it was found by
+# installing it.
+#
+# 500,000 leaves room for the repository, the distfiles' directory entries, the
+# binary package index and the logs, and costs 128 MiB of inode table.
+readonly DISK_EXT_INODES_REPO=500000
 
 # Set by disk_confirm_destroy(). Every destructive helper checks the device it
 # was handed against this before running, so a caller that computed a path
@@ -1062,6 +1085,50 @@ disk_show_plan() {
       "$kind" "$name" "$mount" "$(disk_human_size "$mib")" \
       "$(_disk_share "$mib" "$total")" "$fs" "$dev")"
   done <<<"$plan"
+
+  disk_warn_build_space "$plan"
+}
+
+disk_build_space_mib() {
+  # How much room a build will have, and on which mountpoint: /var when it is
+  # split off, the root filesystem otherwise, because /var/tmp/portage follows
+  # whichever one contains it. Prints "<mib> <mount>" — a returned value.
+  # Args: $1 = plan text.
+  local plan="$1" kind mount mib fs dev name root_mib=0 var_mib=0
+
+  while IFS=$'\t' read -r kind name mount mib fs dev; do
+    [[ "$kind" != "meta" && "$kind" != "free" ]] || continue
+    [[ "$fs" != "lvm" ]] || continue
+    case "$mount" in
+      /var) var_mib="$mib" ;;
+      /) root_mib="$mib" ;;
+    esac
+  done <<<"$plan"
+
+  if ((var_mib > 0)); then
+    printf '%s /var\n' "$var_mib"
+  elif ((root_mib > 0)); then
+    printf '%s /\n' "$root_mib"
+  else
+    return 1
+  fi
+}
+
+disk_warn_build_space() {
+  # Said before the typed proof, not after the emerge. Rendering only: this
+  # changes nothing and refuses nothing — an operator who knows they will
+  # never build linux-firmware is right, and a layout is theirs to choose.
+  # Args: $1 = plan text.
+  local plan="$1" answer mib mount
+  answer="$(disk_build_space_mib "$plan")" || return 0
+  read -r mib mount <<<"$answer"
+  ((mib < DISK_BUILD_SPACE_MIB)) || return 0
+
+  warn "${mount} is $(disk_human_size "$mib"); packages are built there and $(disk_human_size "$DISK_BUILD_SPACE_MIB") is the floor"
+  warn "       sys-kernel/linux-firmware alone unpacks 2.5 GiB into /var/tmp/portage,"
+  warn "       on top of a 1.4 GiB ebuild repository and the distfiles beside it"
+  warn "       an emerge that runs out there stops mid-package with ENOSPC"
+  warn "       a larger disk, --disk-layout minimal, or portage_emerge_set = no"
 }
 
 _disk_share() {
@@ -1616,6 +1683,30 @@ _disk_label() {
   printf '%s\n' "${name:0:limit}"
 }
 
+disk_ext_inode_args() {
+  # The -N argument for a filesystem that will hold the ebuild repository, or
+  # nothing at all. One argument per line — a returned value, so stdout.
+  #
+  # Only when mke2fs would not have made enough on its own: on a large /var the
+  # default is already generous, and a denser table there would be gibibytes of
+  # nothing.
+  # Args: $1 = mountpoint, $2 = size in bytes.
+  local mount="$1" bytes="${2:-0}" want=0 default_count cap
+
+  case "$mount" in
+    / | /var | /var/db | /var/db/repos) want="$DISK_EXT_INODES_REPO" ;;
+    *) return 0 ;;
+  esac
+  [[ "$bytes" =~ ^[0-9]+$ ]] && ((bytes > 0)) || return 0
+
+  default_count=$((bytes / 16384))
+  cap=$((bytes / 4096)) # one inode per 4 KiB is as dense as mke2fs goes
+  ((want > cap)) && want="$cap"
+  ((default_count < want)) || return 0
+
+  printf '%s\n' -N "$want"
+}
+
 _disk_mkfs() {
   # One filesystem. Args: $1 = device, $2 = fs, $3 = volume name, $4 = mount.
   local dev="$1" fs="$2" name="$3" mount="$4" label
@@ -1647,6 +1738,17 @@ _disk_mkfs() {
       if [[ "$mount" != "/" ]]; then
         opts+=(-m 1)
       fi
+
+      local -a inode_args=()
+      local bytes
+      bytes="$(blockdev --getsize64 "$dev" 2>/dev/null || printf '0')"
+      mapfile -t inode_args < <(disk_ext_inode_args "$mount" "$bytes")
+      if ((${#inode_args[@]} > 0)); then
+        opts+=("${inode_args[@]}")
+        log "  ${mount}: ${inode_args[1]} inodes asked for — mke2fs would size the"
+        log "        table by bytes, and the ebuild repository is 160,000 files"
+      fi
+
       log "  mkfs.${fs} ${dev} (${mount})"
       run_quiet "mkfs.${fs}" "${opts[@]}" -- "$dev" || {
         err "mkfs.${fs} failed on ${dev}"
