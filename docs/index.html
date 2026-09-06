@@ -490,7 +490,9 @@ sudo ./gentoo-install.sh --resume</pre>
     prompt without asking for anything. An unencrypted disk was carried from an
     empty GPT to a login prompt earlier;
     <code>systemd-boot</code> and <code>uki</code> were booted on an encrypted disk
-    as far as the passphrase prompt.
+    as far as the passphrase prompt — though a later <code>uki</code> install
+    produced an image that the firmware starts from the fallback path and then
+    hangs on, which is written up in full rather than left out.
   </p>
   <p style="color:var(--muted);font-size:.92rem;line-height:1.8;margin-top:1rem;max-width:720px">
     <strong style="color:var(--text)">What none of it covers:</strong>

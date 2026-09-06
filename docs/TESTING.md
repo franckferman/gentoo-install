@@ -319,6 +319,68 @@ cp /usr/share/edk2-ovmf/OVMF_VARS.fd ./vars.fd
 
 ---
 
+## Run 3b — the unified kernel image, and a firmware that knows nothing
+
+Run on 6 September 2026, on purpose, against the failure this project was
+shaped by: a UEFI firmware whose NVRAM has never heard of this disk.
+
+```bash
+./gentoo-install.sh --disk /dev/vdb --crypt luks-passphrase \
+  --disk-layout minimal --bootloader uki --boot-removable yes \
+  --kernel-cmdline-extra "console=ttyS0,115200" --hostname giuki --user tester
+```
+
+**The install passed completely** — eleven steps, none failed, the first run in
+this project's life to do that — and step 95 said:
+
+```
+3/ 5  [PASS] Boot entry     unified kernel image at the fallback path
+```
+
+**The fallback is what a blank NVRAM picks**, which is the whole claim of this
+variant, and the contrast with the day before is exact. Same pristine
+`OVMF_VARS`, a GRUB install:
+
+```
+BdsDxe: failed to load Boot0001 "UEFI Misc Device" … Not Found
+>>Start PXE over IPv4.
+```
+
+and the UKI install:
+
+```
+BdsDxe: loading  Boot0001 "UEFI Misc Device" from PciRoot(0x0)/Pci(0x3,0x0)
+BdsDxe: starting Boot0001 "UEFI Misc Device" from PciRoot(0x0)/Pci(0x3,0x0)
+```
+
+**And then it hangs, and that is not explained.** The firmware starts the image
+and nothing follows: no kernel output on the framebuffer, none on `ttyS0`
+despite `console=ttyS0,115200` being in the baked-in command line, and the
+guest idle at a few percent of one core. What has been ruled out:
+
+- the artefact — `EFI/BOOT/BOOTX64.EFI` and `EFI/Linux/gentoo-*.efi` are byte
+  for byte identical, 45,239,808 bytes, on an ESP that is 14% full;
+- its shape — the PE carries the ten sections a systemd-stub image should,
+  with sane addresses:
+
+```
+.sdmagic  va=0x00020000 vsz=       40
+.cmdline  va=0x00023000 vsz=      239
+.linux    va=0x00025000 vsz= 22608880
+.initrd   va=0x015b5000 vsz= 22514210
+```
+
+- the firmware build — `OVMF_CODE_4M.qcow2` and `OVMF_CODE.fd` behave the same;
+- memory — 4 GiB and 8 GiB behave the same.
+
+What has not been tried: booting the same machine's plain `vmlinuz` and
+`initramfs` with `-kernel`/`-initrd` to see whether the pair works outside the
+UKI, and building the image with `ukify` instead of `dracut --uefi`
+(`sys-apps/systemd-utils[ukify]`, which this install did not enable). Either
+would say whether the fault is in the image or in the stack around it.
+
+---
+
 ## Run 4 — the TPM
 
 Needs the swtpm lines above and the headless section: the installer has to run

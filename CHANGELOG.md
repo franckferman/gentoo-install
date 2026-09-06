@@ -12,6 +12,15 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **The removable fallback is proved.** A `uki` install with `boot_removable =
+  yes`, booted against a pristine NVRAM, is started by the firmware from
+  `\EFI\BOOT\BOOTX64.EFI` — where the same firmware, with a GRUB install and
+  the same empty NVRAM, fell through to PXE the day before. That is the failure
+  this project was shaped by, removed rather than guarded against. The image
+  that run produced then hangs after the firmware starts it, which is written up
+  in `docs/TESTING.md` with what has been ruled out and what has not been tried,
+  and said beside the earlier claim that a `uki` image booted.
+
 - **A machine this installer signed could not be reflashed by this project's own
   tool.** `tools/bios-update.sh` has to sign `fwupdx64.efi` with the same pair
   the kernel was signed with, and it had two sources for that pair — a
