@@ -134,5 +134,54 @@ step_30_crypt() {
 
   # shellcheck disable=SC2086  # the record is a deliberate word list
   crypt_state_record "$variant" "${CRYPT_DEVICE:-}" ${CRYPT_RECORD}
+
+  _step30_finish_provisioning || return "$EXIT_FAILURE"
   return "$EXIT_SUCCESS"
+}
+
+_step30_finish_provisioning() {
+  # Step 20 stops after partitioning when a container is expected, because a
+  # filesystem written before the LUKS header is a filesystem the header
+  # overwrites. The container is open now, so the rest of the provisioning —
+  # volume group, filesystems, mounts, check — runs here, on the mapper.
+  #
+  # Nothing to do when the layout was already provisioned (step 20 got all the
+  # way through because no encryption was asked for) or when there is no plan to
+  # work from, which is what a bare `--steps 30` against an existing machine
+  # looks like.
+  local plan_file plan mapper
+  plan_file="${CFG[state_dir]:-${STATE_DIR}}/disk-plan.tsv"
+
+  mapper="/dev/mapper/${CFG[crypt_name]:-gentoo}"
+  if [[ "$DRY_RUN" == "yes" ]]; then
+    log "dry-run: would create the filesystems inside ${mapper}"
+    return 0
+  fi
+  [[ -b "$mapper" ]] || return 0
+
+  if [[ ! -r "$plan_file" ]]; then
+    skip "no disk plan at ${plan_file}; the container is open and nothing else is claimed"
+    return 0
+  fi
+  plan="$(cat -- "$plan_file")"
+
+  # Already mounted means step 20 finished on its own, or a previous run of this
+  # one did. Doing it twice would reformat a filesystem that is in use.
+  if findmnt -rno TARGET --mountpoint "$(disk_plan_meta "$plan" mountpoint)" >/dev/null 2>&1; then
+    skip "$(disk_plan_meta "$plan" mountpoint) is already mounted; nothing to provision"
+    return 0
+  fi
+
+  log "step 20 left the filesystems to this step: the container is open"
+  disk_provision_on_container "$plan" "$mapper" || {
+    err "step 30: the container was made but the filesystems could not be"
+    err "       created inside it"
+    return 1
+  }
+
+  # The plan the rest of the run reads must name the mapper, not the partition
+  # underneath it: step 95 unmounts from it, and step 90 writes an fstab from
+  # what is mounted.
+  write_file "$plan_file" 0600 <<<"$DISK_PROVISIONED_PLAN" || return 1
+  return 0
 }

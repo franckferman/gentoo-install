@@ -84,36 +84,31 @@ _step20_record_crypt_device() {
   fi
 }
 
-_step20_crypt_order_ok() {
-  # True when this step may go on to create filesystems.
+_step20_awaiting_container() {
+  # True when this step has done all it can and step 30 must continue.
   #
-  # The disk layer notices an open container and builds on it — disk_pv_device()
-  # says so — but nothing creates one before this point, and the step registry
-  # runs 20 before 30. So an encrypted install needs the container opened
-  # between partitioning and formatting, and that sequence does not exist yet.
-  # Until it does, refusing is the honest answer: a run that asked for
-  # encryption and silently produced a plain disk is the one failure this
-  # project must never ship.
-  # Args: $1 = plan text. Returns 1 to stop the step.
+  # An encrypted install needs the container to exist before any filesystem
+  # does: the LUKS header lives in the partition, and a filesystem written there
+  # first is a filesystem the header overwrites. disk_pv_device() already says
+  # the disk layer "notices that a container is already open and builds on it",
+  # so the missing piece was never the knowledge — it was the moment. Step 20
+  # partitions and hands over; step 30 opens the container and calls the rest of
+  # the provisioning on the mapper.
+  #
+  # Before this existed, an encrypted run formatted the partition, step 30 then
+  # failed on the missing disk.crypt_device, and the run carried on to install
+  # an unencrypted system onto a disk whose operator had asked for encryption.
+  # Args: $1 = plan text. Returns 0 when step 30 takes over.
   local plan="$1" want mapper
   want="${CFG[crypt]:-none}"
-  [[ "$want" != "none" ]] || return 0
+  [[ "$want" != "none" ]] || return 1
 
-  mapper="/dev/mapper/${CFG[crypt_name]:-${CFG[disk_crypt_name]:-gentoo}}"
+  mapper="/dev/mapper/${CFG[crypt_name]:-gentoo}"
   if [[ -b "$mapper" ]]; then
-    log "container ${mapper} is open; filesystems go inside it"
-    return 0
+    log "container ${mapper} is already open; filesystems go inside it"
+    return 1
   fi
-
-  err "crypt = ${want}, and no container is open yet"
-  err "       step 20 would now format $(disk_plan_device_for "$plan" /) directly, and step 30"
-  err "       would put a LUKS header over the filesystem it had just made"
-  err "       the partitions and the journal are written, so nothing is lost:"
-  err "         cryptsetup luksFormat $(state_get disk.crypt_device 2>/dev/null || printf '<container>')"
-  err "         cryptsetup open <container> ${CFG[crypt_name]:-gentoo}"
-  err "         ./gentoo-install.sh --steps 20 --restart   # filesystems, on the mapper"
-  err "       or install without encryption:  --crypt none"
-  return 1
+  return 0
 }
 
 _step20_record() {
@@ -250,17 +245,19 @@ step_20_disk() {
   disk_partition "$name" "$plan" || return "$EXIT_FAILURE"
   _step20_record_crypt_device "$plan"
 
-  if [[ "$(disk_plan_meta "$plan" lvm)" == "yes" ]]; then
-    disk_create_volumes "$plan" || return "$EXIT_FAILURE"
+  # The handover. Everything below writes a filesystem, and with encryption
+  # asked for there is nowhere to write one yet: the volume group would go on
+  # the raw partition and the root filesystem into the bytes the LUKS header is
+  # about to occupy. Step 30 opens the container and finishes from there.
+  if _step20_awaiting_container "$plan"; then
+    _step20_record "$plan" || return "$EXIT_FAILURE"
+    ok "step 20: /dev/${name} partitioned; step 30 creates the container and"
+    log "         the filesystems go inside it"
+    return "$EXIT_SUCCESS"
   fi
 
-  # A filesystem must not go where a LUKS container is about to go. Step 30 owns
-  # the container and runs after this step, so formatting here would make an
-  # ext4 that step 30 then overwrites with a LUKS header — and, when step 30
-  # fails for any reason, would leave an unencrypted machine on a run that asked
-  # for encryption. That is worse than stopping, so this stops.
-  if ! _step20_crypt_order_ok "$plan"; then
-    return "$EXIT_FAILURE"
+  if [[ "$(disk_plan_meta "$plan" lvm)" == "yes" ]]; then
+    disk_create_volumes "$plan" || return "$EXIT_FAILURE"
   fi
 
   disk_format "$plan" || return "$EXIT_FAILURE"

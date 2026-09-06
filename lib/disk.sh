@@ -1463,6 +1463,79 @@ disk_pv_device() {
   fi
 }
 
+# The plan disk_provision_on_container() actually laid down, with the root row
+# pointing at the mapper. A global and not a value on stdout, for the reason
+# lib/core.sh gives for WRITE_RESULT: the function mounts things and a caller
+# reading it through $( ) would run all of that in a subshell.
+# shellcheck disable=SC2034  # read by steps/30_crypt.sh
+DISK_PROVISIONED_PLAN=""
+
+disk_adopt_confirmed_target() {
+  # Let a later step write to the disk an earlier one had confirmed.
+  #
+  # _disk_assert_target() refuses to write until a disk has been confirmed in
+  # this process, which is exactly right for step 20: the operator types the
+  # device name and nothing else may be touched. Step 30 finishes the
+  # provisioning of that same disk, possibly in a later run, and cannot ask for
+  # the proof again. What it can do is trust the journal — where the device only
+  # ever arrives after step 20 accepted a typed confirmation for it.
+  # Args: none. Returns 1 when the journal has nothing to adopt.
+  local dev
+  [[ -z "$DISK_CONFIRMED_TARGET" ]] || return 0
+  declare -F state_get >/dev/null 2>&1 || return 1
+  dev="$(state_get disk.device 2>/dev/null || true)"
+  [[ -n "$dev" ]] || return 1
+  # shellcheck disable=SC2034  # read by _disk_assert_target
+  DISK_CONFIRMED_TARGET="$dev"
+  log "target ${dev} adopted from the journal, where step 20 recorded it after"
+  log "       the typed confirmation"
+}
+
+disk_provision_on_container() {
+  # The half of step 20 that could not run before the container existed: the
+  # volume group, the filesystems, the mounts and the check. Leaves the plan it
+  # used in DISK_PROVISIONED_PLAN.
+  # Args: $1 = plan text, $2 = the open mapper device.
+  local plan="$1" mapper="$2" retargeted
+  retargeted="$(disk_plan_retarget_crypt "$plan" "$mapper")" || return 1
+  # shellcheck disable=SC2034  # read by steps/30_crypt.sh, which writes it back
+  DISK_PROVISIONED_PLAN="$retargeted"
+
+  disk_adopt_confirmed_target || {
+    err "no confirmed target: step 20 records disk.device once the operator has"
+    err "       typed the device name, and nothing here may write without it"
+    err "       example:  ./gentoo-install.sh --steps 20"
+    return 1
+  }
+
+  if [[ "$(disk_plan_meta "$retargeted" lvm)" == "yes" ]]; then
+    disk_create_volumes "$retargeted" || return 1
+  fi
+  disk_format "$retargeted" || return 1
+  disk_mount_tree "$retargeted" || return 1
+  disk_verify "$retargeted" || return 1
+  disk_show_result "$retargeted"
+}
+
+disk_plan_retarget_crypt() {
+  # Point the row carrying / at an open container instead of at the raw
+  # partition underneath it. A returned value: the plan, one device changed.
+  #
+  # The LVM case needs nothing done here — disk_pv_device() already prefers an
+  # open mapper over the partition it sits on — so only a plain layout is
+  # rewritten. Without this, an encrypted install with no LVM formats the
+  # partition the LUKS header lives in, which is the same disk twice and neither
+  # of them bootable.
+  # Args: $1 = plan text, $2 = the open mapper device.
+  local plan="$1" mapper="$2"
+  if [[ -z "$mapper" || "$(disk_plan_meta "$plan" lvm)" == "yes" ]]; then
+    printf '%s\n' "$plan"
+    return 0
+  fi
+  awk -F'\t' -v OFS='\t' -v m="$mapper" \
+    '$1 == "part" && $3 == "/" { $6 = m } { print }' <<<"$plan"
+}
+
 disk_create_volumes() {
   # Physical volume, volume group, then the logical volumes in plan order.
   # The volume that takes what is left is created last with 100%FREE, so the

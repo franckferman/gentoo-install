@@ -123,25 +123,45 @@ load helper
 # --------------------------------------------------------------------------- #
 #  The encryption ordering                                                    #
 # --------------------------------------------------------------------------- #
-@test "step 20 refuses to format a partition a container is still to be made on" {
-  # The disk layer builds on an open container — disk_pv_device() says so — but
-  # the registry runs 20 before 30, and nothing opens one in between. So an
-  # encrypted run formatted the partition, and step 30 would have written a LUKS
-  # header over the filesystem it had just made. Worse, when step 30 failed the
-  # run carried on and installed an unencrypted system onto a disk whose
-  # operator had asked for encryption. Stopping is the honest answer until the
-  # sequence exists.
+@test "step 20 hands over to step 30 when a container is still to be made" {
+  # An encrypted install needs the container before any filesystem: the LUKS
+  # header lives in the partition, and a filesystem written there first is one
+  # the header overwrites. Before this handover existed, an encrypted run
+  # formatted the partition, step 30 failed on a state key nothing wrote, and
+  # the run carried on to install an unencrypted system onto a disk whose
+  # operator had asked for encryption.
   gi_bash 'config_init_defaults
            CFG[crypt]=luks-passphrase
            CFG[crypt_name]=nosuchmapper-for-a-test
-           _step20_crypt_order_ok "$(printf "meta\tlvm\tno\t0\t-\t-\n")"'
-  [ "$status" -ne 0 ]
-  [[ "$stderr" == *"no container is open yet"* ]]
+           _step20_awaiting_container "$(printf "meta\tlvm\tno\t0\t-\t-\n")"'
+  [ "$status" -eq 0 ]
 }
 
-@test "step 20 formats freely when nothing asked for encryption" {
+@test "step 20 finishes on its own when nothing asked for encryption" {
   gi_bash 'config_init_defaults
            CFG[crypt]=none
-           _step20_crypt_order_ok "$(printf "meta\tlvm\tno\t0\t-\t-\n")"'
-  [ "$status" -eq 0 ]
+           _step20_awaiting_container "$(printf "meta\tlvm\tno\t0\t-\t-\n")"'
+  [ "$status" -ne 0 ]
+}
+
+@test "the plan hands the root filesystem to the mapper, not the partition" {
+  # The rewrite is the whole point of the handover: after step 30 opens the
+  # container, mkfs must land inside it. Everything else in the plan is left
+  # alone — the ESP is outside the container and stays where it is.
+  local out
+  out="$(gi_capture 'disk_plan_retarget_crypt "$1" /dev/mapper/gentoo' "$(
+    printf 'meta\tlvm\tno\t0\t-\t-\nesp\tESP\t/boot\t1024\tvfat\t/dev/sda1\npart\troot\t/\t20000\text4\t/dev/sda2\n'
+  )")"
+  [[ "$out" == *"/dev/mapper/gentoo"* ]]
+  [[ "$out" == *"/dev/sda1"* ]]
+  [[ "$out" != *"/dev/sda2"* ]]
+}
+
+@test "an LVM plan is left alone, because disk_pv_device already prefers the mapper" {
+  local out
+  out="$(gi_capture 'disk_plan_retarget_crypt "$1" /dev/mapper/gentoo' "$(
+    printf 'meta\tlvm\tyes\t0\t-\t-\npart\tsystem\t-\t20000\tlvm\t/dev/sda2\n'
+  )")"
+  [[ "$out" == *"/dev/sda2"* ]]
+  [[ "$out" != *"mapper"* ]]
 }
