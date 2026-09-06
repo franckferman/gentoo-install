@@ -284,9 +284,12 @@ kernel_warn_console_takeover() {
   # The kernel prints to every console= it is given and makes the last one
   # /dev/console. Name ttyS0 and nothing else and the framebuffer goes quiet —
   # including the initramfs asking for the LUKS passphrase, which is the one
-  # message a person has to see. If the machine also has no serial driver
-  # available that early, it prints nowhere at all, and a machine that boots
-  # correctly and says nothing is indistinguishable from a machine that hung.
+  # message a person has to see. A machine that boots correctly and says nothing
+  # where anybody is looking is indistinguishable from a machine that hung.
+  #
+  # The order matters as much as the list: the kernel log goes to all of them,
+  # but the prompt is written by userspace to /dev/console, which is the last
+  # one named. Put the console you will be watching last.
   #
   # That is not hypothetical: this project's own testing notes recommended
   # console=ttyS0,115200 to make a boot drivable, an install took the advice,

@@ -16,9 +16,13 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   prints to every `console=` it is given and makes the last one `/dev/console`,
   so naming only `ttyS0` takes the framebuffer away — and this project's own
   testing notes recommended exactly that to make a boot drivable. An install
-  took the advice, booted correctly, printed nowhere at all, and was read as a
-  hung image for most of an afternoon. Step 70 says so now, and names the fix:
-  `console=tty0 console=ttyS0,115200`.
+  took the advice, booted correctly, printed nowhere anybody was looking, and
+  was read as a hung image for most of an afternoon. Step 70 says so now, and
+  names the fix: `console=tty0 console=ttyS0,115200`. Which console the
+  passphrase prompt lands on is decided by the order — `/dev/console` is the
+  last one named — and that is written down in `docs/TESTING.md` along with the
+  harness mistake that hid it: QEMU discards a socket serial port's output until
+  a client connects.
 - **The removable fallback is proved.** A `uki` install with `boot_removable =
   yes`, booted against a pristine NVRAM, is started by the firmware from
   `\EFI\BOOT\BOOTX64.EFI` — where the same firmware, with a GRUB install and

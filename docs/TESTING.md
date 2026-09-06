@@ -361,12 +361,39 @@ ten sections a systemd-stub image should carry, sane addresses), the firmware
 build (`OVMF_CODE_4M.qcow2` and `OVMF_CODE.fd` alike) and memory (4 and 8 GiB
 alike).
 
-The cause was `--kernel-cmdline-extra "console=ttyS0,115200"`, taken from the
+The cause was two things at once, and separating them took a second day.
+
+The first is `--kernel-cmdline-extra "console=ttyS0,115200"`, taken from the
 advice this page used to give for driving a boot from outside. The kernel
-prints to every `console=` it is given and makes the last one `/dev/console`;
-naming only a serial port takes the framebuffer away, and this kernel has no
-serial console that early, so it printed nowhere at all. Booted with
-`console=tty0` instead, the same kernel and the same initramfs reach:
+prints to every `console=` it is given and makes **the last one** `/dev/console`
+— so with only a serial port named, the framebuffer shows nothing at all, and
+with `console=tty0 console=ttyS0,115200` the kernel log appears on the screen
+while the passphrase prompt, which userspace writes to `/dev/console`, goes to
+the serial port. Put the console you are watching **last**.
+
+The second is the harness, and it is the one that cost the afternoon: **QEMU
+discards a socket serial port's output until a client connects.** The relay here
+attached four seconds after the machine started, by which time the kernel log
+and the prompt at 1.4 s had already been written into nothing. Use
+`server=on,wait=on`, which holds the machine until the client is there:
+
+```
+-serial unix:./serial.sock,server=on,wait=on
+```
+
+With that, the whole boot arrives, ending exactly where it should:
+
+```
+[    0.933801] dracut: dracut-111
+[    1.337015] dracut: luksOpen /dev/vda2 luks-f1a23000-dfee-4952-b858-a62c2e49e5b4
+Enter passphrase for /dev/vda2:
+```
+
+The kernel is not the problem and never was — `gentoo-kernel-bin` is built with
+`CONFIG_SERIAL_8250_CONSOLE=y`, checked in the config it installs beside itself.
+
+Booted with `console=tty0` alone, the same kernel and the same initramfs reach
+the same prompt on the screen:
 
 ```
 [    0.798887] dracut: dracut-111
@@ -385,8 +412,12 @@ The installer now says so itself when a command line names consoles and none of
 them is a screen — a machine that boots correctly and says nothing is
 indistinguishable from one that hung, and this is how long that costs.
 
-Typing the passphrase from outside still does not work: QEMU's `sendkey` puts
-the characters on the framebuffer and dracut's reader does not take them.
+**Typing the passphrase from outside still does not work**, by either path:
+`sendkey` puts characters on the framebuffer and writing to the serial socket
+puts them on `/dev/console`, and dracut's reader advances on neither. Whatever
+it reads from, it is not something these two reach. Type it at the window, or
+find out what that reader is actually opening — that is the next thing to know,
+and it is written here rather than left as a shrug.
 
 ---
 
