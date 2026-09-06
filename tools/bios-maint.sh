@@ -891,19 +891,36 @@ added_slot() {
 }
 
 clevis_slot_of() {
-  # Read from clevis rather than assumed. A machine bound to another slot
-  # would otherwise have its binding recorded against a slot it never owned.
+  # The tpm2 binding: the one a firmware flash breaks, the one this sequence
+  # takes away before the flash and puts back after it. Named rather than
+  # taken first, because clevis holds several pins at once by design — a tpm2
+  # pin for the machine that unlocks itself, a tang pin for the one that asks
+  # the network — and `head -n 1` gave whichever was created first.
+  #
+  # Not the same question as clevis_any_binding() below, and the two were one
+  # function until this file was read line by line. A tang binding is not what
+  # a BIOS update invalidates, so it is not what gets rebound; but it opens
+  # the machine without anyone typing anything, so it does void the proof that
+  # verify-boot exists to make.
   local dev="$1" s
   command -v clevis >/dev/null 2>&1 || return 1
-  # The tpm2 binding, named rather than taken first. clevis holds several pins
-  # at once by design — a tpm2 pin for the machine that unlocks itself and a
-  # tang pin for the one that asks the network — and `head -n 1` gave whichever
-  # was created first. On a tang-first machine this script then resealed, or
-  # reported on, a binding that has nothing to do with the TPM.
   s="$(clevis luks list -d "$dev" 2>/dev/null \
     | awk '$2 == "tpm2" { sub(":", "", $1); print $1; exit }')" || true
   [[ "$s" =~ ^[0-9]+$ ]] || return 1
   echo "$s"
+  return 0
+}
+
+clevis_any_binding() {
+  # Every slot clevis owns, whatever the pin, one per line. Returns 1 when
+  # there is none. What "did anything but a typed passphrase open this
+  # machine" has to be asked of.
+  local dev="$1" out
+  command -v clevis >/dev/null 2>&1 || return 1
+  out="$(clevis luks list -d "$dev" 2>/dev/null \
+    | awk '{ sub(":", "", $1); if ($1 ~ /^[0-9]+$/) print $1 }')" || true
+  [[ -n "$out" ]] || return 1
+  printf '%s\n' "$out"
   return 0
 }
 
@@ -1002,7 +1019,7 @@ do_plan() {
 }
 
 do_status() {
-  local cur dev file line
+  local cur dev file line tpm_line recorded current
 
   cur="$(current_state)"
   dev="$(resolve_device 2>/dev/null || true)"
@@ -1021,6 +1038,25 @@ do_status() {
   printf "  %-22s %s\n" "Recorded container:" "$(state_value device 2>/dev/null || echo none)"
   printf "  %-22s %s\n" "Recorded LUKS UUID:" "$(state_value luks_uuid 2>/dev/null || echo none)"
   echo ""
+
+  # Every command that acts refuses on a state file belonging to another
+  # container. status is the one that does not act — and it was also the one
+  # that printed the two UUIDs on adjacent lines, said nothing, and then gave
+  # the next step of a sequence started somewhere else. It is the command an
+  # operator runs to find out where they are, so it is the worst place to
+  # leave that comparison to the reader.
+  if [[ -n "$dev" ]]; then
+    recorded="$(state_value luks_uuid 2>/dev/null || true)"
+    current="$(cryptsetup luksUUID "$dev" 2>/dev/null || true)"
+    if [[ -n "$recorded" && -n "$current" && "$recorded" != "$current" ]]; then
+      warn "This state file was written on another container"
+      warn "  state file  : $recorded"
+      warn "  this machine: $current"
+      warn "  What follows describes that sequence, not this machine. Every"
+      warn "  command that acts on it will refuse."
+      echo ""
+    fi
+  fi
 
   if [[ ! -r "$file" ]]; then
     echo "  No state file at $file."
@@ -1048,9 +1084,11 @@ do_status() {
   echo ""
 
   if [[ -n "$dev" ]]; then
-    line="$(clevis_slot_of "$dev" 2>/dev/null || true)"
+    line="$(clevis_any_binding "$dev" 2>/dev/null | paste -sd, - || true)"
     if [[ -n "$line" ]]; then
-      printf "  %-22s %s\n" "Clevis binding now:" "${C_G}present, slot $line${C_0}"
+      tpm_line="$(clevis_slot_of "$dev" 2>/dev/null || true)"
+      printf "  %-22s %s\n" "Clevis binding now:" \
+        "${C_G}present, slot(s) $line${C_0}${tpm_line:+ (tpm2 on $tpm_line)}"
     else
       printf "  %-22s %s\n" "Clevis binding now:" "${C_Y}none${C_0}"
     fi
@@ -1329,9 +1367,10 @@ do_verify_boot() {
 
   # A binding again means somebody resealed in between, and this boot could
   # have come from the TPM. It would say nothing about the passphrase.
-  if clevis_slot_of "$dev" >/dev/null 2>&1; then
+  if clevis_any_binding "$dev" >/dev/null 2>&1; then
     err "There is a clevis binding on $dev again"
-    err "  This boot may well have come from the TPM, so it proves nothing"
+    err "  This boot may well have come from it and not from the keyboard,"
+    err "  so it proves nothing"
     err "  about the maintenance passphrase, which is the only thing that"
     err "  will be left once the flash moves PCR 0."
     err "  Start the sequence again: ./bios-maint.sh abort"

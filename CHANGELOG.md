@@ -12,6 +12,23 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **`bios-maint.sh` asks clevis two different questions again.** "Which slot
+  does the TPM own" and "did anything but a typed passphrase open this
+  machine" are not the same question, and one function answered both. A tang
+  binding is not what a firmware flash invalidates, so it is not what gets
+  taken away and put back; but it opens the machine with nobody typing
+  anything, so it voids the proof `verify-boot` exists to make — the test
+  reboot that this whole sequence is built around. `prepare` and `rebind` keep
+  the tpm2 pin; `verify-boot` and `status` see every binding.
+
+- **`bios-maint.sh status` says when the state file belongs to another
+  machine.** Every command that acts already refuses on it. `status` is the
+  one that does not act, and it printed the recorded container and the current
+  one on adjacent lines without a word, then gave the next step of a sequence
+  started somewhere else. It is the command an operator runs to find out where
+  they are, which makes it the worst place to leave that comparison to the
+  reader.
+
 - **No tool writes its error log through a symlink any local user can plant.**
   All nine kept stderr in a fixed name under `/tmp`, cleared it with
   `: >"$ERR_LOG"` and chmod'd it — as root, on a path in a world-writable

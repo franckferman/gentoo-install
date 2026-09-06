@@ -681,3 +681,51 @@ gi_tools() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"registers themselves are complete"* ]]
 }
+
+@test "bios-maint asks two different questions of clevis" {
+  # "which slot does the TPM own" and "did anything but a typed passphrase
+  # open this machine" are not the same question, and one function answered
+  # both. A tang binding is not what a BIOS flash invalidates, so it is not
+  # what gets rebound; but it opens the machine without anyone typing
+  # anything, so it voids the proof verify-boot exists to make.
+  run bash -c '
+    for f in clevis_slot_of clevis_any_binding; do
+      eval "$(sed -n "/^${f}()/,/^}/p" "$1/tools/bios-maint.sh")"
+    done
+    clevis() { printf "%s\n" "1: tang '"'"'{\"url\":\"http://tang\"}'"'"'"; }
+    command() { [[ "$2" == clevis ]] && return 0; builtin command "$@"; }
+    clevis_slot_of /dev/sdz     && echo "tpm2 found where there is none"
+    clevis_any_binding /dev/sdz || echo "no binding seen at all"
+  ' bash "$GI_ROOT"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"tpm2 found where there is none"* ]]
+  [[ "$output" != *"no binding seen at all"* ]]
+  [[ "$output" == "1" ]]
+}
+
+@test "verify-boot is voided by any binding, not only a tpm2 one" {
+  # The proof it makes is "this machine came up from a typed passphrase".
+  # Asking only about tpm2 let a tang binding through the guard.
+  run bash -c '
+    sed -n "/^do_verify_boot()/,/^}/p" "$1/tools/bios-maint.sh"' bash "$GI_ROOT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"clevis_any_binding"* ]]
+  [[ "$output" != *"clevis_slot_of \"\$dev\" >/dev/null"* ]]
+}
+
+@test "what gets rebound is the tpm2 binding" {
+  local body
+  body="$(sed -n '/^do_prepare()/,/^}/p' "${GI_ROOT}/tools/bios-maint.sh")"
+  [[ "$body" == *'clevis_slot="$(clevis_slot_of "$dev")"'* ]]
+}
+
+@test "status says when the state file belongs to another container" {
+  # Every command that acts refuses on it. status is the one that does not
+  # act, and it printed the two UUIDs on adjacent lines without a word before
+  # giving the next step of a sequence started on another machine.
+  local body
+  body="$(sed -n '/^do_status()/,/^}/p' "${GI_ROOT}/tools/bios-maint.sh")"
+  [[ "$body" == *"This state file was written on another container"* ]]
+  [[ "$body" == *"cryptsetup luksUUID"* ]]
+  [[ "$body" == *"not this machine"* ]]
+}
