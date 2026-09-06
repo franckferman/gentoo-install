@@ -109,3 +109,23 @@ gi_tools() {
     return 1
   fi
 }
+
+@test "a tool that documents a -- command mode actually parses --" {
+  # rescue-chroot.sh enter -- CMD runs one command inside the rescued system
+  # instead of an interactive shell. Before it existed the only way to run one
+  # thing inside was to bypass the tool — prepare, then chroot by hand — which
+  # is the sequence the tool exists to get right, and a recovery script or an
+  # ssh check has nobody at a keyboard to type into a shell.
+  #
+  # Run as an ordinary user this stops on the root check or the target check.
+  # What it must never say is "Unknown option: --".
+  local tool out
+  while read -r tool; do
+    grep -q -- '-- CMD' "$tool" || continue
+    out="$(bash "$tool" enter --target /nonexistent-target -- /bin/true 2>&1 || true)"
+    if [[ "$out" == *"Unknown option: --"* ]]; then
+      printf '%s documents -- and its parser refuses it\n' "${tool##*/}" >&2
+      return 1
+    fi
+  done < <(gi_tools)
+}

@@ -20,6 +20,7 @@ readonly EXIT_USAGE=2
 # Configuration
 SUBCOMMAND="enter"
 FORCE="false"
+RUN_ARGV=()                          # -- CMD ... : one command instead of an interactive shell
 TARGET="/mnt/rescue"                 # --target : tree opened by luks-open.sh
 WORKDIR="/tmp/gentoo-install-rescue" # where the init script lands, inside the target
 
@@ -78,6 +79,7 @@ WHEN TO USE IT:
 
 COMMANDS:
     enter               Bind and enter (default)
+    enter -- CMD [ARG]  Bind, run one command inside, and stay bound
     prepare             Bind without entering
     exit                Undo the bindings, naming whatever still holds them
     status              What is mounted and bound, change nothing
@@ -131,6 +133,12 @@ parse_arguments() {
         [[ $# -ge 2 ]] || die "--target requires a value"
         TARGET="${2%/}"
         shift 2
+        ;;
+      --)
+        # Everything after -- is a command to run inside, instead of a shell.
+        shift
+        RUN_ARGV=("$@")
+        break
         ;;
       *)
         err "Unknown option: $1"
@@ -271,7 +279,7 @@ RC_EOF
 # Entry point run by chroot(1). Not a tool: it prepares the environment, then
 # replaces itself with the interactive shell.
 
-if [[ -n "\${GI_RESCUE:-}" ]]; then
+if [[ -n "\${GI_RESCUE:-}" && \$# -eq 0 ]]; then
     echo "Already inside the rescue chroot. Type 'exit' to leave." >&2
     exit 1
 fi
@@ -298,6 +306,12 @@ echo "    clevis luks list -d DEV     is the TPM sealing still there"
 echo ""
 echo "    exit                        leave, then ./rescue-chroot.sh exit"
 echo ""
+
+# With arguments, run them and leave; the banner above is still worth printing,
+# because a recovery script's log should say what it was inside when it ran.
+if [[ \$# -gt 0 ]]; then
+    exec "\$@"
+fi
 
 exec /bin/bash --rcfile $WORKDIR/.rescue_bashrc -i
 EOF
@@ -429,6 +443,27 @@ do_prepare() {
 
 do_enter() {
   do_prepare
+
+  # A command given after -- runs instead of the shell, and nothing is asked.
+  # A rescue is not always somebody at a keyboard: it is also a line in a
+  # recovery script, or a check run over ssh against a machine that will not
+  # boot. Without this the only way to run one thing inside was to bypass the
+  # tool — prepare, then chroot by hand — which is the sequence the tool exists
+  # to get right.
+  local status=0
+  if ((${#RUN_ARGV[@]} > 0)); then
+    log "Running inside: ${RUN_ARGV[*]}"
+    chroot "$TARGET" "$WORKDIR/.rescue_init.sh" "${RUN_ARGV[@]}" || status=$?
+    if ((status == 0)); then
+      ok "Command finished"
+    else
+      warn "Command exited with status ${status}"
+    fi
+    echo "" >&2
+    log "The bindings are still in place. When you are done:"
+    log "  ./rescue-chroot.sh exit"
+    return "$status"
+  fi
 
   echo "" >&2
   if verbose_enough; then
