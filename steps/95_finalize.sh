@@ -275,9 +275,17 @@ _fin_wanted_modules() {
 
   crypt="$(_fin_crypt)"
 
+  # The same rule step 70 builds by, and for the same reason: lvm belongs to the
+  # topology, not to the encryption. Asking for it on a plain LUKS root made
+  # dracut refuse to build at all, and expecting it here made a correct image
+  # read as "1 of 3 modules missing". Twice now these two steps have drifted on
+  # this list; they derive it separately on purpose — a check that trusted the
+  # builder would agree with it about a mistake — so the rule is what has to
+  # match, not the code.
   if [[ "$crypt" != "none" ]]; then
-    mods+=(crypt dm lvm)
-  elif _fin_uses_lvm; then
+    mods+=(crypt dm)
+  fi
+  if _fin_uses_lvm; then
     mods+=(dm lvm)
   fi
 
@@ -288,7 +296,7 @@ _fin_wanted_modules() {
   esac
 
   ((${#mods[@]} > 0)) || return 0
-  printf '%s\n' "${mods[@]}"
+  printf '%s\n' "${mods[@]}" | awk '!seen[$0]++'
 }
 
 _fin_module_package() {

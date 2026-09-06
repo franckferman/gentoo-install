@@ -41,12 +41,25 @@ What was checked once it was up, from inside the running system:
 | the account step 90 created | `tester` logs in, `uid=1000`, in `wheel` |
 | privilege escalation | `sudo id` → `uid=0(root)` |
 
-**What that does not cover.** Only one of the five runs in
-[`docs/TESTING.md`](docs/TESTING.md) has been made. Nothing encrypted has been
-booted: `luks-passphrase`, `luks-tpm` and `luks-keyfile-gpg` have been exercised
-against throwaway containers, never carried through to a machine that asks for a
-passphrase at power-on. `efistub` and `systemd-boot` have not been booted either,
-nor has an LVM layout, nor a `musl` or `hardened` stage. Version `0.1.0` should
+**An encrypted machine has since been installed and booted as well** — LUKS2 on
+`aes-xts-plain64` with a 512-bit key, argon2id, GRUB through the removable path.
+It stops where it should:
+
+```
+dracut: luksOpen /dev/vda2 luks-b6ec20d3-126d-4bee-97a2-bc837cb37dd4
+Enter passphrase for /dev/vda2:
+```
+
+Typing the passphrase through QEMU's synthetic keyboard is where that test
+stops: the characters arrive and echo, and dracut's reader never sees the line
+end. The keyslot itself is exercised on every remount with
+`cryptsetup open --key-file`, so what is unproven is the last keystroke, not the
+container.
+
+**What none of it covers.** `luks-tpm` and `luks-keyfile-gpg` have been exercised
+against throwaway containers, never carried through to a boot. `efistub` and
+`systemd-boot` have not been booted, nor has an LVM layout, nor a `musl` or
+`hardened` stage. Version `0.1.0` should
 still meet a disk you would miss with `--dry-run` first.
 
 One finding from that run is worth repeating here, because it is the difference

@@ -136,6 +136,13 @@ boot_grub_write_default() {
   write_block "$target" "grub defaults" <<<"$body"
 }
 
+boot_grub_removable() {
+  # \EFI\BOOT\BOOTX64.EFI, the path a firmware tries with no NVRAM entry to
+  # guide it. One predicate, so that what grub-install is asked to do and what
+  # is checked afterwards cannot disagree.
+  [[ "$(target_fact boot_removable "" "no")" == "yes" ]]
+}
+
 boot_grub_run_install() {
   # Args: $1 = target root, $2 = firmware.
   local root="$1" firmware="$2" esp_mount label disk
@@ -153,7 +160,7 @@ boot_grub_run_install() {
       return 1
     fi
     argv=(grub-install --target=x86_64-efi "--efi-directory=${esp_mount}" "--bootloader-id=${label}")
-    if [[ "$(target_fact boot_removable "" "no")" == "yes" ]]; then
+    if boot_grub_removable; then
       # \EFI\BOOT\BOOTX64.EFI is the path firmware falls back to with no NVRAM
       # entry. It is also the path another operating system's installer uses,
       # so writing it replaces whatever was there.
@@ -265,11 +272,23 @@ boot_grub_verify() {
 
   label="$(boot_label)"
   esp="$(boot_esp_dir "$root")"
-  efi_file="${esp}/EFI/${label}/grubx64.efi"
+
+  # Where grub-install was told to put the binary. --removable writes the
+  # firmware's fallback path and creates no NVRAM entry at all, which is the
+  # whole reason to ask for it; checking the other path anyway called a correct
+  # install broken — grub-install had just reported success and BOOTX64.EFI was
+  # sitting on the ESP.
+  if boot_grub_removable; then
+    efi_file="${esp}/EFI/BOOT/BOOTX64.EFI"
+  else
+    efi_file="${esp}/EFI/${label}/grubx64.efi"
+  fi
   boot_require_file "$efi_file" "GRUB EFI binary" || return 1
   show_signature "$efi_file"
 
-  if have efibootmgr; then
+  if boot_grub_removable; then
+    ok "removable path: the firmware starts \\EFI\\BOOT\\BOOTX64.EFI with no entry"
+  elif have efibootmgr; then
     if boot_entry_exists "$label" "$(boot_efi_path "/EFI/${label}/grubx64.efi")"; then
       ok "NVRAM entry '${label}' points at the GRUB binary"
     else
@@ -297,7 +316,13 @@ boot_grub_install() {
   if [[ "$firmware" == "uefi" ]] && boot_secureboot_ready; then
     local esp efi_file
     esp="$(boot_esp_dir "$root")"
-    efi_file="${esp}/EFI/${label}/grubx64.efi"
+    # The same path grub-install was asked for: signing the one it did not write
+    # would leave the binary the firmware actually starts unsigned.
+    if boot_grub_removable; then
+      efi_file="${esp}/EFI/BOOT/BOOTX64.EFI"
+    else
+      efi_file="${esp}/EFI/${label}/grubx64.efi"
+    fi
     if [[ -f "$efi_file" || "$DRY_RUN" == "yes" ]]; then
       boot_install_efi "$efi_file" "$efi_file" || return 1
     fi
