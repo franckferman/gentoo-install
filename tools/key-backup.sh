@@ -149,70 +149,90 @@ parse_arguments() {
   while [[ $# -gt 0 ]]; do
     case $1 in
       -h | --help)
-        show_help; exit "${EXIT_SUCCESS}"
+        show_help
+        exit "${EXIT_SUCCESS}"
         ;;
       -q | --quiet)
-        QUIET="true"; shift
+        QUIET="true"
+        shift
         ;;
       --force)
-        FORCE="true"; shift
+        FORCE="true"
+        shift
         ;;
       --no-verify)
-        NO_VERIFY="true"; shift
+        NO_VERIFY="true"
+        shift
         ;;
       --device)
         [[ $# -ge 2 ]] || {
-          err "--device requires a value"; exit "${EXIT_USAGE}"
+          err "--device requires a value"
+          exit "${EXIT_USAGE}"
         }
-        DEVICE="$2"; shift 2
+        DEVICE="$2"
+        shift 2
         ;;
       --key)
         [[ $# -ge 2 ]] || {
-          err "--key requires a value"; exit "${EXIT_USAGE}"
+          err "--key requires a value"
+          exit "${EXIT_USAGE}"
         }
-        KEY_PATH="$2"; shift 2
+        KEY_PATH="$2"
+        shift 2
         ;;
       --root)
         [[ $# -ge 2 ]] || {
-          err "--root requires a value"; exit "${EXIT_USAGE}"
+          err "--root requires a value"
+          exit "${EXIT_USAGE}"
         }
         [[ -d "$2" ]] || {
-          err "Not a directory: $2"; exit "${EXIT_USAGE}"
+          err "Not a directory: $2"
+          exit "${EXIT_USAGE}"
         }
-        ROOT_PREFIX="${2%/}"; shift 2
+        ROOT_PREFIX="${2%/}"
+        shift 2
         ;;
       --out)
         [[ $# -ge 2 ]] || {
-          err "--out requires a value"; exit "${EXIT_USAGE}"
+          err "--out requires a value"
+          exit "${EXIT_USAGE}"
         }
         [[ -d "$2" ]] || {
-          err "Not a directory: $2"; exit "${EXIT_USAGE}"
+          err "Not a directory: $2"
+          exit "${EXIT_USAGE}"
         }
-        OUT_DIR="${2%/}"; shift 2
+        OUT_DIR="${2%/}"
+        shift 2
         ;;
       --passphrase)
         [[ $# -ge 2 ]] || {
-          err "--passphrase requires a value"; exit "${EXIT_USAGE}"
+          err "--passphrase requires a value"
+          exit "${EXIT_USAGE}"
         }
         PASSPHRASE="$2"
-        PASSPHRASE_SOURCE="argv"; shift 2
+        PASSPHRASE_SOURCE="argv"
+        shift 2
         ;;
       --passphrase-file)
         [[ $# -ge 2 ]] || {
-          err "--passphrase-file requires a value"; exit "${EXIT_USAGE}"
+          err "--passphrase-file requires a value"
+          exit "${EXIT_USAGE}"
         }
         [[ -r "$2" ]] || {
-          err "Cannot read $2"; exit "${EXIT_USAGE}"
+          err "Cannot read $2"
+          exit "${EXIT_USAGE}"
         }
         # head strips the \n, not the \r a file written on Windows
         # carries. The secret often comes out of a password manager on
         # a Windows workstation, and gpg would then be handed a
         # passphrase nobody typed.
         PASSPHRASE="$(head -n 1 "$2" | tr -d '\r')"
-        PASSPHRASE_SOURCE="file:$2"; shift 2
+        PASSPHRASE_SOURCE="file:$2"
+        shift 2
         ;;
       --passphrase-stdin)
-        PASSPHRASE_STDIN="true"; shift
+        PASSPHRASE_STDIN="true"
+        shift
         ;;
       *)
         err "Unknown option: $1"
@@ -275,10 +295,12 @@ resolve_device() {
   if [[ -n "$DEVICE" ]]; then
     dev="/dev/$(normalize_device "$DEVICE")"
     [[ -b "$dev" ]] || {
-      err "Device not found: $dev"; return 1
+      err "Device not found: $dev"
+      return 1
     }
     cryptsetup isLuks "$dev" 2>/dev/null || {
-      err "$dev is not a LUKS container"; return 1
+      err "$dev is not a LUKS container"
+      return 1
     }
     echo "$dev"
     return 0
@@ -333,14 +355,16 @@ resolve_key() {
   local candidate
   if [[ -n "$KEY_PATH" ]]; then
     [[ -f "$KEY_PATH" ]] || {
-      err "Key not found: $KEY_PATH"; return 1
+      err "Key not found: $KEY_PATH"
+      return 1
     }
     echo "$KEY_PATH"
     return 0
   fi
   for candidate in "${KEY_CANDIDATES[@]}"; do
     [[ -f "${ROOT_PREFIX}${candidate}" ]] && {
-      echo "${ROOT_PREFIX}${candidate}"; return 0
+      echo "${ROOT_PREFIX}${candidate}"
+      return 0
     }
   done
   return 1
@@ -374,7 +398,8 @@ resolve_passphrase() {
     IFS= read -r PASSPHRASE || true
     PASSPHRASE_SOURCE="stdin"
     [[ -n "$PASSPHRASE" ]] || {
-      err "--passphrase-stdin was given but stdin held nothing"; return 1
+      err "--passphrase-stdin was given but stdin held nothing"
+      return 1
     }
     return 0
   fi
@@ -393,15 +418,18 @@ resolve_passphrase() {
     echo -n "Passphrase for the key file (q to cancel): " >&2
     read -rs PASSPHRASE || {
       echo "" >&2
-      err "No input available"; return 1
+      err "No input available"
+      return 1
     }
     echo "" >&2
     [[ "$PASSPHRASE" == "q" ]] && {
       PASSPHRASE=""
-      log "Cancelled"; return 1
+      log "Cancelled"
+      return 1
     }
     [[ -n "$PASSPHRASE" ]] && {
-      PASSPHRASE_SOURCE="interactive"; return 0
+      PASSPHRASE_SOURCE="interactive"
+      return 0
     }
     err "Empty, try again"
   done
@@ -527,7 +555,8 @@ do_show() {
 do_verify() {
   local key dev
   key="$(resolve_key)" || {
-    err "No key file found"; exit "${EXIT_FAILURE}"
+    err "No key file found"
+    exit "${EXIT_FAILURE}"
   }
   log "Key file: $key"
 

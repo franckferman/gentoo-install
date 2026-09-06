@@ -209,101 +209,130 @@ parse_arguments() {
   while [[ $# -gt 0 ]]; do
     case $1 in
       -h | --help)
-        show_help; exit "${EXIT_SUCCESS}"
+        show_help
+        exit "${EXIT_SUCCESS}"
         ;;
       -q | --quiet)
-        QUIET="true"; shift
+        QUIET="true"
+        shift
         ;;
       --force)
-        FORCE="true"; shift
+        FORCE="true"
+        shift
         ;;
       --gen-passphrase)
-        GEN_NEW="true"; shift
+        GEN_NEW="true"
+        shift
         ;;
       --device)
         [[ $# -ge 2 ]] || {
-          err "--device requires a value"; exit "${EXIT_USAGE}"
+          err "--device requires a value"
+          exit "${EXIT_USAGE}"
         }
-        DEVICE="$2"; shift 2
+        DEVICE="$2"
+        shift 2
         ;;
       --key)
         [[ $# -ge 2 ]] || {
-          err "--key requires a value"; exit "${EXIT_USAGE}"
+          err "--key requires a value"
+          exit "${EXIT_USAGE}"
         }
-        KEY_PATH="$2"; shift 2
+        KEY_PATH="$2"
+        shift 2
         ;;
       --root)
         [[ $# -ge 2 ]] || {
-          err "--root requires a value"; exit "${EXIT_USAGE}"
+          err "--root requires a value"
+          exit "${EXIT_USAGE}"
         }
         [[ -d "$2" ]] || {
-          err "Not a directory: $2"; exit "${EXIT_USAGE}"
+          err "Not a directory: $2"
+          exit "${EXIT_USAGE}"
         }
-        ROOT_PREFIX="${2%/}"; shift 2
+        ROOT_PREFIX="${2%/}"
+        shift 2
         ;;
       --from)
         [[ $# -ge 2 ]] || {
-          err "--from requires key, tpm, pass or auto"; exit "${EXIT_USAGE}"
+          err "--from requires key, tpm, pass or auto"
+          exit "${EXIT_USAGE}"
         }
         case "$2" in
           key | tpm | pass | auto) FROM="$2" ;;
           *)
-            err "Invalid --from: $2 (expected key, tpm, pass or auto)"; exit "${EXIT_USAGE}"
+            err "Invalid --from: $2 (expected key, tpm, pass or auto)"
+            exit "${EXIT_USAGE}"
             ;;
         esac
         shift 2
         ;;
       --slot)
         [[ $# -ge 2 ]] || {
-          err "--slot requires a number, or auto"; exit "${EXIT_USAGE}"
+          err "--slot requires a number, or auto"
+          exit "${EXIT_USAGE}"
         }
         [[ "$2" =~ ^([0-9]+|auto)$ ]] || {
-          err "Invalid --slot: $2 (expected a number or auto)"; exit "${EXIT_USAGE}"
+          err "Invalid --slot: $2 (expected a number or auto)"
+          exit "${EXIT_USAGE}"
         }
-        SLOT="$2"; shift 2
+        SLOT="$2"
+        shift 2
         ;;
       --old-passphrase)
         [[ $# -ge 2 ]] || {
-          err "--old-passphrase requires a value"; exit "${EXIT_USAGE}"
+          err "--old-passphrase requires a value"
+          exit "${EXIT_USAGE}"
         }
         OLD_PASSPHRASE="$2"
-        OLD_SOURCE="argv"; shift 2
+        OLD_SOURCE="argv"
+        shift 2
         ;;
       --old-passphrase-file)
         [[ $# -ge 2 ]] || {
-          err "--old-passphrase-file requires a value"; exit "${EXIT_USAGE}"
+          err "--old-passphrase-file requires a value"
+          exit "${EXIT_USAGE}"
         }
         [[ -r "$2" ]] || {
-          err "Cannot read $2"; exit "${EXIT_USAGE}"
+          err "Cannot read $2"
+          exit "${EXIT_USAGE}"
         }
         OLD_PASSPHRASE="$(head -n 1 "$2")"
-        OLD_SOURCE="file:$2"; shift 2
+        OLD_SOURCE="file:$2"
+        shift 2
         ;;
       --new-passphrase)
         [[ $# -ge 2 ]] || {
-          err "--new-passphrase requires a value"; exit "${EXIT_USAGE}"
+          err "--new-passphrase requires a value"
+          exit "${EXIT_USAGE}"
         }
         NEW_PASSPHRASE="$2"
-        NEW_SOURCE="argv"; shift 2
+        NEW_SOURCE="argv"
+        shift 2
         ;;
       --new-passphrase-file)
         [[ $# -ge 2 ]] || {
-          err "--new-passphrase-file requires a value"; exit "${EXIT_USAGE}"
+          err "--new-passphrase-file requires a value"
+          exit "${EXIT_USAGE}"
         }
         [[ -r "$2" ]] || {
-          err "Cannot read $2"; exit "${EXIT_USAGE}"
+          err "Cannot read $2"
+          exit "${EXIT_USAGE}"
         }
         NEW_PASSPHRASE="$(head -n 1 "$2")"
-        NEW_SOURCE="file:$2"; shift 2
+        NEW_SOURCE="file:$2"
+        shift 2
         ;;
       --new-passphrase-out)
         [[ $# -ge 2 ]] || {
-          err "--new-passphrase-out requires a file path"; exit "${EXIT_USAGE}"
+          err "--new-passphrase-out requires a file path"
+          exit "${EXIT_USAGE}"
         }
         [[ -d "$2" ]] && {
-          err "--new-passphrase-out points at a directory: $2"; exit "${EXIT_USAGE}"
+          err "--new-passphrase-out points at a directory: $2"
+          exit "${EXIT_USAGE}"
         }
-        NEW_PASS_OUT="$2"; shift 2
+        NEW_PASS_OUT="$2"
+        shift 2
         ;;
       *)
         err "Unknown option: $1"
@@ -392,10 +421,12 @@ resolve_device() {
   if [[ -n "$DEVICE" ]]; then
     dev="/dev/$(normalize_device "$DEVICE")"
     [[ -b "$dev" ]] || {
-      err "Device not found: $dev"; return 1
+      err "Device not found: $dev"
+      return 1
     }
     cryptsetup isLuks "$dev" 2>/dev/null || {
-      err "$dev is not a LUKS container"; return 1
+      err "$dev is not a LUKS container"
+      return 1
     }
     echo "$dev"
     return 0
@@ -469,7 +500,8 @@ slot_count() {
   local v
   v="$(cryptsetup luksDump "$1" 2>/dev/null | awk '/^Version/ { gsub(/[^0-9]/, "", $2); print $2; exit }')" || true
   [[ "$v" == "1" ]] && {
-    echo 8; return 0
+    echo 8
+    return 0
   }
   echo 32
 }
@@ -621,14 +653,16 @@ resolve_key_file() {
   local candidate
   if [[ -n "$KEY_PATH" ]]; then
     [[ -f "$KEY_PATH" ]] || {
-      err "Key not found: $KEY_PATH"; return 1
+      err "Key not found: $KEY_PATH"
+      return 1
     }
     echo "$KEY_PATH"
     return 0
   fi
   for candidate in "${KEY_CANDIDATES[@]}"; do
     [[ -f "${ROOT_PREFIX}${candidate}" ]] && {
-      echo "${ROOT_PREFIX}${candidate}"; return 0
+      echo "${ROOT_PREFIX}${candidate}"
+      return 0
     }
   done
   return 1
@@ -649,16 +683,19 @@ ask_old_passphrase() {
     echo -n "Existing passphrase (q to cancel): " >&2
     read -rs OLD_PASSPHRASE || {
       echo "" >&2
-      err "No input available"; return 1
+      err "No input available"
+      return 1
     }
     echo "" >&2
     [[ "$OLD_PASSPHRASE" == "q" ]] && {
       OLD_PASSPHRASE=""
-      log "Cancelled"; return 1
+      log "Cancelled"
+      return 1
     }
     [[ -n "$OLD_PASSPHRASE" ]] && {
       # shellcheck disable=SC2034  # recorded at every entry point, read by none
-      OLD_SOURCE="interactive"; return 0
+      OLD_SOURCE="interactive"
+      return 0
     }
     err "Empty, try again"
   done
@@ -670,7 +707,8 @@ ask_old_passphrase() {
 unlock_from_key() {
   local dev="$1" key
   key="$(resolve_key_file)" || {
-    log "  no key file found"; return 1
+    log "  no key file found"
+    return 1
   }
   log "Key file: $key"
 
@@ -689,7 +727,8 @@ unlock_from_key() {
     return 1
   fi
   [[ -s "$UNLOCK_FILE" ]] || {
-    err "  decryption produced an empty key"; return 1
+    err "  decryption produced an empty key"
+    return 1
   }
   return 0
 }
@@ -700,11 +739,13 @@ unlock_from_tpm() {
   local dev="$1" s
 
   command -v clevis >/dev/null 2>&1 || {
-    log "  clevis not installed here"; return 1
+    log "  clevis not installed here"
+    return 1
   }
 
   s="$(clevis_slot "$dev")" || {
-    log "  no clevis binding, or it names no slot"; return 1
+    log "  no clevis binding, or it names no slot"
+    return 1
   }
   log "clevis owns slot $s, asking the TPM to release it"
 
@@ -714,7 +755,8 @@ unlock_from_tpm() {
     return 1
   fi
   [[ -s "$UNLOCK_FILE" ]] || {
-    err "  the TPM returned nothing"; return 1
+    err "  the TPM returned nothing"
+    return 1
   }
   return 0
 }
@@ -817,7 +859,8 @@ random_index() {
   while true; do
     byte="$(od -An -N1 -tu1 </dev/urandom | tr -d ' ')"
     [[ "$byte" -lt "$limit" ]] && {
-      echo $((byte % n)); return 0
+      echo $((byte % n))
+      return 0
     }
   done
 }
@@ -843,7 +886,8 @@ write_new_passphrase_out() {
 
   dir="$(dirname "$target")"
   [[ -d "$dir" ]] || {
-    err "Directory does not exist: $dir"; return 1
+    err "Directory does not exist: $dir"
+    return 1
   }
   resolved="$(readlink -f "$dir")" || resolved="$dir"
 
@@ -869,7 +913,8 @@ write_new_passphrase_out() {
   fi
 
   back="$(head -n 1 "$target")" || {
-    err "Cannot read $target back"; return 1
+    err "Cannot read $target back"
+    return 1
   }
   if [[ "$back" != "$NEW_PASSPHRASE" ]]; then
     err "$target does not hold what was drawn"
@@ -927,20 +972,24 @@ resolve_new_passphrase() {
     echo -n "New passphrase: " >&2
     read -rs first || {
       echo "" >&2
-      err "No input available"; return 1
+      err "No input available"
+      return 1
     }
     echo "" >&2
     [[ -n "$first" ]] || {
-      err "Cannot be empty"; continue
+      err "Cannot be empty"
+      continue
     }
     echo -n "Confirm: " >&2
     read -rs second || {
       echo "" >&2
-      err "No input available"; return 1
+      err "No input available"
+      return 1
     }
     echo "" >&2
     [[ "$first" == "$second" ]] || {
-      err "They do not match"; continue
+      err "They do not match"
+      continue
     }
     NEW_PASSPHRASE="$first"
     NEW_SOURCE="interactive"
@@ -1131,7 +1180,8 @@ do_remove() {
     echo -n "Type the slot number to remove it (q to cancel): " >&2
     read -r answer || {
       echo "" >&2
-      err "No input available"; exit "${EXIT_FAILURE}"
+      err "No input available"
+      exit "${EXIT_FAILURE}"
     }
     if [[ "$answer" != "$target" ]]; then
       log "Cancelled, nothing removed"

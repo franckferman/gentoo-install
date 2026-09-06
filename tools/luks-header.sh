@@ -196,92 +196,118 @@ parse_arguments() {
   while [[ $# -gt 0 ]]; do
     case $1 in
       -h | --help)
-        show_help; exit "${EXIT_SUCCESS}"
+        show_help
+        exit "${EXIT_SUCCESS}"
         ;;
       -q | --quiet)
-        QUIET="true"; shift
+        QUIET="true"
+        shift
         ;;
       --allow-local)
-        ALLOW_LOCAL="true"; shift
+        ALLOW_LOCAL="true"
+        shift
         ;;
       --force-uuid)
-        FORCE_UUID="true"; shift
+        FORCE_UUID="true"
+        shift
         ;;
       --i-have-no-credential)
-        NO_CREDENTIAL="true"; shift
+        NO_CREDENTIAL="true"
+        shift
         ;;
       --force)
-        FORCE="true"; shift
+        FORCE="true"
+        shift
         ;;
       --device)
         [[ $# -ge 2 ]] || {
-          err "--device requires a value"; exit "${EXIT_USAGE}"
+          err "--device requires a value"
+          exit "${EXIT_USAGE}"
         }
-        DEVICE="$2"; shift 2
+        DEVICE="$2"
+        shift 2
         ;;
       --file)
         [[ $# -ge 2 ]] || {
-          err "--file requires a value"; exit "${EXIT_USAGE}"
+          err "--file requires a value"
+          exit "${EXIT_USAGE}"
         }
-        FILE_PATH="$2"; shift 2
+        FILE_PATH="$2"
+        shift 2
         ;;
       --out)
         [[ $# -ge 2 ]] || {
-          err "--out requires a value"; exit "${EXIT_USAGE}"
+          err "--out requires a value"
+          exit "${EXIT_USAGE}"
         }
         [[ -d "$2" ]] || {
-          err "Not a directory: $2"; exit "${EXIT_USAGE}"
+          err "Not a directory: $2"
+          exit "${EXIT_USAGE}"
         }
-        OUT_DIR="${2%/}"; shift 2
+        OUT_DIR="${2%/}"
+        shift 2
         ;;
       --key)
         [[ $# -ge 2 ]] || {
-          err "--key requires a value"; exit "${EXIT_USAGE}"
+          err "--key requires a value"
+          exit "${EXIT_USAGE}"
         }
-        KEY_PATH="$2"; shift 2
+        KEY_PATH="$2"
+        shift 2
         ;;
       --from)
         [[ $# -ge 2 ]] || {
-          err "--from requires key, pass or auto"; exit "${EXIT_USAGE}"
+          err "--from requires key, pass or auto"
+          exit "${EXIT_USAGE}"
         }
         case "$2" in
           key | pass | auto) FROM="$2" ;;
           *)
-            err "Invalid --from: $2 (expected key, pass or auto)"; exit "${EXIT_USAGE}"
+            err "Invalid --from: $2 (expected key, pass or auto)"
+            exit "${EXIT_USAGE}"
             ;;
         esac
         shift 2
         ;;
       --root)
         [[ $# -ge 2 ]] || {
-          err "--root requires a value"; exit "${EXIT_USAGE}"
+          err "--root requires a value"
+          exit "${EXIT_USAGE}"
         }
         [[ -d "$2" ]] || {
-          err "Not a directory: $2"; exit "${EXIT_USAGE}"
+          err "Not a directory: $2"
+          exit "${EXIT_USAGE}"
         }
-        ROOT_PREFIX="${2%/}"; shift 2
+        ROOT_PREFIX="${2%/}"
+        shift 2
         ;;
       --passphrase)
         [[ $# -ge 2 ]] || {
-          err "--passphrase requires a value"; exit "${EXIT_USAGE}"
+          err "--passphrase requires a value"
+          exit "${EXIT_USAGE}"
         }
         PASSPHRASE="$2"
-        PASSPHRASE_SOURCE="argv"; shift 2
+        PASSPHRASE_SOURCE="argv"
+        shift 2
         ;;
       --passphrase-file)
         [[ $# -ge 2 ]] || {
-          err "--passphrase-file requires a value"; exit "${EXIT_USAGE}"
+          err "--passphrase-file requires a value"
+          exit "${EXIT_USAGE}"
         }
         [[ -r "$2" ]] || {
-          err "Cannot read passphrase file: $2"; exit "${EXIT_USAGE}"
+          err "Cannot read passphrase file: $2"
+          exit "${EXIT_USAGE}"
         }
         PASSPHRASE="$(head -n 1 "$2")"
-        PASSPHRASE_SOURCE="file:$2"; shift 2
+        PASSPHRASE_SOURCE="file:$2"
+        shift 2
         ;;
       --passphrase-stdin)
         # Deferred: reading here would block --help on a terminal with
         # nothing piped in
-        PASSPHRASE_STDIN="true"; shift
+        PASSPHRASE_STDIN="true"
+        shift
         ;;
       *)
         err "Unknown option: $1"
@@ -373,10 +399,12 @@ resolve_device() {
   if [[ -n "$DEVICE" ]]; then
     dev="/dev/$(normalize_device "$DEVICE")"
     [[ -b "$dev" ]] || {
-      err "Device not found: $dev"; return 1
+      err "Device not found: $dev"
+      return 1
     }
     cryptsetup isLuks "$dev" 2>/dev/null || {
-      err "$dev is not a LUKS container"; return 1
+      err "$dev is not a LUKS container"
+      return 1
     }
     echo "$dev"
     return 0
@@ -432,7 +460,8 @@ resolve_restore_target() {
   if [[ -n "$DEVICE" ]]; then
     dev="/dev/$(normalize_device "$DEVICE")"
     [[ -b "$dev" ]] || {
-      err "Device not found: $dev"; return 1
+      err "Device not found: $dev"
+      return 1
     }
     if ! cryptsetup isLuks "$dev" 2>/dev/null; then
       warn "$dev carries no readable LUKS header"
@@ -660,14 +689,16 @@ resolve_key() {
   local candidate
   if [[ -n "$KEY_PATH" ]]; then
     [[ -f "$KEY_PATH" ]] || {
-      err "Key not found: $KEY_PATH"; return 1
+      err "Key not found: $KEY_PATH"
+      return 1
     }
     echo "$KEY_PATH"
     return 0
   fi
   for candidate in "${KEY_CANDIDATES[@]}"; do
     [[ -f "${ROOT_PREFIX}${candidate}" ]] && {
-      echo "${ROOT_PREFIX}${candidate}"; return 0
+      echo "${ROOT_PREFIX}${candidate}"
+      return 0
     }
   done
   return 1
@@ -678,7 +709,8 @@ resolve_passphrase() {
     IFS= read -r PASSPHRASE || true
     PASSPHRASE_SOURCE="stdin"
     [[ -n "$PASSPHRASE" ]] || {
-      err "--passphrase-stdin was given but stdin held nothing"; return 1
+      err "--passphrase-stdin was given but stdin held nothing"
+      return 1
     }
     return 0
   fi
@@ -703,15 +735,18 @@ resolve_passphrase() {
     echo -n "Existing secret (q to cancel): " >&2
     read -rs PASSPHRASE || {
       echo "" >&2
-      err "No input available"; return 1
+      err "No input available"
+      return 1
     }
     echo "" >&2
     [[ "$PASSPHRASE" == "q" ]] && {
       PASSPHRASE=""
-      log "Cancelled"; return 1
+      log "Cancelled"
+      return 1
     }
     [[ -n "$PASSPHRASE" ]] && {
-      PASSPHRASE_SOURCE="interactive"; return 0
+      PASSPHRASE_SOURCE="interactive"
+      return 0
     }
     err "Empty, try again"
   done
@@ -726,7 +761,8 @@ credential_from_key() {
   # even on Ctrl-C.
   local key rc=0
   key="$(resolve_key)" || {
-    log "  no key file found"; return 1
+    log "  no key file found"
+    return 1
   }
   log "Key file: $key"
 
@@ -756,7 +792,8 @@ credential_from_key() {
   fi
 
   [[ -s "$CRED_FILE" ]] || {
-    err "  decryption produced an empty key"; return 1
+    err "  decryption produced an empty key"
+    return 1
   }
   return 0
 }
@@ -865,14 +902,16 @@ write_header_backup() {
     chmod 600 "$out" 2>/dev/null || true
   fi
   [[ -s "$out" ]] || {
-    err "The written file is empty: $out"; return 1
+    err "The written file is empty: $out"
+    return 1
   }
   return 0
 }
 
 file_sha256() {
   command -v sha256sum >/dev/null 2>&1 || {
-    echo "unavailable"; return 0
+    echo "unavailable"
+    return 0
   }
   sha256sum "$1" 2>/dev/null | awk '{print $1}' || true
 }
@@ -896,7 +935,8 @@ write_meta_file() {
     echo "cryptsetup=$(cryptsetup --version 2>/dev/null | awk '{print $2}')"
     echo "date=$(date -Is)"
   } >"$meta" 2>/dev/null || {
-    warn "Could not write $meta"; return 1
+    warn "Could not write $meta"
+    return 1
   }
 
   if [[ -f "$meta" && ! -L "$meta" ]]; then
@@ -911,13 +951,16 @@ file_looks_like_header() {
   local file="$1"
 
   [[ -f "$file" ]] || {
-    err "Not a file: $file"; return 1
+    err "Not a file: $file"
+    return 1
   }
   [[ -r "$file" ]] || {
-    err "Cannot read: $file"; return 1
+    err "Cannot read: $file"
+    return 1
   }
   [[ -s "$file" ]] || {
-    err "Empty file: $file"; return 1
+    err "Empty file: $file"
+    return 1
   }
 
   if ! header_is_luks2 "$file"; then
@@ -1258,7 +1301,8 @@ confirm_uuid() {
     echo -n "Type the UUID above to confirm (q to cancel): " >&2
     read -r typed || {
       echo "" >&2
-      err "No input available"; return 1
+      err "No input available"
+      return 1
     }
     [[ "$typed" == "q" ]] && return 1
     [[ "$typed" == "$expected" ]] && return 0

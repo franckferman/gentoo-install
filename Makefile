@@ -19,9 +19,15 @@ SHELL_FILES = $(ENTRY) $(wildcard lib/*.sh) $(wildcard steps/*.sh) \
 # is a lint target nobody runs, and the whole point is that a contributor can
 # reproduce CI before opening a pull request.
 DOCKER           ?= docker
-SHELLCHECK_IMAGE ?= koalaman/shellcheck:stable
-SHFMT_IMAGE      ?= mvdan/shfmt:latest
-BATS_IMAGE       ?= bats/bats:latest
+# Pinned, and not to `latest`. CI pulls these fresh on every run while a
+# contributor's machine has whatever it cached, so a moving tag means the two
+# disagree about what "formatted" means — which is what happened: shfmt:latest
+# published a development build, CI took it, the local cache kept the previous
+# one, and a commit that passed `make lint` here failed there on a comment
+# alignment nobody had touched. A version is also a thing a reader can look up.
+SHELLCHECK_IMAGE ?= koalaman/shellcheck:v0.11.0
+SHFMT_IMAGE      ?= mvdan/shfmt:v3.14.0
+BATS_IMAGE       ?= bats/bats:1.14.0
 IN_CONTAINER      = $(DOCKER) run --rm -v "$(CURDIR)":/mnt -w /mnt
 
 # The one image that writes into the checkout gets the caller's own id.

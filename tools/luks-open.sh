@@ -879,8 +879,8 @@ do_close() {
   # A group that carries the running root is never this tool's to deactivate.
   # vgchange -an there takes down every logical volume that happens to be
   # idle at that instant, on a machine that is working.
-  if [[ -n "$VG_NAME"
-    && "$(findmnt -no SOURCE / 2>/dev/null || true)" == "/dev/mapper/${VG_NAME}-"* ]]; then
+  if [[ -n "$VG_NAME" &&
+    "$(findmnt -no SOURCE / 2>/dev/null || true)" == "/dev/mapper/${VG_NAME}-"* ]]; then
     err "$VG_NAME carries the running root: refusing to deactivate it"
     err "  This tool closes a machine opened from a LiveCD, not the one"
     err "  it runs on. Name the right group with --vg"

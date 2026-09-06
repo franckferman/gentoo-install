@@ -1504,9 +1504,9 @@ _sys_service_exists() {
   # Args: $1 = root, $2 = service name.
   local root="$1" name="$2"
   if [[ "$(_sys_init)" == "systemd" ]]; then
-    [[ -e "${root}/usr/lib/systemd/system/${name}.service"
-      || -e "${root}/lib/systemd/system/${name}.service"
-      || -e "${root}/etc/systemd/system/${name}.service" ]]
+    [[ -e "${root}/usr/lib/systemd/system/${name}.service" ||
+      -e "${root}/lib/systemd/system/${name}.service" ||
+      -e "${root}/etc/systemd/system/${name}.service" ]]
   else
     [[ -x "${root}/etc/init.d/${name}" ]]
   fi

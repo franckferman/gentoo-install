@@ -108,6 +108,10 @@ GI_INTERNAL_TOKENS='trinity|cagip|ca-gip|matric|gundabad|thrain|keepass|gps_'
   # And so is SVG path data. docs/index.html carries the GitHub mark as an
   # inline <path d="M12 0C5.37 0 …">, whose coordinates read as five versions
   # this project never had. A drawing is not a document making a claim.
+  #
+  # And so is a pinned container image. The Makefile names shellcheck 0.11.0,
+  # shfmt 3.14.0 and bats 1.14.0 — three other projects' versions, pinned
+  # precisely so that CI and a contributor agree on what "formatted" means.
   for file in README.md CHANGELOG.md CONTRIBUTING.md Makefile \
     docs/DESIGN.md docs/index.html .github/workflows/ci.yml \
     .github/workflows/static.yml; do
@@ -115,6 +119,7 @@ GI_INTERNAL_TOKENS='trinity|cagip|ca-gip|matric|gundabad|thrain|keepass|gps_'
     while IFS= read -r found; do
       [[ "$found" == "$version" ]] || wrong+="  ${file}: ${found}"$'\n'
     done < <(sed -E -e 's#https?://[^[:space:])"]*##g' -e 's#\bd="[^"]*"##g' \
+      -e 's#[A-Za-z0-9._/-]+:v?[0-9]+\.[0-9]+\.[0-9]+##g' \
       "${GI_ROOT}/${file}" \
       | grep -oE '(^|[^0-9.-])[0-9]+\.[0-9]+\.[0-9]+([^0-9a-zA-Z-]|$)' \
       | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)
