@@ -81,8 +81,14 @@ signature and the sha256 — and, given an archive with neither, says `nothing
 verified this archive`, names the two ways to fix that, and unpacks it anyway,
 because that is what was asked.
 
-**What none of it covers.** `luks-tpm` and `luks-keyfile-gpg` have been exercised
-against throwaway containers, never carried through to a boot. `efistub` has not
+**`luks-keyfile-gpg` has been carried through as well** — the container made, the
+GPG-wrapped key file deployed onto the ESP, and both ways in exercised: the key
+file opens slot 0, the recovery passphrase opens slot 1.
+
+**What none of it covers.** `luks-tpm` has been exercised against throwaway
+containers, never carried through to a boot: sealing a key binds it to the TPM
+of the machine being installed, so it needs the installer running inside the VM
+with a software TPM attached. `efistub` has not
 been booted, nor has an LVM layout, nor a `musl` or `hardened` stage. Version `0.1.0` should
 still meet a disk you would miss with `--dry-run` first.
 
