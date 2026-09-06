@@ -412,12 +412,38 @@ The installer now says so itself when a command line names consoles and none of
 them is a screen — a machine that boots correctly and says nothing is
 indistinguishable from one that hung, and this is how long that costs.
 
-**Typing the passphrase from outside still does not work**, by either path:
-`sendkey` puts characters on the framebuffer and writing to the serial socket
-puts them on `/dev/console`, and dracut's reader advances on neither. Whatever
-it reads from, it is not something these two reach. Type it at the window, or
-find out what that reader is actually opening — that is the next thing to know,
-and it is written here rather than left as a shrug.
+### Typing the passphrase from outside, and why an automated test should not
+
+It does not work, by either path, and this is what is now known rather than
+guessed.
+
+**The prompt is not dracut's.** `70crypt-lib/crypt-lib.sh` builds a command and
+hands the terminal to it:
+
+```sh
+luks_open="$(command -v cryptsetup) $cryptsetupopts luksOpen"
+ask_for_password \
+    --ply-cmd "$luks_open -T1 $dev $mapname" \
+    --tty-cmd "$luks_open -T5 -t $_timeout $dev $mapname"
+```
+
+No `--tty-prompt` is passed, so `Enter passphrase for /dev/vda2:` is printed by
+**cryptsetup**, which also reads it — from `/dev/tty` when it can open one, from
+standard input otherwise.
+
+**The guest does receive keystrokes.** `sendkey ctrl-alt-delete` reboots the
+machine from that prompt, which settles the question of whether QEMU's input
+reaches it. Ordinary characters land in the active virtual terminal; bytes
+written to the serial socket land on `ttyS0`. Neither advances cryptsetup,
+whichever console is named last.
+
+**So do not build an automated boot test around typing it.** A test that needs
+an encrypted machine to come up on its own has two honest ways to do that:
+`crypt = luks-tpm`, where the chip answers and nobody types anything — proved on
+6 September, the machine reaching a login prompt unaided — or `rd.luks.key=` and
+a key file, which is what `luks-keyfile-gpg` installs anyway. Typing is for a
+person at a window, and what a headless run can prove is that the prompt appears
+and names the right container.
 
 ---
 
