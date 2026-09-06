@@ -504,3 +504,55 @@ load helper
   ' "$root" >"${root}/out2" 2>/dev/null
   [ ! -s "${root}/out2" ]
 }
+
+# --------------------------------------------------------------------------- #
+#  A console that takes the screen away                                       #
+# --------------------------------------------------------------------------- #
+@test "a command line naming only a serial console is called out" {
+  # The kernel prints to every console= it is given and makes the last one
+  # /dev/console. Name ttyS0 and nothing else and the framebuffer goes quiet —
+  # including the initramfs asking for the LUKS passphrase, which is the one
+  # message a person has to see.
+  #
+  # This project's own testing notes recommended console=ttyS0,115200 to make a
+  # boot drivable. An install took the advice, the machine booted correctly and
+  # said nothing on either console, and it was read as a hung image for most of
+  # an afternoon.
+  gi_bash 'kernel_warn_console_takeover "root=/dev/sda2 ro console=ttyS0,115200"'
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"none of them is the screen"* ]]
+  [[ "$stderr" == *"console=tty0 console=ttyS0"* ]]
+}
+
+@test "naming the screen as well says nothing" {
+  gi_bash 'kernel_warn_console_takeover "root=/dev/sda2 ro console=tty0 console=ttyS0,115200"'
+  [ "$status" -eq 0 ]
+  [ -z "$stderr" ]
+}
+
+@test "no console= at all says nothing either" {
+  gi_bash 'kernel_warn_console_takeover "root=/dev/sda2 ro rd.luks.uuid=luks-1234"'
+  [ "$status" -eq 0 ]
+  [ -z "$stderr" ]
+}
+
+@test "tty0 and ttyS0 are told apart" {
+  # `tty` as a pattern matches both, which is how the first version of this
+  # check looked at console=ttyS0 and saw a screen.
+  gi_bash 'kernel_warn_console_takeover "ro console=ttyS0"'
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"none of them is the screen"* ]]
+  gi_bash 'kernel_warn_console_takeover "ro console=tty1"'
+  [ "$status" -eq 0 ]
+  [ -z "$stderr" ]
+}
+
+@test "the command line display asks that question" {
+  gi_bash '
+    config_init_defaults
+    kernel_cmdline() { printf "root=/dev/sda2 ro console=ttyS0,115200\n"; }
+    show_kernel_cmdline
+  '
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"none of them is the screen"* ]]
+}

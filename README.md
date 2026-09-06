@@ -71,17 +71,19 @@ copying is the order that matters — a firmware with Secure Boot on starts
 `\EFI\BOOT\BOOTX64.EFI`, so signing after the copy would leave the one file
 that actually boots unsigned.
 
-**And a later run of the same variant did not boot**, which belongs here next to
-the claim above rather than in a footnote. On 6 September a full `uki` install
-— eleven steps, none failed — produced an image the firmware picks up from the
-fallback path and then hangs on: no kernel output on the framebuffer, none on
-the serial console the command line names, on two OVMF builds and two memory
-sizes. The image is structurally sound (the ten sections a systemd-stub UKI
-should carry, sane addresses, 43 MiB) and identical at both paths. What that run
-does prove is the part the variant exists for: a firmware with an empty NVRAM
-started this disk instead of falling through to PXE, which is what the same
-firmware did with a GRUB install the day before. `docs/TESTING.md` has the whole
-account, including what has been ruled out and what has not been tried.
+**A second run has now shown the same thing from the other side.** On 6
+September a full `uki` install — eleven steps, none failed — was booted against
+a firmware whose NVRAM had never heard of it. It started the disk from
+`\EFI\BOOT\BOOTX64.EFI`, where the same firmware with a GRUB install and the
+same empty NVRAM had fallen through to PXE the day before, and it reached its
+passphrase prompt.
+
+It took an afternoon to see that, because the install carried
+`--kernel-cmdline-extra "console=ttyS0,115200"` and the kernel prints to every
+`console=` it is given: naming only a serial port takes the screen away, and
+this kernel has no serial console that early, so a machine that was booting
+correctly printed nowhere at all. The installer says so now when a command line
+names consoles and none of them is a screen.
 
 **`systemd-boot` has been booted too**, on the same encrypted disk: `bootctl`
 installed, the loader entry written, and the machine started from

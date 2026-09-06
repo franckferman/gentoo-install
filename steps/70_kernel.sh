@@ -278,12 +278,49 @@ kernel_cmdline() {
   printf '%s\n' "${parts[*]}"
 }
 
+kernel_warn_console_takeover() {
+  # A console= that names only a serial port takes the screen away.
+  #
+  # The kernel prints to every console= it is given and makes the last one
+  # /dev/console. Name ttyS0 and nothing else and the framebuffer goes quiet —
+  # including the initramfs asking for the LUKS passphrase, which is the one
+  # message a person has to see. If the machine also has no serial driver
+  # available that early, it prints nowhere at all, and a machine that boots
+  # correctly and says nothing is indistinguishable from a machine that hung.
+  #
+  # That is not hypothetical: this project's own testing notes recommended
+  # console=ttyS0,115200 to make a boot drivable, an install took the advice,
+  # and the result was read as a hung UKI for most of an afternoon.
+  #
+  # Args: $1 = the command line.
+  local line="$1" consoles
+  consoles="$(printf '%s\n' "$line" | tr ' ' '\n' | sed -n 's/^console=//p')"
+  [[ -n "$consoles" ]] || return 0
+  # tty0 is the screen; ttyS0 is a serial port, and `tty` alone would match
+  # both — which is how the first version of this check passed a command line
+  # naming only ttyS0 and warned about nothing.
+  grep -qE '^tty[0-9]+([,[:space:]]|$)' <<<"$consoles" && return 0
+
+  warn "the kernel command line names a console and none of them is the screen:"
+  while IFS= read -r one; do
+    [[ -n "$one" ]] || continue
+    warn "       console=${one}"
+  done <<<"$consoles"
+  warn "       the kernel prints to every console= it is given, so this one"
+  warn "       takes the framebuffer away — the initramfs asks for the LUKS"
+  warn "       passphrase where nobody is looking, and a machine that boots"
+  warn "       correctly and says nothing looks exactly like one that hung"
+  warn "       add the screen back by naming it too:"
+  warn "       example:  kernel_cmdline_extra = \"console=tty0 console=ttyS0,115200\""
+}
+
 show_kernel_cmdline() {
   # Displays; changes nothing (DESIGN.md §7).
   local line
   line="$(kernel_cmdline)" || return 1
   log "kernel command line:"
   log "       ${line}"
+  kernel_warn_console_takeover "$line"
 }
 
 # --------------------------------------------------------------------------- #

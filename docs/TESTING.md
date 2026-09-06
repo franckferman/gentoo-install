@@ -353,31 +353,40 @@ BdsDxe: loading  Boot0001 "UEFI Misc Device" from PciRoot(0x0)/Pci(0x3,0x0)
 BdsDxe: starting Boot0001 "UEFI Misc Device" from PciRoot(0x0)/Pci(0x3,0x0)
 ```
 
-**And then it hangs, and that is not explained.** The firmware starts the image
-and nothing follows: no kernel output on the framebuffer, none on `ttyS0`
-despite `console=ttyS0,115200` being in the baked-in command line, and the
-guest idle at a few percent of one core. What has been ruled out:
+**And then it appeared to hang — because of an instruction on this page.** The
+firmware started the image and nothing followed: no kernel output on the
+framebuffer, none on `ttyS0` either, and the guest idle. Ruled out in turn: the
+artefact (both copies byte for byte identical, 45,239,808 bytes), its shape (the
+ten sections a systemd-stub image should carry, sane addresses), the firmware
+build (`OVMF_CODE_4M.qcow2` and `OVMF_CODE.fd` alike) and memory (4 and 8 GiB
+alike).
 
-- the artefact — `EFI/BOOT/BOOTX64.EFI` and `EFI/Linux/gentoo-*.efi` are byte
-  for byte identical, 45,239,808 bytes, on an ESP that is 14% full;
-- its shape — the PE carries the ten sections a systemd-stub image should,
-  with sane addresses:
+The cause was `--kernel-cmdline-extra "console=ttyS0,115200"`, taken from the
+advice this page used to give for driving a boot from outside. The kernel
+prints to every `console=` it is given and makes the last one `/dev/console`;
+naming only a serial port takes the framebuffer away, and this kernel has no
+serial console that early, so it printed nowhere at all. Booted with
+`console=tty0` instead, the same kernel and the same initramfs reach:
 
 ```
-.sdmagic  va=0x00020000 vsz=       40
-.cmdline  va=0x00023000 vsz=      239
-.linux    va=0x00025000 vsz= 22608880
-.initrd   va=0x015b5000 vsz= 22514210
+[    0.798887] dracut: dracut-111
+[    1.350656] dracut: luksOpen /dev/vda2 luks-f1a23000-dfee-4952-b858-a62c2e49e5b4
+Enter passphrase for /dev/vda2:
 ```
 
-- the firmware build — `OVMF_CODE_4M.qcow2` and `OVMF_CODE.fd` behave the same;
-- memory — 4 GiB and 8 GiB behave the same.
+So the unified kernel image boots, from the fallback path, on a firmware that
+knows nothing about it. **Name both consoles if you want a serial line:**
 
-What has not been tried: booting the same machine's plain `vmlinuz` and
-`initramfs` with `-kernel`/`-initrd` to see whether the pair works outside the
-UKI, and building the image with `ukify` instead of `dracut --uefi`
-(`sys-apps/systemd-utils[ukify]`, which this install did not enable). Either
-would say whether the fault is in the image or in the stack around it.
+```
+kernel_cmdline_extra = "console=tty0 console=ttyS0,115200"
+```
+
+The installer now says so itself when a command line names consoles and none of
+them is a screen — a machine that boots correctly and says nothing is
+indistinguishable from one that hung, and this is how long that costs.
+
+Typing the passphrase from outside still does not work: QEMU's `sendkey` puts
+the characters on the framebuffer and dracut's reader does not take them.
 
 ---
 

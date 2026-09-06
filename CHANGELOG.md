@@ -12,6 +12,13 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **A command line that names only a serial console is called out.** The kernel
+  prints to every `console=` it is given and makes the last one `/dev/console`,
+  so naming only `ttyS0` takes the framebuffer away — and this project's own
+  testing notes recommended exactly that to make a boot drivable. An install
+  took the advice, booted correctly, printed nowhere at all, and was read as a
+  hung image for most of an afternoon. Step 70 says so now, and names the fix:
+  `console=tty0 console=ttyS0,115200`.
 - **The removable fallback is proved.** A `uki` install with `boot_removable =
   yes`, booted against a pristine NVRAM, is started by the firmware from
   `\EFI\BOOT\BOOTX64.EFI` — where the same firmware, with a GRUB install and
@@ -19,7 +26,9 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   this project was shaped by, removed rather than guarded against. The image
   that run produced then hangs after the firmware starts it, which is written up
   in `docs/TESTING.md` with what has been ruled out and what has not been tried,
-  and said beside the earlier claim that a `uki` image booted.
+  and said beside the earlier claim that a `uki` image booted. The hang was the
+  console redirection above: with `console=tty0` the same image reaches
+  `Enter passphrase for /dev/vda2:`.
 
 - **A machine this installer signed could not be reflashed by this project's own
   tool.** `tools/bios-update.sh` has to sign `fwupdx64.efi` with the same pair
