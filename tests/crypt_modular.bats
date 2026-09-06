@@ -63,3 +63,34 @@ load helper
   [ "$status" -eq 0 ]
   [ "$output" = "tpm" ]
 }
+
+@test "dracut is not asked for the lvm module when there is no LVM" {
+  # This one stopped run 2 dead. The list was "crypt dm lvm" for any encrypted
+  # install, on the reasoning that lvm "costs a few kilobytes" — but on a plain
+  # LUKS root sys-fs/lvm2 is not installed, so dracut answered "Module 'lvm'
+  # cannot be installed", failed to generate the initramfs, and took
+  # sys-kernel/gentoo-kernel-bin down with it. The default layout with the
+  # default encryption is exactly that combination.
+  gi_capture 'target_crypt() { printf "passphrase\n"; }
+              target_topology() { printf "plain\n"; }
+              target_fact() { printf "\n"; }
+              target_init() { printf "openrc\n"; }
+              kernel_dracut_modules' | grep -qx "crypt dm"
+}
+
+@test "dracut is asked for lvm exactly once when LUKS and LVM are stacked" {
+  # Both arms contribute dm; the operator should not read "crypt dm dm lvm".
+  gi_capture 'target_crypt() { printf "passphrase\n"; }
+              target_topology() { printf "lvm\n"; }
+              target_fact() { printf "\n"; }
+              target_init() { printf "openrc\n"; }
+              kernel_dracut_modules' | grep -qx "crypt dm lvm"
+}
+
+@test "an unencrypted LVM root still gets dm and lvm" {
+  gi_capture 'target_crypt() { printf "none\n"; }
+              target_topology() { printf "lvm\n"; }
+              target_fact() { printf "\n"; }
+              target_init() { printf "openrc\n"; }
+              kernel_dracut_modules' | grep -qx "dm lvm"
+}

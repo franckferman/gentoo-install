@@ -302,10 +302,9 @@ kernel_dracut_modules() {
   layout="$(target_topology)"
 
   if [[ "$crypt" != "none" ]]; then
-    # lvm goes in even for a plain LUKS root: it costs a few kilobytes and it
-    # is what the encrypted installs this module is drawn from ship.
-    mods+=(crypt dm lvm)
-  elif [[ "$layout" == "lvm" ]]; then
+    mods+=(crypt dm)
+  fi
+  if [[ "$layout" == "lvm" ]]; then
     mods+=(dm lvm)
   fi
 
@@ -325,7 +324,10 @@ kernel_dracut_modules() {
   if ((${#mods[@]} == 0)); then
     return 0
   fi
-  printf '%s\n' "${mods[*]}"
+  # dm is asked for by both the crypt arm and the lvm one, and dracut is handed
+  # the list verbatim. De-duplicate here rather than let it read "crypt dm dm
+  # lvm", which works but makes the configuration file look like a mistake.
+  printf '%s\n' "${mods[*]}" | tr ' ' '\n' | awk '!seen[$0]++' | paste -sd' ' -
 }
 
 kernel_dracut_omit() {
