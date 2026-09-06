@@ -454,3 +454,38 @@ gi_tools() {
   [ "$status" -eq 0 ]
   [ "$output" = "/boot/efi" ]
 }
+
+@test "the slot report says what is nominal for this machine when it can" {
+  # The table is right and an operator still has to apply it. The journal names
+  # the variant that made the container, so the report can answer instead.
+  local root
+  root="$(gi_tmp)/lcv"
+  mkdir -p "${root}/var/lib/gentoo-install"
+  printf 'crypt.variant=luks-tpm\n' >"${root}/var/lib/gentoo-install/state"
+
+  run bash -c '
+    ROOT_PREFIX="$2"; C_B=""; C_0=""; C_G=""
+    err() { printf "ERR %s\n" "$*" >&2; }
+    list_slots() { printf "0\n1\n2\n"; }
+    eval "$(sed -n "/^journal_var()/,/^}/p"  "$1/tools/luks-check.sh")"
+    eval "$(sed -n "/^report_slots()/,/^}/p" "$1/tools/luks-check.sh")"
+    report_slots /dev/sdz
+  ' bash "$GI_ROOT" "$root" 2>&1
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"encrypted with luks-tpm"* ]]
+  [[ "$output" == *"slots 0, 1 and 2"* ]]
+  [[ "$output" != *"What is nominal depends"* ]]
+}
+
+@test "and prints the table when the journal cannot say" {
+  run bash -c '
+    ROOT_PREFIX="$2/gone"; C_B=""; C_0=""; C_G=""
+    err() { printf "ERR %s\n" "$*" >&2; }
+    list_slots() { printf "0\n1\n"; }
+    eval "$(sed -n "/^journal_var()/,/^}/p"  "$1/tools/luks-check.sh")"
+    eval "$(sed -n "/^report_slots()/,/^}/p" "$1/tools/luks-check.sh")"
+    report_slots /dev/sdz
+  ' bash "$GI_ROOT" "$(gi_tmp)" 2>&1
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"What is nominal depends"* ]]
+}

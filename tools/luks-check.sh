@@ -584,11 +584,35 @@ report_slots() {
   done
 
   echo "" >&2
-  echo "  What is nominal depends on how the machine was encrypted:" >&2
-  echo "    passphrase   slots 0 and 1 — the everyday one and the recovery one" >&2
-  echo "    keyfile      the same two, and the file itself must exist as well" >&2
-  echo "    tpm          those two and slot 2; slot 2 gone means the machine" >&2
-  echo "                 still boots, but stops to ask for the passphrase" >&2
+
+  # The journal knows which variant made this container, so the report can say
+  # what is nominal here instead of printing a table for the operator to apply.
+  # The table stays for the machine whose journal is gone, which is the machine
+  # this tool exists for.
+  local variant
+  variant="$(journal_var crypt.variant)"
+  case "$variant" in
+    luks-passphrase)
+      echo "  This machine was encrypted with ${variant}: slots 0 and 1 are" >&2
+      echo "  what it should have — the everyday passphrase and the recovery one." >&2
+      ;;
+    luks-keyfile-gpg)
+      echo "  This machine was encrypted with ${variant}: slots 0 and 1 are" >&2
+      echo "  what it should have, and the wrapped key file has to exist as well." >&2
+      ;;
+    luks-tpm)
+      echo "  This machine was encrypted with ${variant}: slots 0, 1 and 2 are" >&2
+      echo "  what it should have. Slot 2 gone means it still boots and stops to" >&2
+      echo "  ask for the recovery passphrase." >&2
+      ;;
+    *)
+      echo "  What is nominal depends on how the machine was encrypted:" >&2
+      echo "    passphrase   slots 0 and 1 — the everyday one and the recovery one" >&2
+      echo "    keyfile      the same two, and the file itself must exist as well" >&2
+      echo "    tpm          those two and slot 2; slot 2 gone means the machine" >&2
+      echo "                 still boots, but stops to ask for the passphrase" >&2
+      ;;
+  esac
   return 0
 }
 
