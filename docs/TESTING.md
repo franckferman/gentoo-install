@@ -211,6 +211,28 @@ tools under `tools/` are what they are for.
 
 The one most people will use.
 
+**Passed, 6 September 2026**, on a plain layout (no LVM): the container built,
+the kernel and GRUB installed, all five of step 95's checks clear, and then —
+booted from its own disk with no ISO attached — this, which is the whole point
+of the run:
+
+```
+[    0.699718] dracut: dracut-111
+[    1.151886] dracut: luksOpen /dev/vdb2 luks-198ed542-0dbb-43cc-b9bf-a204491ce76e
+Enter passphrase for /dev/vdb2:
+```
+
+Two things that run also settled, neither of them about encryption:
+
+- **Pre-flight was advisory.** It refused the disk — `16 GiB, minimum 20`, and
+  `--force does not lift these` — and the run erased it anyway, because the
+  runner accumulates failures. It stops there now.
+- **Typing the passphrase from outside still does not work.** QEMU's
+  `sendkey` reaches the framebuffer and the characters appear under the prompt,
+  and dracut's reader does not take them. Install with
+  `kernel_cmdline_extra = "console=ttyS0,115200"` if you want the whole boot on
+  a serial line, or type it at the window.
+
 ```bash
 ./gentoo-install.sh \
   --disk /dev/vda --disk-layout server --crypt luks-passphrase \

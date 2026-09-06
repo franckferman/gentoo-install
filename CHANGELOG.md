@@ -12,6 +12,12 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **The way back into a finished target is one that survives the run ending.**
+  Step 95 printed `./gentoo-install.sh --steps 50   # then: chroot …`, which
+  cannot work: the run releases everything it mounted when it ends, so that
+  invocation mounts the target, explains how to enter it, and unmounts it on the
+  way out. It names `tools/luks-open.sh` and `tools/rescue-chroot.sh` now.
+
 - **A failed pre-flight stops the run.** The runner accumulates failures, which
   is right for almost every step and wrong for the one whose checks decide
   whether anything may be written at all. A real run showed it: pre-flight

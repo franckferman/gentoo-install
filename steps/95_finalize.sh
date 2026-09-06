@@ -1246,8 +1246,15 @@ _fin_recap_next() {
   esac
   _fin_note "remove the install medium first, or the firmware may boot it again"
   _fin_fix "emerge --sync && emerge --ask --update --deep --newuse @world"
+  # Not "--steps 50", which is what this said and which cannot work: the run
+  # releases everything it mounted when it ends, so that invocation mounts the
+  # target, prepares it, prints how to enter it, and unmounts it — leaving an
+  # empty directory and an operator typing chroot into nothing. Step 50 does
+  # reattach a target, but only for the steps that follow it in the same run.
+  # Going back in by hand is what the rescue tools are for.
   log "to go back in without rebooting the target:"
-  _fin_fix "./gentoo-install.sh --steps 50   # then: chroot ${root} /bin/bash -l"
+  _fin_fix "./tools/luks-open.sh open --target ${root}   # unencrypted: mount it yourself"
+  _fin_fix "./tools/rescue-chroot.sh enter --target ${root}"
 }
 
 # --------------------------------------------------------------------------- #

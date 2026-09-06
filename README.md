@@ -115,6 +115,10 @@ bootloader are installed, and step 75 says — in those words — that nothing w
 sealed and what to do about it. The one thing you do not get is the automatic
 unlock. The installer says this before the disk is erased, not after.
 
+**A passphrase-encrypted machine has been booted too**, on a plain layout, and
+it stopped where it should: `dracut: luksOpen /dev/vdb2`, then
+`Enter passphrase for /dev/vdb2:`, and nothing further until it is answered.
+
 **What none of it covers.** `efistub` has not been booted, nor has a `musl` or
 `hardened` stage. Version `0.1.0` should still meet a disk you would miss with `--dry-run`
 first.

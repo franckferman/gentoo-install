@@ -312,3 +312,17 @@ plan_fixture() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"COMPARED"* ]]
 }
+
+@test "the way back into the target is one that survives the run ending" {
+  # Step 95 used to print "./gentoo-install.sh --steps 50   # then: chroot …",
+  # and that cannot work: the run releases everything it mounted when it ends,
+  # so the invocation mounts the target, says how to enter it, and unmounts it
+  # on the way out. Step 50 reattaches for the steps that follow it in the same
+  # run — not for an operator arriving afterwards. The rescue tools are what
+  # stay mounted.
+  local hint
+  hint="$(sed -n '/to go back in without rebooting/,/^}/p' "${GI_ROOT}/steps/95_finalize.sh")"
+  [[ "$hint" == *"luks-open.sh"* ]]
+  [[ "$hint" == *"rescue-chroot.sh"* ]]
+  [[ "$hint" != *"--steps 50   # then"* ]]
+}
