@@ -743,6 +743,47 @@ crypt_open() {
   run_cmd cryptsetup open --disable-external-tokens --key-file "$keyfile" "$dev" "$name"
 }
 
+crypt_open_for_resume() {
+  # Open the container again, in a process that did not create it.
+  #
+  # This is the one credential question a resume has to ask. Step 30 held the
+  # key material in memory and on a tmpfs; a later invocation has neither, and
+  # the container it must reopen is the only thing standing between the journal
+  # and the tree that journal describes. Every variant this project ships
+  # guarantees a slot a human can produce — crypt_require_ways_in(2) refuses to
+  # finish otherwise — so asking for a passphrase works for all of them, and for
+  # the keyfile variant it is the recovery slot rather than the envelope on an
+  # ESP that is not mounted yet.
+  #
+  # Args: $1 = device, $2 = mapper name.
+  local dev="$1" name="$2" pass="" key
+
+  if crypt_is_open "$name"; then
+    skip "/dev/mapper/${name} is already open"
+    return 0
+  fi
+  if [[ "$DRY_RUN" == "yes" ]]; then
+    log "dry-run: would open ${dev} as ${name}"
+    return 0
+  fi
+
+  log "${dev} has to be opened before its tree can be mounted"
+  crypt_read_passphrase pass "passphrase for ${dev}" \
+    crypt_pass_file GI_CRYPT_PASSPHRASE no || return 1
+
+  crypt_secret_file key resume || return 1
+  crypt_write_secret "$key" "$pass" || return 1
+  pass=""
+
+  if ! crypt_open "$dev" "$name" "$key"; then
+    err "that passphrase opens no keyslot on ${dev}"
+    err "       any slot will do here: this only reopens the container"
+    err "       the recovery passphrase is the one to reach for"
+    return 1
+  fi
+  ok "reopened ${dev} as /dev/mapper/${name}"
+}
+
 crypt_close() {
   local name="$1"
   if ! crypt_is_open "$name"; then

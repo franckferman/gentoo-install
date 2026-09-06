@@ -1866,6 +1866,42 @@ disk_mount_tree() {
   ok "target tree mounted under ${root}"
 }
 
+disk_saved_plan() {
+  # The plan step 20 wrote down, or nothing at all. A returned value, so
+  # stdout; non-zero when there is none, which is what a run that never
+  # partitioned anything looks like.
+  local path="${CFG[state_dir]:-${STATE_DIR:-/var/lib/gentoo-install}}/disk-plan.tsv"
+  [[ -r "$path" ]] || return 1
+  cat -- "$path"
+}
+
+disk_activate_volume_group() {
+  # Args: $1 = plan text. Idempotent; silent when there is no LVM in the plan.
+  local plan="$1" vg
+  [[ "$(disk_plan_meta "$plan" lvm)" == "yes" ]] || return 0
+  vg="$(disk_plan_meta "$plan" vg)"
+  [[ -n "$vg" ]] || return 0
+  if [[ "$DRY_RUN" == "yes" ]]; then
+    log "dry-run: would activate the volume group ${vg}"
+    return 0
+  fi
+  run_quiet vgchange -ay "$vg" || {
+    err "the volume group ${vg} would not activate"
+    err "       vgs and lvs list what the container actually holds"
+    return 1
+  }
+  have udevadm && udevadm settle --timeout=10 2>/dev/null
+  ok "volume group ${vg} active"
+}
+
+disk_target_is_mounted() {
+  # Args: $1 = plan text.
+  local root
+  root="$(disk_plan_meta "$1" mountpoint)"
+  [[ -n "$root" ]] || return 1
+  mountpoint -q -- "$root" 2>/dev/null
+}
+
 disk_teardown() {
   # Undo a mounted tree so the disk can be provisioned again. Reports on the
   # final state, not on what was attempted: a lazy unmount followed by two

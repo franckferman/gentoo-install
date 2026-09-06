@@ -24,8 +24,20 @@ SHFMT_IMAGE      ?= mvdan/shfmt:latest
 BATS_IMAGE       ?= bats/bats:latest
 IN_CONTAINER      = $(DOCKER) run --rm -v "$(CURDIR)":/mnt -w /mnt
 
+# The one image that writes into the checkout gets the caller's own id.
+# `make format` rewrites every script, and a container doing that as root
+# leaves root-owned files in the contributor's own tree — this repository
+# collected two that way, and the next edit failed with "Permission denied" on
+# a file its author owns. The linters and the test suite are left alone: they
+# write nothing here, and bats needs to be root inside its own container to
+# exercise the tools' root checks.
+DOCKER_USER      ?= $(shell id -u):$(shell id -g)
+IN_CONTAINER_RW   = $(DOCKER) run --rm --user "$(DOCKER_USER)" \
+                    -v "$(CURDIR)":/mnt -w /mnt
+
 SHELLCHECK := $(shell command -v shellcheck 2>/dev/null || echo '$(IN_CONTAINER) $(SHELLCHECK_IMAGE)')
 SHFMT      := $(shell command -v shfmt      2>/dev/null || echo '$(IN_CONTAINER) $(SHFMT_IMAGE)')
+SHFMT_RW   := $(shell command -v shfmt      2>/dev/null || echo '$(IN_CONTAINER_RW) $(SHFMT_IMAGE)')
 BATS       := $(shell command -v bats       2>/dev/null || echo '$(IN_CONTAINER) $(BATS_IMAGE)')
 
 SHFMT_ARGS = --indent 2 --case-indent --binary-next-line
@@ -47,7 +59,7 @@ lint: ## Run shellcheck, check formatting, and parse every script
 
 .PHONY: format
 format: ## Rewrite every script in the project style
-	$(SHFMT) --write $(SHFMT_ARGS) $(SHELL_FILES)
+	$(SHFMT_RW) --write $(SHFMT_ARGS) $(SHELL_FILES)
 
 .PHONY: test
 test: ## Run the bats suite

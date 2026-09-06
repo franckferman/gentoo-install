@@ -15,15 +15,96 @@
 #
 set -euo pipefail
 
-if [[ -z "${_GI_CHROOT_LOADED:-}" ]]; then
+if [[ -z "${_GI_CHROOT_LOADED:-}" || -z "${_GI_DISK_LOADED:-}" || -z "${_GI_CRYPT_LOADED:-}" ]]; then
   # Sourcing a library is not a side effect: the file still defines everything
   # and runs nothing. It lets this step be sourced on its own, by a test or by
   # an operator, without depending on the order the entry point happens to use.
+  #
+  # disk and crypt are here for the reattachment below: this step is the one an
+  # operator returns to, and returning means opening a container and mounting a
+  # tree that another process left behind.
   _gi_step50_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
   # shellcheck source=lib/chroot.sh
   source "${_gi_step50_dir}/../lib/chroot.sh"
+  # shellcheck source=lib/disk.sh
+  source "${_gi_step50_dir}/../lib/disk.sh"
+  # shellcheck source=lib/crypt.sh
+  source "${_gi_step50_dir}/../lib/crypt.sh"
   unset _gi_step50_dir
 fi
+
+# --------------------------------------------------------------------------- #
+#  Getting back to a target another process left behind                       #
+# --------------------------------------------------------------------------- #
+_step50_reattach() {
+  # Mount the tree the recorded plan describes, when it is not mounted.
+  #
+  # Only step 20 ever mounted the target, and the run releases everything it
+  # mounted when it ends. So the second invocation of this installer — a
+  # --resume after an interruption, a --steps 70,80 to finish a job, the exact
+  # sequence step 95 prints when it fails — arrived at an empty /mnt/gentoo and
+  # went on to mount /proc and /dev over nothing. The way back in was to reach
+  # for tools/luks-open.sh, which is a rescue tool, for the ordinary case of
+  # picking up where the last run stopped.
+  #
+  # The plan step 20 wrote down is what makes this exact rather than a guess: it
+  # names the devices, the mountpoints and the order. Nothing here formats
+  # anything, and disk_mount_tree refuses to stack a mount on someone else's.
+  local plan root device
+
+  plan="$(disk_saved_plan)" || {
+    # No plan means nothing partitioned this target; --root points at a tree
+    # somebody else prepared, which is a supported way to use this.
+    return 0
+  }
+
+  if disk_target_is_mounted "$plan"; then
+    return 0
+  fi
+
+  root="$(disk_plan_meta "$plan" mountpoint)"
+  device="$(disk_plan_meta "$plan" device)"
+  log "${root} is not mounted; the plan step 20 recorded says what belongs there"
+
+  # A plan naming the disk this machine booted from is a plan from another life
+  # — a stale state directory, most often — and acting on it would activate a
+  # volume group and mount a running system's filesystems under /mnt/gentoo.
+  #
+  # The predicate is disk_target_carries_this_system and deliberately not
+  # disk_may_write_firmware_state, which answers a different question and
+  # answers it the other way round: writing an NVRAM entry for the disk you
+  # booted from is the normal case, and mounting that same disk's tree is the
+  # one to refuse. The first version of this guard used it, and the test that
+  # covered it stubbed the predicate — so the stub agreed with the mistake and
+  # the test passed.
+  if [[ -n "$device" ]] && disk_target_carries_this_system "$device"; then
+    err "the recorded plan describes ${device}, which is this machine's own disk"
+    err "       ${STATE_DIR:-/var/lib/gentoo-install} holds a plan from another install"
+    err "       nothing was mounted; --restart forgets that plan"
+    err "       example:  ./gentoo-install.sh --restart --steps 20"
+    return 1
+  fi
+
+  if [[ "${CFG[crypt]:-none}" != "none" ]]; then
+    local container name
+    name="${CFG[crypt_name]:-gentoo}"
+    if ! crypt_is_open "$name"; then
+      container="$(target_fact crypt_device crypt.device "")"
+      [[ -n "$container" ]] || container="$(target_fact "" disk.crypt_device "")"
+      if [[ -z "$container" ]]; then
+        err "crypt = ${CFG[crypt]} but no container is recorded"
+        err "       step 20 writes disk.crypt_device and step 30 writes crypt.device"
+        err "       name it yourself with crypt_device = /dev/nvme0n1p2"
+        return 1
+      fi
+      crypt_open_for_resume "$container" "$name" || return 1
+    fi
+  fi
+
+  disk_activate_volume_group "$plan" || return 1
+  disk_mount_tree "$plan" || return 1
+  return 0
+}
 
 # --------------------------------------------------------------------------- #
 #  The step                                                                   #
@@ -33,6 +114,12 @@ step_50_chroot() {
 
   target="$(chroot_target)"
   log "chroot target: ${target}"
+
+  if ! _step50_reattach; then
+    err "step 50: the target could not be made reachable"
+    err "       nothing is mounted and nothing was changed"
+    return "$EXIT_FAILURE"
+  fi
 
   if ! chroot_prepare "$target"; then
     err "step 50: the chroot could not be prepared"

@@ -249,6 +249,22 @@ what was done, never with what: no passphrase and no key ever reaches it.
 distribution that compiles its own kernel: an interrupted install must not
 start over.
 
+Resuming also means getting back to a target the last process let go of. Every
+run releases what it mounted when it ends, so step 50 mounts the tree again
+from the plan step 20 wrote down: it opens the container — asking for a
+passphrase, once — activates the volume group and mounts what the plan
+describes, in order. A plan naming the disk this machine booted from is refused
+rather than mounted.
+
+One thing to know before relying on it: the journal lives wherever
+`--state-dir` says, and its default is `/var/lib/gentoo-install`, which on a
+live medium is a tmpfs. Rebooting the live medium loses it. Point it at
+something that survives if you expect to reboot between attempts:
+
+```bash
+sudo ./gentoo-install.sh --state-dir /run/media/usb/gi-state --resume
+```
+
 ---
 
 ## 10 preflight

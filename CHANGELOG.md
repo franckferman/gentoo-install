@@ -12,6 +12,23 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **The installer could not get back to its own target.** Only step 20 mounted
+  the tree, and every run releases what it mounted when it ends — so the second
+  invocation, which is what `--resume` is, arrived at an empty `/mnt/gentoo` and
+  mounted `/proc` and `/dev` over nothing. The way back in was
+  `tools/luks-open.sh`, a rescue tool, for the ordinary case of picking up where
+  the last run stopped. Step 50 reattaches now, from the plan step 20 recorded:
+  it opens the container (asking for a passphrase, once), activates the volume
+  group and mounts the tree the plan describes. A plan naming the disk this
+  machine booted from is refused rather than mounted — the same guard the
+  September incident bought, on this door too.
+- **`make format` no longer leaves root-owned files** in the contributor's own
+  checkout. The formatter runs in a container, and a container writing as root
+  made two files in this repository unwritable by their author. Only the image
+  that writes gets the caller's id: the linters and the test suite are left
+  alone, because bats has to be root inside its own container to exercise the
+  tools' root checks.
+
 - **clevis was asked for a USE flag that does not exist, and not for the one
   that matters.** `app-crypt/clevis` in GURU has `IUSE="dracut pkcs11 test tpm1
   udisks"`; the installer wrote `tpm2`, which nobody has and portage ignores in
