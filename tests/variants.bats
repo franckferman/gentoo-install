@@ -119,3 +119,66 @@ _plan() {
   ! grep -qx 'CONFIG_DM_CRYPT=y' "${BATS_TEST_TMPDIR}/opts2"
   ! grep -qx 'CONFIG_EFI_STUB=y' "${BATS_TEST_TMPDIR}/opts2"
 }
+
+@test "the grub.cfg checker is looked for in the target before this machine" {
+  # grub-script-check belongs to sys-boot/grub, which step 80 has just
+  # installed in the target. It was asked of the host — `have` reads the
+  # installer's own PATH — and a live medium need not carry grub at all, so the
+  # one check standing between a grub.cfg that does not parse and a rescue
+  # prompt was skipped with a warning. It never showed up on this bench because
+  # this bench is a Gentoo box with grub on it.
+  run --separate-stderr bash -c '
+    source "$GI_ENTRY"
+    source "${GI_ROOT}/variants/boot/grub.sh"
+    chroot() { [[ "$2" == "grub-script-check" ]] && return 0; return 1; }
+    boot_grub_script_checker /mnt/target /mnt/target/boot/grub/grub.cfg'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"chroot"* ]]
+  [[ "$output" == *"/mnt/target"* ]]
+  [[ "$output" == *"/boot/grub/grub.cfg"* ]]
+}
+
+@test "the host's checker is the fallback, not the first answer" {
+  run --separate-stderr bash -c '
+    source "$GI_ENTRY"
+    source "${GI_ROOT}/variants/boot/grub.sh"
+    chroot() { return 1; }
+    have() { [[ "$1" == "grub-script-check" ]]; }
+    boot_grub_script_checker /mnt/target /mnt/target/boot/grub/grub.cfg'
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"chroot"* ]]
+  [[ "$output" == *"grub-script-check"* ]]
+  [[ "$output" == *"/mnt/target/boot/grub/grub.cfg"* ]]
+}
+
+@test "no checker anywhere yields nothing, so the caller can say so" {
+  run --separate-stderr bash -c '
+    source "$GI_ENTRY"
+    source "${GI_ROOT}/variants/boot/grub.sh"
+    chroot() { return 1; }
+    have() { return 1; }
+    boot_grub_script_checker /mnt/target /mnt/target/boot/grub/grub.cfg'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "installing to / does not chroot to /" {
+  run --separate-stderr bash -c '
+    source "$GI_ENTRY"
+    source "${GI_ROOT}/variants/boot/grub.sh"
+    chroot() { return 0; }
+    have() { [[ "$1" == "grub-script-check" ]]; }
+    boot_grub_script_checker / /boot/grub/grub.cfg'
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"chroot"* ]]
+}
+
+@test "the grub verifier asks the same question the writer asks" {
+  # It had the same defect three lines away: `have grub-script-check` on the
+  # host, so a live medium without grub verified nothing and said nothing.
+  local body
+  body="$(sed -n '/^boot_grub_verify/,/^}/p' "${GI_ROOT}/variants/boot/grub.sh")"
+  [[ "$body" == *"boot_grub_script_checker"* ]]
+  [[ "$body" != *"have grub-script-check"* ]]
+  [[ "$body" == *"has not been established"* ]]
+}

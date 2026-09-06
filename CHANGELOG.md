@@ -84,6 +84,18 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **`grub-script-check` is looked for in the target before this machine, in
+  both places that used it.** It belongs to `sys-boot/grub`, which step 80 has
+  just installed *in the target*; `have` reads the installer's own PATH, and a
+  live medium need not carry grub at all. So on such a medium the writer
+  skipped the one check standing between a `grub.cfg` that does not parse and a
+  machine that stops at a rescue prompt with no shell to fix it from — and the
+  verifier, three lines later, skipped it too and said nothing. Neither ever
+  showed up on this bench, which is a Gentoo box with grub on it: every run
+  took the checked path. Same shape as the `lsinitrd` check that existed and
+  never ran, and fixed the same way. When no machine here has the tool, that is
+  now said rather than passed over.
+
 - **A layout is judged as a set, before the disk is erased.** Every check in
   `_disk_parse_records` judged one record at a time, and the message printed
   for an empty list promised something none of them tested — "at least a root

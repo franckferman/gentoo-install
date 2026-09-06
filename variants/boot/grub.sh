@@ -193,6 +193,35 @@ boot_grub_run_install() {
   ok "grub-install finished"
 }
 
+boot_grub_script_checker() {
+  # The argv that will read the generated grub.cfg, one word per line, or
+  # nothing when no machine here has the tool. The target first, the host only
+  # as a fallback.
+  #
+  # grub-script-check belongs to sys-boot/grub, which boot_grub_packages has
+  # just installed *in the target*. This asked `have`, which looks at the
+  # installer's own PATH, and a live medium need not carry grub at all — so the
+  # one check this whole function exists for was skipped with a warning, and the
+  # generated script went in unread. That it never showed up here is the
+  # giveaway: this is a Gentoo box with grub installed, so every run took the
+  # checked path. Same shape as the lsinitrd check that existed and never ran,
+  # and fixed the same way: ask the machine that has the tool.
+  #
+  # Args: $1 = target root, $2 = the config as this machine sees it.
+  local root="${1%/}" cfg="$2"
+
+  if [[ -n "$root" && "$root" != "/" ]] \
+    && chroot "$root" grub-script-check --version >/dev/null 2>&1; then
+    printf '%s\n' chroot "$root" grub-script-check "/boot/grub/grub.cfg"
+    return 0
+  fi
+  if have grub-script-check; then
+    printf '%s\n' grub-script-check "$cfg"
+    return 0
+  fi
+  return 0
+}
+
 boot_grub_write_config() {
   # grub-mkconfig writes a shell script. grub-script-check is the only thing
   # standing between a mistake in it and a machine that stops at a rescue
@@ -223,14 +252,19 @@ boot_grub_write_config() {
     return 1
   fi
 
-  if have grub-script-check; then
-    write_validated "$cfg" grub-script-check "$cfg" <"$staged" || {
+  local -a checker=()
+  mapfile -t checker < <(boot_grub_script_checker "$root" "$cfg")
+
+  if ((${#checker[@]} > 0)); then
+    write_validated "$cfg" "${checker[@]}" <"$staged" || {
       rm -f -- "$staged"
       return 1
     }
   else
-    warn "grub-script-check is not installed; the generated grub.cfg goes in unchecked"
-    warn "       sys-boot/grub provides it, on the host as well as in the target"
+    warn "grub-script-check is in neither ${root} nor this machine"
+    warn "       the generated grub.cfg goes in unread, and a script that does"
+    warn "       not parse is found out at power-on, with no shell to fix it from"
+    warn "       sys-boot/grub provides it; step 80 installs that in the target"
     write_file "$cfg" <"$staged" || {
       rm -f -- "$staged"
       return 1
@@ -251,10 +285,20 @@ boot_grub_verify() {
 
   boot_require_file "$cfg" "grub configuration" || return 1
 
-  if have grub-script-check && ! grub-script-check "$cfg"; then
-    err "${cfg} does not parse"
-    err "       grub-script-check ${cfg} points at the line"
-    return 1
+  # The same question as the writer asks, and it was asked the same wrong way
+  # here: of the host. A live medium without grub then verified nothing and
+  # said nothing, three lines after the writer had done the same.
+  local -a checker=()
+  mapfile -t checker < <(boot_grub_script_checker "$root" "$cfg")
+  if ((${#checker[@]} > 0)); then
+    if ! "${checker[@]}" >/dev/null 2>&1; then
+      err "${cfg} does not parse"
+      err "       $(_cmdline "${checker[@]}") points at the line"
+      return 1
+    fi
+  else
+    warn "grub-script-check is in neither ${root} nor this machine"
+    warn "       whether ${cfg} parses has not been established"
   fi
 
   if ! grep -q '^menuentry' "$cfg"; then
