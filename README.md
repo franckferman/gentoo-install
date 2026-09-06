@@ -56,10 +56,13 @@ end. The keyslot itself is exercised on every remount with
 `cryptsetup open --key-file`, so what is unproven is the last keystroke, not the
 container.
 
+**`systemd-boot` has been booted too**, on the same encrypted disk: `bootctl`
+installed, the loader entry written, and the machine started from
+`\EFI\BOOT\BOOTX64.EFI` through to the passphrase prompt.
+
 **What none of it covers.** `luks-tpm` and `luks-keyfile-gpg` have been exercised
-against throwaway containers, never carried through to a boot. `efistub` and
-`systemd-boot` have not been booted, nor has an LVM layout, nor a `musl` or
-`hardened` stage. Version `0.1.0` should
+against throwaway containers, never carried through to a boot. `efistub` has not
+been booted, nor has an LVM layout, nor a `musl` or `hardened` stage. Version `0.1.0` should
 still meet a disk you would miss with `--dry-run` first.
 
 One finding from that run is worth repeating here, because it is the difference
