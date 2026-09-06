@@ -12,6 +12,21 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **A machine this installer signed could not be reflashed by this project's own
+  tool.** `tools/bios-update.sh` has to sign `fwupdx64.efi` with the same pair
+  the kernel was signed with, and it had two sources for that pair — a
+  conventional `/etc/efikeys`, and a configuration file belonging to another
+  tool. Neither is written by gentoo-install, so a machine installed and signed
+  here reached "No Secure Boot signing pair found" after being asked about two
+  files it never creates. The install journal is consulted first now, because it
+  is the one file on that disk this project wrote.
+- **Step 80 recorded the certificate and not the key.** Half a pair, which is
+  exactly what `boot_secureboot_ready()` refuses to work with — and it went
+  unnoticed because the state journal refuses a name ending in `_key` outright,
+  so `boot.secureboot_cert` on its own looked complete. The path is journalled
+  under `boot.secureboot_keyfile`, never the key itself, the same rule
+  `crypt.keyfile` follows.
+
 - **The way back into a finished target is one that survives the run ending.**
   Step 95 printed `./gentoo-install.sh --steps 50   # then: chroot …`, which
   cannot work: the run releases everything it mounted when it ends, so that

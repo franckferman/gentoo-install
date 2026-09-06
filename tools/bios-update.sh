@@ -1041,6 +1041,15 @@ conf_var() {
     "$file" | tail -n 1
 }
 
+journal_var() {
+  # One value from the installer's state journal, or nothing. The journal is
+  # key=value, one per line, and it is the only file here that gentoo-install
+  # itself writes. Args: $1 = key.
+  local key="$1" file="${ROOT_PREFIX}${STATE_DIR}/state"
+  [[ -r "$file" ]] || return 0
+  sed -n "s/^${key}=//p" "$file" | tail -n 1
+}
+
 resolve_sign_pair() {
   # Two sources name the db key and nobody reconciled them: the conventional
   # location is /etc/efikeys/db.*, buildkernel-next reads SECUREBOOT_KEY and
@@ -1057,6 +1066,31 @@ resolve_sign_pair() {
     ok "  key  : $SIGN_KEY"
     ok "  cert : $SIGN_CERT"
     return 0
+  fi
+
+  # The installer's own journal first, because it describes this machine: step
+  # 80 records the pair it signed with, and neither source below is written by
+  # gentoo-install at all. A machine installed by this project and signed by it
+  # used to reach the refusal at the end of this function, having been asked
+  # about two files it never creates.
+  local journal_key="" journal_cert=""
+  journal_key="$(journal_var boot.secureboot_keyfile)"
+  journal_cert="$(journal_var boot.secureboot_cert)"
+  if [[ -n "$journal_key" && -n "$journal_cert" ]]; then
+    journal_key="${ROOT_PREFIX}${journal_key}"
+    journal_cert="${ROOT_PREFIX}${journal_cert}"
+    if [[ -r "$journal_key" && -r "$journal_cert" ]]; then
+      SIGN_KEY="$journal_key"
+      SIGN_CERT="$journal_cert"
+      ok "Signing pair from the install journal (what step 80 signed with)"
+      ok "  key  : $SIGN_KEY"
+      ok "  cert : $SIGN_CERT"
+      return 0
+    fi
+    warn "the install journal names a signing pair that is not readable here:"
+    warn "  $journal_key"
+    warn "  $journal_cert"
+    warn "  Looking at the other two sources."
   fi
 
   conf_key="$(conf_var "$conf" SECUREBOOT_KEY || true)"
@@ -1105,6 +1139,7 @@ resolve_sign_pair() {
   fi
 
   err "No Secure Boot signing pair found"
+  err "  Looked at ${ROOT_PREFIX}${STATE_DIR}/state (boot.secureboot_keyfile / _cert)"
   err "  Looked at $conf (SECUREBOOT_KEY / SECUREBOOT_CERT)"
   err "  Looked at $efi_key and $efi_cert"
   err "The db key lives on the installed machine, not on the admin one."

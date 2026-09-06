@@ -501,4 +501,17 @@ step_80_boot() {
   # re-derived from a default on the next run.
   state_set boot.efistub_cmdline "$(target_fact efistub_cmdline boot.efistub_cmdline "")"
   state_set boot.secureboot_cert "$(boot_secureboot_cert)"
+  # The key's path as well as the certificate's, and for a reason that only
+  # shows up much later: tools/bios-update.sh has to sign fwupdx64.efi with the
+  # same pair the kernel was signed with, or the machine boots and will not
+  # flash. It had two sources for that pair and neither was this installer, so a
+  # machine signed here recorded which certificate it used and nothing about
+  # which key — half a pair, which is exactly what boot_secureboot_ready()
+  # refuses to work with.
+  #
+  # The path, never the key: the same rule crypt.keyfile follows. The journal
+  # refuses a name ending in _key outright, which is how this went unnoticed —
+  # boot.secureboot_key would have died on the spot, and boot.secureboot_cert
+  # alone looked complete.
+  state_set boot.secureboot_keyfile "$(boot_secureboot_keyfile)"
 }

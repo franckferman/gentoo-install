@@ -259,3 +259,52 @@ gi_tools() {
   [ -n "$announce" ]
   [ "$adopt" -lt "$announce" ]
 }
+
+@test "the flashing tool reads the pair this installer signed with" {
+  # bios-update.sh had two sources for the Secure Boot pair and neither was
+  # gentoo-install: a conventional /etc/efikeys, and a configuration file
+  # belonging to another tool entirely. So a machine installed and signed by
+  # this project reached "No Secure Boot signing pair found", having been asked
+  # about two files it never creates — while its own journal, on that same
+  # disk, recorded what step 80 used.
+  local root
+  root="$(gi_tmp)/signed"
+  mkdir -p "${root}/var/lib/gentoo-install" "${root}/etc/keys"
+  : >"${root}/etc/keys/db.key"
+  : >"${root}/etc/keys/db.crt"
+  printf 'boot.secureboot_keyfile=/etc/keys/db.key\nboot.secureboot_cert=/etc/keys/db.crt\n' \
+    >"${root}/var/lib/gentoo-install/state"
+
+  run bash -c '
+    ok() { printf "OK %s\n" "$*"; }; err() { printf "ERR %s\n" "$*" >&2; }
+    warn() { :; }; conf_var() { return 0; }
+    ROOT_PREFIX="$2"; STATE_DIR="/var/lib/gentoo-install"
+    SIGN_KEY=""; SIGN_CERT=""
+    BUILDKERNEL_CONF="/nonexistent"; EFIKEYS_KEY="/nonexistent"; EFIKEYS_CERT="/nonexistent"
+    eval "$(sed -n "/^journal_var()/,/^}/p" "$1/tools/bios-update.sh")"
+    eval "$(sed -n "/^resolve_sign_pair()/,/^}/p" "$1/tools/bios-update.sh")"
+    resolve_sign_pair
+    printf "KEY=%s CERT=%s\n" "$SIGN_KEY" "$SIGN_CERT"
+  ' bash "$GI_ROOT" "$root"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"install journal"* ]]
+  [[ "$output" == *"KEY=${root}/etc/keys/db.key"* ]]
+  [[ "$output" == *"CERT=${root}/etc/keys/db.crt"* ]]
+}
+
+@test "step 80 records the key's path, not only the certificate's" {
+  # The journal refuses a key named *_key outright — boot.secureboot_key would
+  # have died on the spot — so recording only the certificate looked complete
+  # and left the machine with half a pair. The path, never the key, exactly as
+  # crypt.keyfile does it.
+  grep -q 'state_set boot.secureboot_keyfile' "${GI_ROOT}/steps/80_boot.sh"
+  gi_bash '
+    DRY_RUN=no
+    STATE_DIR="$1"; STATE_FILE="$1/state"
+    mkdir -p "$1"; : >"$STATE_FILE"
+    state_set boot.secureboot_keyfile /etc/keys/db.key
+    state_get boot.secureboot_keyfile
+  ' "$(gi_tmp)/journalkey"
+  [ "$status" -eq 0 ]
+  [ "$output" = "/etc/keys/db.key" ]
+}
