@@ -12,6 +12,15 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **A dry run of an encrypted install always failed.** The state journal is how
+  one step tells the next what it did — step 20 records `disk.crypt_device`,
+  step 30 reads it — and a dry run wrote nothing, so step 30 stopped with "No
+  device to encrypt" and every step behind it fell over the same way. The plan
+  an operator asked to see ended in five failures caused by asking. A dry run
+  now keeps its writes in memory and reads find them; nothing reaches the
+  filesystem, and `--dry-run is complete by construction` becomes true for the
+  steps that talk to each other.
+
 - **A Gentoo `/var` ran out of inodes, not bytes.** The default desktop layout
   on a 24 GiB disk gives `/var` 3 GiB, mke2fs sizes the inode table by bytes —
   one per 16 KiB, so 196,608 of them — and the ebuild repository is 160,000

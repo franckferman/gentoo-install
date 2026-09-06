@@ -24,6 +24,19 @@ _GI_STATE_LOADED=1
 STATE_DIR="/var/lib/gentoo-install"
 STATE_FILE=""
 
+# What a dry run would have written.
+#
+# The journal is how one step tells the next what it did: step 20 records
+# disk.crypt_device, step 30 reads it. A dry run writes nothing to disk, which
+# is the point — but with nothing to read either, step 30 stopped with "No
+# device to encrypt" and every step after it fell over the same way. The plan
+# an operator asked to see ended in five failures that were artefacts of asking.
+#
+# So a dry run keeps its writes here instead, and reads find them. Nothing
+# reaches the filesystem, and lib/disk.sh's claim that --dry-run is complete by
+# construction becomes true for the steps that talk to each other.
+declare -A _GI_STATE_DRY=()
+
 # --------------------------------------------------------------------------- #
 #  Guards                                                                     #
 # --------------------------------------------------------------------------- #
@@ -112,6 +125,7 @@ state_set() {
   _state_require_init
   if [[ "$DRY_RUN" == "yes" ]]; then
     log "dry-run: would record ${key}=${value}"
+    _GI_STATE_DRY["$key"]="$value"
     return 0
   fi
   tmp="$(mktemp "${STATE_DIR}/.state.XXXXXX")"
@@ -126,8 +140,16 @@ state_set() {
 
 state_get() {
   # Prints the value on stdout (a returned value). Returns 1 when absent.
+  #
+  # A dry run's own writes come first, and only for keys it actually wrote: a
+  # dry run resumed over a real journal still reads everything the last real
+  # run recorded.
   local key="$1" line
   _state_check_key "$key"
+  if [[ "$DRY_RUN" == "yes" && -n "${_GI_STATE_DRY[$key]+set}" ]]; then
+    printf '%s\n' "${_GI_STATE_DRY[$key]}"
+    return 0
+  fi
   [[ -n "$STATE_FILE" && -f "$STATE_FILE" ]] || return 1
   line="$(grep -m1 -- "^${key}=" "$STATE_FILE" 2>/dev/null)" || return 1
   printf '%s\n' "${line#*=}"
@@ -139,6 +161,7 @@ state_unset() {
   _state_require_init
   if [[ "$DRY_RUN" == "yes" ]]; then
     log "dry-run: would forget ${key}"
+    unset '_GI_STATE_DRY[$key]'
     return 0
   fi
   [[ -f "$STATE_FILE" ]] || return 0

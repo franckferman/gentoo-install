@@ -123,3 +123,53 @@ load helper
   [ "$status" -eq 2 ]
   [[ "$stderr" == *"contradict"* ]]
 }
+
+# --------------------------------------------------------------------------- #
+#  A dry run remembers what it would have written                             #
+# --------------------------------------------------------------------------- #
+# The journal is how one step tells the next what it did. With a dry run
+# writing nothing and reading nothing, step 30 stopped at "No device to
+# encrypt" — a message about the operator's disk, printed because of the
+# operator's --dry-run — and steps 70, 75, 80 and 95 fell over behind it. The
+# plan they asked to see ended in five failures none of which would happen.
+
+@test "a dry run reads back what it said it would record" {
+  gi_bash '
+    DRY_RUN=yes
+    STATE_DIR="$1"; STATE_FILE="${1}/state"
+    state_set disk.crypt_device /dev/vda2
+    state_get disk.crypt_device
+  ' "$(gi_tmp)"
+  [ "$status" -eq 0 ]
+  [ "$output" = "/dev/vda2" ]
+}
+
+@test "a dry run writes nothing to the journal file" {
+  local dir
+  dir="$(gi_tmp)/dryjournal"
+  mkdir -p "$dir"
+  gi_bash '
+    DRY_RUN=yes
+    STATE_DIR="$1"; STATE_FILE="${1}/state"
+    state_set disk.crypt_device /dev/vda2
+  ' "$dir"
+  [ "$status" -eq 0 ]
+  [ ! -e "${dir}/state" ]
+}
+
+@test "a dry run over a real journal still reads the real values" {
+  # --resume --dry-run has to show what the last real run left behind, not an
+  # empty world.
+  local dir
+  dir="$(gi_tmp)/mixed"
+  mkdir -p "$dir"
+  printf 'disk.root_device=/dev/vg0/root\n' >"${dir}/state"
+  gi_bash '
+    DRY_RUN=yes
+    STATE_DIR="$1"; STATE_FILE="${1}/state"
+    state_set disk.crypt_device /dev/vda2
+    printf "%s %s\n" "$(state_get disk.root_device)" "$(state_get disk.crypt_device)"
+  ' "$dir"
+  [ "$status" -eq 0 ]
+  [ "$output" = "/dev/vg0/root /dev/vda2" ]
+}
