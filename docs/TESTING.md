@@ -546,8 +546,13 @@ Watch that the catalogue is skipped entirely and the checksum is checked.
 Then run it again without `--stage-checksum` and watch it say, loudly, that
 nothing verified the archive.
 
-**Both halves pass** (2026-09-06). Two things the first run showed that this
-page did not promise:
+**Both halves pass** (2026-09-06), and were replayed the same day against a
+LUKS container after every fix since, on `--steps 20,30,40`: the catalogue is
+skipped, the `.asc` beside the archive is found and verified, the sha256
+matches, and the stage lands inside the container. The replay is what found
+the two target-root defects below.
+
+Two things the first run showed that this page did not promise:
 
 - a `.asc` sitting beside the archive is found and used without being named, so
   an archive downloaded from a mirror with its signature is verified by
@@ -557,6 +562,23 @@ page did not promise:
   *"because that is what was asked"*. That is the right call for a flag whose
   whole purpose is to install something the catalogue does not know about, and
   it is worth knowing before you rely on it.
+
+And two things the replay found, neither of them about `--stage-file`:
+
+- `--root` was honoured by steps 40 to 95 and ignored by step 20, which read a
+  second setting of its own. Pass it and the stage3, the chroot, the kernel and
+  the bootloader go to one directory while the target disk is mounted on
+  another. Fixed: one setting, and step 20 mounts where the rest of the run
+  builds.
+- the guard that refuses to unpack onto the installer's own disk only fired
+  when the disk plan's mountpoint was the very path being written, so the case
+  above — two roots that disagree, nothing mounted on either — went straight
+  past it.
+
+**Run it under a pty.** The typed disk confirmation reads `/dev/tty`, so
+`printf '/dev/loop0\n' | sudo ./gentoo-install.sh …` cannot answer it. Use
+`printf '/dev/loop0\n' | sudo script -qec ./run.sh /path/to/console`, which
+gives the installer a terminal and keeps the transcript.
 
 ---
 

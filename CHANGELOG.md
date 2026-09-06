@@ -12,6 +12,35 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **One name for the directory the whole run builds in.** Step 20 mounted the
+  target on `disk_root`; steps 40 to 95 read `root`. Both defaulted to
+  `/mnt/gentoo`, so the split showed only once one of them was set: `--root
+  /mnt/x` moved the unpacking, the chroot, the kernel and the bootloader while
+  step 20 went on mounting the target disk on `/mnt/gentoo`. Found by running
+  `--steps 20,30,40 --root /mnt/gi5`, where step 40 answered "the target root
+  does not exist — step 20 partitions and step 50 mounts; run them first" one
+  screen under a step 20 that had just succeeded.
+
+- **The guard against unpacking onto the installer's own disk no longer has a
+  way past it.** `_stage_assert_target_mounted` was written after 1.3 GB of
+  stage3 landed on the wrong disk, and it only bit when the recorded mountpoint
+  was the very path about to be written — so two roots that disagreed, the
+  exact case above, walked straight past the check that exists for them.
+  Nothing was mounted on that root either. It now refuses whenever the disk
+  plan recorded a mountpoint and the root being unpacked into is not mounted,
+  and it names the path the plan actually used.
+
+- **"Is there a terminal?" is now asked of the kernel, not of the permission
+  bits.** `[[ -r /dev/tty ]]` reads the mode of the device node, 0666
+  everywhere, so it is true for a process with no controlling terminal — a run
+  under `sudo` from a pipe, a cron job, a container, a CI job — and the read
+  that follows dies on the redirect. Eight guards asked it that way and each
+  then reported the wrong reason: the typed disk confirmation printed a raw
+  shell error and said "Nothing typed; nothing done" instead of naming what it
+  needed, and the passphrase prompt returned in silence rather than naming the
+  two unattended routes. Every refusal was safe; the sentence that tells the
+  operator what to do about it was what got lost.
+
 - **`efistub` has been booted**, which was the last of the four bootloaders with
   nothing behind it. It needs an NVRAM entry, because for that variant the entry
   *is* the configuration, and the installer writes one when it runs from a live
