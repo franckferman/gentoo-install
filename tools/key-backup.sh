@@ -319,7 +319,6 @@ resolve_device() {
     return 0
   fi
 
-
   # What the installer recorded about this machine, before searching for it.
   if dev="$(journal_device)"; then
     log "Container from the install journal: $dev"
