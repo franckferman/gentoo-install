@@ -111,6 +111,11 @@ step_30_crypt() {
 
   crypt_forget_ways_in
 
+  # Armed here, in the parent shell, and never from inside a command
+  # substitution: see the note in crypt_secret_file(). A trap installed in a
+  # subshell fires when that subshell ends, and this one unmounts the target.
+  crypt_arm_secret_trap
+
   # apply() acts and leaves its record in CRYPT_RECORD. It is called plainly,
   # never as "$(crypt_variant_apply)": a command substitution is a subshell,
   # and the secret files apply() registers for the trap would be forgotten the

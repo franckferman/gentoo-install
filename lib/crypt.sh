@@ -341,7 +341,21 @@ crypt_secret_file() {
   if declare -F track_temp >/dev/null 2>&1; then
     track_temp "$path"
   fi
-  crypt_arm_secret_trap
+  # The trap is NOT armed here, and that is the whole point of this comment.
+  #
+  # This function prints a path, so every caller runs it as "$(crypt_secret_file
+  # ...)" — a command substitution, which is a subshell. `trap ... EXIT` executed
+  # inside a subshell fires when that subshell ends, and _crypt_exit_trap calls
+  # cleanup(), which unmounts every tracked mount. So arming here tore the target
+  # tree down on the spot: every secret file created after step 30 mounted
+  # anything left the machine unmounted a line later, and the next command failed
+  # with "No such file or directory" about a path that existed the line before.
+  #
+  # The idempotence guard did not save it either: _GI_CRYPT_TRAPPED="yes" is set
+  # in the subshell and never reaches the parent, so every call armed it afresh.
+  #
+  # crypt_arm_secret_trap() is called by the step instead, in the parent shell,
+  # before any secret exists.
   printf '%s\n' "$path"
 }
 

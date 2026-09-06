@@ -150,3 +150,28 @@ load helper
   [ "$status" -ne 0 ]
   [[ "$stderr" == *"outside the target"* ]]
 }
+
+@test "no EXIT trap is armed from a function that runs in a command substitution" {
+  # This one cost a night. crypt_secret_file() prints a path, so every caller
+  # runs it as "$(crypt_secret_file ...)" — a subshell. It also armed the EXIT
+  # trap, and a trap installed inside a subshell fires when that subshell ends.
+  # The trap calls cleanup(), which unmounts every tracked mount. So creating a
+  # secret file tore the target tree down on the spot, and the next command
+  # failed with "No such file or directory" about a path that had existed one
+  # line earlier — while the same command run by hand succeeded.
+  #
+  # The idempotence guard did not help: _GI_CRYPT_TRAPPED="yes" is set in the
+  # subshell and never reaches the parent, so every call armed it again.
+  local body
+  body="$(sed -n '/^crypt_secret_file() {/,/^}/p' "${GI_ROOT}/lib/crypt.sh")"
+  [ -n "$body" ]
+  # Comment lines are stripped: the note explaining all this names the function.
+  if grep -vE '^[[:space:]]*#' <<<"$body" | grep -q 'crypt_arm_secret_trap'; then
+    printf 'crypt_secret_file arms the EXIT trap, and it runs in $( )\n' >&2
+    return 1
+  fi
+
+  # It has to be armed somewhere, and that somewhere is the step, in the parent.
+  grep -vE '^[[:space:]]*#' "${GI_ROOT}/steps/30_crypt.sh" \
+    | grep -q 'crypt_arm_secret_trap' 
+}
