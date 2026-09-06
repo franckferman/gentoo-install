@@ -1,0 +1,3 @@
+sbattach --remove /tmp/bats-run-IemjfG/test/295/gi/k.efi
+sbattach --remove /tmp/bats-run-HkdbcK/test/295/gi/k.efi
+sbattach --remove /tmp/bats-run-kicbLD/test/295/gi/k.efi

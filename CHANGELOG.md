@@ -84,6 +84,19 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **An EFI binary signed in place carries one signature, not one per run.**
+  `sbsign` appends rather than replaces, and `boot_install_efi` signs the
+  kernel in place whenever the ESP is mounted at `/boot` — this installer's own
+  default layout — because the loader already reads it where it is. Measured on
+  a real PE binary: four runs of step 80, four signatures, and the file grows
+  each time. The size is the least of it: after rotating the Secure Boot pair
+  the image still verified against the **retired** certificate, so any firmware
+  that still has it enrolled would start the image — which is the one thing
+  rotating a key is meant to end. Every signature is stripped before the new
+  one goes on, so the image carries exactly the pair in force. Where source and
+  destination differ, `sbsign` writes a fresh file from a pristine one and
+  there is nothing to strip.
+
 - **`grub-script-check` is looked for in the target before this machine, in
   both places that used it.** It belongs to `sys-boot/grub`, which step 80 has
   just installed *in the target*; `have` reads the installer's own PATH, and a

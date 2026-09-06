@@ -174,6 +174,20 @@ show_signature() {
   fi
 }
 
+boot_strip_signatures() {
+  # Every signature on a PE image, removed. sbattach takes one per call, so
+  # the loop is the strip; it is bounded because an unbounded loop over an
+  # external tool's exit code is one bug away from never ending.
+  # Args: $1 = the image.
+  local file="$1" i
+  have sbattach || return 0
+  [[ -f "$file" ]] || return 0
+  for ((i = 0; i < 16; i++)); do
+    sbattach --remove "$file" >/dev/null 2>&1 || return 0
+  done
+  return 0
+}
+
 boot_install_efi() {
   # The one door every EFI binary goes through: sign it when there is a key,
   # copy it when there is not, and say which happened.
@@ -191,6 +205,22 @@ boot_install_efi() {
   if boot_secureboot_ready; then
     key="$(boot_secureboot_keyfile)"
     cert="$(boot_secureboot_cert)"
+
+    # sbsign appends; it does not replace. Signing an image in place — which is
+    # what happens when the ESP is mounted at /boot and the kernel is already
+    # where the loader reads it — leaves one more signature on the file every
+    # time step 80 runs. Measured on a real PE: four runs, four signatures.
+    #
+    # The size is the least of it. After rotating the key pair the image still
+    # verifies against the retired certificate, so any firmware that still has
+    # it enrolled starts the image — which is the one thing rotating a key is
+    # meant to end. Stripping first leaves exactly one signature, from the pair
+    # in force. Where source and destination differ, sbsign writes a fresh file
+    # from a pristine one and there is nothing to strip.
+    if [[ "$src" == "$dest" ]]; then
+      run_cmd boot_strip_signatures "$dest" || return 1
+    fi
+
     run_cmd sbsign --key "$key" --cert "$cert" --output "$dest" "$src" || {
       err "sbsign failed on ${src}"
       err "       the key and the certificate must be a matching pair, in PEM"

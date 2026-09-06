@@ -182,3 +182,62 @@ _plan() {
   [[ "$body" != *"have grub-script-check"* ]]
   [[ "$body" == *"has not been established"* ]]
 }
+
+@test "signing in place strips what is already there first" {
+  # sbsign appends; it does not replace. Signing an image in place — what
+  # happens when the ESP is at /boot and the kernel is already where the
+  # loader reads it — left one more signature per run of step 80. Measured on
+  # a real PE binary: four runs, four signatures. And after rotating the key
+  # pair the image still verified against the retired certificate.
+  local dir
+  dir="$(gi_tmp)"
+  printf 'image\n' >"${dir}/k.efi"
+  run --separate-stderr bash -c '
+    source "$GI_ENTRY"
+    config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no
+    CFG[secureboot_keyfile]="$1/k"; CFG[secureboot_cert]="$1/c"
+    : >"$1/k"; : >"$1/c"
+    boot_strip_signatures() { printf "stripped %s\n" "$1" >"$1.stripped"; }
+    sbsign() { return 0; }
+    show_signature() { :; }
+    boot_install_efi "$1/k.efi" "$1/k.efi"' bash "$dir"
+  [ "$status" -eq 0 ]
+  [ -f "${dir}/k.efi.stripped" ]
+  grep -q "stripped ${dir}/k.efi" "${dir}/k.efi.stripped"
+}
+
+@test "a fresh destination has nothing to strip" {
+  local dir
+  dir="$(gi_tmp)"
+  printf 'image\n' >"${dir}/src.efi"
+  run --separate-stderr bash -c '
+    source "$GI_ENTRY"
+    config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no
+    CFG[secureboot_keyfile]="$1/k"; CFG[secureboot_cert]="$1/c"
+    : >"$1/k"; : >"$1/c"
+    boot_strip_signatures() { printf "x\n" >"$1.stripped"; }
+    sbsign() { return 0; }
+    show_signature() { :; }
+    boot_install_efi "$1/src.efi" "$1/dest.efi"' bash "$dir"
+  [ "$status" -eq 0 ]
+  [ ! -e "${dir}/dest.efi.stripped" ]
+  [ ! -e "${dir}/src.efi.stripped" ]
+}
+
+@test "the signature strip is bounded" {
+  # An unbounded loop over an external tool's exit code is one bug away from
+  # never ending, and this one runs as root against the ESP.
+  local dir
+  dir="$(gi_tmp)"
+  printf 'x\n' >"${dir}/img"
+  run --separate-stderr timeout 20 bash -c '
+    source "$GI_ENTRY"
+    have() { [[ "$1" == "sbattach" ]]; }
+    sbattach() { printf "call\n" >>"'"${dir}"'/calls"; return 0; }
+    boot_strip_signatures "$1/img"' bash "$dir"
+  [ "$status" -eq 0 ]
+  [ "$(wc -l <"${dir}/calls")" -le 16 ]
+  [ "$(wc -l <"${dir}/calls")" -gt 1 ]
+}
