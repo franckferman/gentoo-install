@@ -175,3 +175,79 @@ plan_fixture() {
   [[ "$output" == *"REATTACHED"* ]]
   [[ "$output" != *"PREPARED"* ]]
 }
+
+# --------------------------------------------------------------------------- #
+#  A journal that a reboot forgets                                            #
+# --------------------------------------------------------------------------- #
+@test "a state journal in RAM is named as such, before the install starts" {
+  # The default is /var/lib/gentoo-install, and on the medium this installer is
+  # designed for — a live ISO — that is a tmpfs. Which steps completed, and the
+  # disk plan step 20 writes beside them, then live in RAM: interrupt the run,
+  # reboot the medium, and --resume has nothing to resume from. Said once, at
+  # the start, rather than discovered after three hours of compiling.
+  gi_bash 'DRY_RUN=no; STATE_DIR=/dev/shm; state_warn_if_volatile'
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"state journal is on a tmpfs"* ]]
+  [[ "$stderr" == *"--state-dir"* ]]
+}
+
+@test "a journal on a real filesystem says nothing at all" {
+  gi_bash 'DRY_RUN=no; STATE_DIR="$1"; state_warn_if_volatile' "$(gi_tmp)"
+  [ "$status" -eq 0 ]
+  [ -z "$stderr" ]
+}
+
+@test "state_init says it, so nobody has to remember to ask" {
+  local dir
+  dir="$(gi_tmp)/volatile"
+  gi_bash '
+    DRY_RUN=no
+    state_warn_if_volatile() { printf "WARNED\n"; }
+    state_init "$1"
+  ' "$dir"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WARNED"* ]]
+}
+
+@test "an overlay is followed to the layer that takes the writes" {
+  # The Gentoo ISO mounts its root as
+  #   overlay LiveOS_rootfs lowerdir=/run/rootfsbase,upperdir=/run/overlayfs
+  # so the journal's directory answers "overlay", and the first version of this
+  # check had no opinion about that — it said nothing on precisely the medium it
+  # was written for, while /run is a tmpfs and the journal was in RAM.
+  gi_bash '
+    DRY_RUN=no
+    STATE_DIR=/var/lib/gentoo-install
+    have() { [[ "$1" == findmnt ]] || command -v "$1" >/dev/null 2>&1; }
+    findmnt() {
+      case "$*" in
+        *FSTYPE*/tmp/upper*) printf "tmpfs\n" ;;
+        *OPTIONS*)           printf "rw,lowerdir=/l,upperdir=/tmp/upper,workdir=/w\n" ;;
+        *FSTYPE*)            printf "overlay\n" ;;
+      esac
+    }
+    mkdir -p /tmp/upper
+    state_filesystem
+  '
+  [ "$status" -eq 0 ]
+  [ "$output" = "tmpfs" ]
+}
+
+@test "an overlay whose upper layer is on a disk is left alone" {
+  gi_bash '
+    DRY_RUN=no
+    STATE_DIR=/var/lib/gentoo-install
+    have() { [[ "$1" == findmnt ]] || command -v "$1" >/dev/null 2>&1; }
+    findmnt() {
+      case "$*" in
+        *FSTYPE*/tmp/persistent*) printf "ext4\n" ;;
+        *OPTIONS*)                printf "rw,lowerdir=/l,upperdir=/tmp/persistent,workdir=/w\n" ;;
+        *FSTYPE*)                 printf "overlay\n" ;;
+      esac
+    }
+    mkdir -p /tmp/persistent
+    state_filesystem
+  '
+  [ "$status" -eq 0 ]
+  [ "$output" = "ext4" ]
+}

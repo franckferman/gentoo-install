@@ -98,6 +98,64 @@ state_init() {
   if _core_plain_file "$STATE_FILE"; then
     chmod 0600 -- "$STATE_FILE" 2>/dev/null || true
   fi
+
+  state_warn_if_volatile
+}
+
+state_filesystem() {
+  # The filesystem type the journal really sits on, asked rather than assumed.
+  # A returned value, so stdout; empty when nothing here can tell.
+  #
+  # An overlay is followed to the layer that receives the writes, which is the
+  # whole point on a live medium: the Gentoo ISO mounts
+  #
+  #   overlay  LiveOS_rootfs  lowerdir=/run/rootfsbase,upperdir=/run/overlayfs
+  #
+  # so /var/lib/gentoo-install answers "overlay", the first version of this
+  # check saw a filesystem it had no opinion about, and said nothing on exactly
+  # the medium it was written for. /run is a tmpfs; the journal is in RAM.
+  # Args: $1 = a path (default: the state directory), $2 = recursion depth.
+  local path="${1:-$STATE_DIR}" depth="${2:-0}" fstype="" upper=""
+  if have findmnt; then
+    fstype="$(findmnt -no FSTYPE --target "$path" 2>/dev/null || true)"
+  fi
+  if [[ -z "$fstype" ]] && have stat; then
+    fstype="$(stat -f -c %T -- "$path" 2>/dev/null || true)"
+  fi
+
+  if [[ "$fstype" == overlay* ]] && ((depth < 3)) && have findmnt; then
+    upper="$(findmnt -no OPTIONS --target "$path" 2>/dev/null \
+      | tr ',' '\n' | sed -n 's/^upperdir=//p' | head -n 1)"
+    if [[ -n "$upper" && -d "$upper" ]]; then
+      state_filesystem "$upper" "$((depth + 1))"
+      return 0
+    fi
+  fi
+  printf '%s\n' "$fstype"
+}
+
+state_warn_if_volatile() {
+  # A journal on a tmpfs is a journal that a reboot forgets.
+  #
+  # The default is /var/lib/gentoo-install, and on the medium this installer is
+  # designed to be run from — a live ISO — that is a tmpfs. So the record of
+  # which steps completed, and the disk plan step 20 writes beside it, live in
+  # RAM: interrupt the install, reboot the live medium, and --resume has
+  # nothing to resume from. It is not a bug in the journal, it is a property of
+  # where it lands by default, and it is worth one line before three hours of
+  # compiling rather than after.
+  local fstype
+  fstype="$(state_filesystem)"
+  case "$fstype" in
+    tmpfs | ramfs) ;;
+    *) return 0 ;;
+  esac
+  warn "the state journal is on a ${fstype}: ${STATE_DIR}"
+  warn "       which steps completed, and the disk plan step 20 records, are"
+  warn "       in RAM — rebooting this medium loses both, and --resume with"
+  warn "       them gone starts from the beginning"
+  warn "       --state-dir on something that survives keeps them:"
+  warn "       example:  --state-dir /run/media/usb/gi-state"
 }
 
 state_reset() {

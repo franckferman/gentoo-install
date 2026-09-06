@@ -12,6 +12,16 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **A state journal that a reboot forgets now says so.** The default is
+  `/var/lib/gentoo-install`, and on the medium this installer is designed for —
+  a live ISO — that is RAM: the Gentoo ISO mounts its root as an overlay whose
+  upper layer is `/run/overlayfs`, on tmpfs. So which steps completed, and the
+  disk plan step 20 writes beside them, are lost by rebooting the medium, and
+  `--resume` starts from the beginning. It is said once, at startup, with
+  `--state-dir` named as the way out. The check follows an overlay to the layer
+  that receives the writes, because the first version did not and therefore said
+  nothing on exactly the medium it was written for.
+
 - **The installer could not get back to its own target.** Only step 20 mounted
   the tree, and every run releases what it mounted when it ends — so the second
   invocation, which is what `--resume` is, arrived at an empty `/mnt/gentoo` and
