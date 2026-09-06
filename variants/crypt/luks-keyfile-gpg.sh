@@ -29,7 +29,31 @@ _KG_WRAPPED=""      # the envelope, before it is installed
 _KG_PROVISIONED="no"
 
 _kg_key_path() {
+  # Where the file sits as the installed machine sees it: /boot/efi/luks-key.gpg
+  # and not <root>/boot/efi/luks-key.gpg. This is what goes in a message, and
+  # what the initramfs will be told to read.
   printf '%s/%s\n' "${CFG[crypt_key_dir]%/}" "${CFG[crypt_key_name]}"
+}
+
+_kg_key_host_path() {
+  # The same file as the machine running the installer sees it. Everything that
+  # writes or reads the file uses this, and nothing uses the bare path.
+  #
+  # It did. install(1) was handed /boot/efi/luks-key.gpg with no prefix, so an
+  # install run from a live medium wrote the target's key file onto the live
+  # medium's own EFI partition — and run on a working machine, onto that
+  # machine's. It happened here: a wrapped key for a throwaway loop image landed
+  # in this laptop's /boot/efi, next to its bootloader.
+  local root
+  root="$(crypt_target_root)"
+  printf '%s%s\n' "${root%/}" "$(_kg_key_path)"
+}
+
+crypt_target_root() {
+  # The target tree, or / when the installer is already inside it.
+  local root="${CFG[root]:-}"
+  [[ -n "$root" ]] || root="/"
+  printf '%s\n' "$root"
 }
 
 crypt_variant_describe() {
@@ -191,7 +215,7 @@ crypt_variant_apply() {
     return 1
   fi
 
-  _kg_install_key "$_KG_WRAPPED" "$key" && installed_ok="yes"
+  _kg_install_key "$_KG_WRAPPED" "$(_kg_key_host_path)" && installed_ok="yes"
   if [[ "$installed_ok" != "yes" ]]; then
     err "the container exists but its key file is not on ${CFG[crypt_key_dir]}"
     err "       nothing would open it at boot; install it by hand before"
@@ -203,7 +227,7 @@ crypt_variant_apply() {
   # tmpfs: they are meant to be the same bytes, and "meant to" is not a check.
   if [[ "$DRY_RUN" != "yes" ]]; then
     _KG_KEY_FROM_ESP="$(crypt_secret_file esprawkey)" || return 1
-    crypt_gpg_unwrap "$key" "$_KG_KEY_FROM_ESP" "$master_pass" || return 1
+    crypt_gpg_unwrap "$(_kg_key_host_path)" "$_KG_KEY_FROM_ESP" "$master_pass" || return 1
   fi
 
   # shellcheck disable=SC2034  # read by steps/30_crypt.sh after apply()
@@ -215,7 +239,21 @@ _kg_install_key() {
   # Args: $1 = source (the envelope on the tmpfs), $2 = destination.
   # Mode 0600 is asked for and will not be honoured on FAT, which is what the
   # ESP is. Said once, here, rather than pretended.
-  local src="$1" dst="$2" dir="${2%/*}"
+  local src="$1" dst="$2" dir="${2%/*}" root
+  root="$(crypt_target_root)"
+
+  # Belt and braces after the prefix was found missing: this file is the only
+  # thing that opens the container, and a path that escapes the target writes it
+  # onto whatever machine is running the installer — a live medium's EFI
+  # partition, or a working laptop's, next to its bootloader. Refuse rather than
+  # write outside the tree we were given.
+  if [[ "${root%/}" != "" && "$dst" != "${root%/}"/* ]]; then
+    err "refusing to write the key file outside the target: ${dst}"
+    err "       the target is ${root}, and this path is not inside it"
+    err "       crypt_key_dir is a path in the installed system, not on this one"
+    err "       example:  crypt_key_dir = /boot/efi"
+    return 1
+  fi
 
   if [[ -e "$dst" ]] && ! cmp -s -- "$src" "$dst" 2>/dev/null; then
     if ! resolve_conflict "$dst" "wrapped key file"; then
@@ -235,7 +273,7 @@ _kg_install_key() {
 
 crypt_variant_verify() {
   local dev="$CRYPT_DEVICE" want=1 key
-  key="$(_kg_key_path)"
+  key="$(_kg_key_host_path)"
 
   if [[ "$_KG_PROVISIONED" == "yes" ]]; then
     skip "${dev}: left as it was; this run proved no credential against it"

@@ -119,3 +119,34 @@ load helper
   gi_bash 'kernel_pkg_installed "$1" sys-boot/grub' "$root"
   [ "$status" -eq 0 ]
 }
+
+@test "the wrapped key file is never written outside the target tree" {
+  # _kg_key_path returned /boot/efi/luks-key.gpg with no prefix, and install(1)
+  # was handed that. An install run from a live medium therefore wrote the
+  # target's key file onto the live medium's own EFI partition; run on a working
+  # machine, onto that machine's. It happened here — a wrapped key for a
+  # throwaway loop image landed in this laptop's /boot/efi, beside its
+  # bootloader — and the file had to be taken back off by hand.
+  gi_bash 'config_init_defaults
+           source "${GI_ROOT}/variants/crypt/luks-keyfile-gpg.sh"
+           CFG[root]=/mnt/gentoo
+           CFG[crypt_key_dir]=/boot/efi
+           CFG[crypt_key_name]=luks-key.gpg
+           _kg_key_host_path'
+  [ "$status" -eq 0 ]
+  [ "$output" = "/mnt/gentoo/boot/efi/luks-key.gpg" ]
+}
+
+@test "installing the key file refuses a destination outside the target" {
+  # The same mistake by another route — a crypt_key_dir that escapes — is
+  # refused rather than written.
+  local dir
+  dir="$(gi_tmp)"
+  printf 'envelope\n' >"${dir}/src"
+  gi_bash 'config_init_defaults
+           source "${GI_ROOT}/variants/crypt/luks-keyfile-gpg.sh"
+           CFG[root]=/mnt/gentoo
+           _kg_install_key "$1" /boot/efi/luks-key.gpg' "${dir}/src"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"outside the target"* ]]
+}
