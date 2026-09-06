@@ -104,13 +104,18 @@ GI_INTERNAL_TOKENS='trinity|cagip|ca-gip|matric|gundabad|thrain|keepass|gps_'
   # project's version, and reading it as one pushes the documentation towards
   # saying less about what was actually run, which is the opposite of the
   # point. Only a bare N.N.N counts as a claim.
+  #
+  # And so is SVG path data. docs/index.html carries the GitHub mark as an
+  # inline <path d="M12 0C5.37 0 …">, whose coordinates read as five versions
+  # this project never had. A drawing is not a document making a claim.
   for file in README.md CHANGELOG.md CONTRIBUTING.md Makefile \
     docs/DESIGN.md docs/index.html .github/workflows/ci.yml \
     .github/workflows/static.yml; do
     [[ -f "${GI_ROOT}/${file}" ]] || continue
     while IFS= read -r found; do
       [[ "$found" == "$version" ]] || wrong+="  ${file}: ${found}"$'\n'
-    done < <(sed -E 's#https?://[^[:space:])"]*##g' "${GI_ROOT}/${file}" \
+    done < <(sed -E -e 's#https?://[^[:space:])"]*##g' -e 's#\bd="[^"]*"##g' \
+      "${GI_ROOT}/${file}" \
       | grep -oE '(^|[^0-9.-])[0-9]+\.[0-9]+\.[0-9]+([^0-9a-zA-Z-]|$)' \
       | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)
   done
@@ -375,4 +380,48 @@ GI_INTERNAL_TOKENS='trinity|cagip|ca-gip|matric|gundabad|thrain|keepass|gps_'
   ' "$dir"
   [ "$status" -eq 0 ]
   [[ "$output" == *"ASKED"* ]]
+}
+
+# --------------------------------------------------------------------------- #
+#  The site says what the project is                                          #
+# --------------------------------------------------------------------------- #
+@test "the site lists exactly the steps the registry has" {
+  # docs/index.html is the public face, and a page that says ten steps when
+  # there are eleven is the same class of drift as a README section that no
+  # longer matches its step: nobody notices, and everybody reads it.
+  local missing="" extra="" n
+  for n in $(gi_bash 'printf "%s\n" "${!STEP_MAP[@]}" | sort -n' && printf '%s' "$output"); do
+    grep -q "<div class=\"step-num\">${n}</div>" "${GI_ROOT}/docs/index.html" \
+      || missing+=" $n"
+  done
+  while read -r n; do
+    gi_bash 'printf "%s\n" "${!STEP_MAP[@]}"' >/dev/null
+    [[ "$output" == *"$n"* ]] || extra+=" $n"
+  done < <(grep -oE '<div class="step-num">[0-9]+</div>' "${GI_ROOT}/docs/index.html" \
+    | grep -oE '[0-9]+')
+  if [[ -n "$missing" || -n "$extra" ]]; then
+    printf 'steps missing from the site:%s\nsteps on the site that do not exist:%s\n' \
+      "$missing" "$extra" >&2
+    return 1
+  fi
+}
+
+@test "the site's headline numbers are the project's own" {
+  # Counted here, not copied: the stats bar claims a number of steps, of
+  # rescue scripts and of tests, and every one of them is a fact this
+  # repository can produce.
+  local page steps tools
+  page="${GI_ROOT}/docs/index.html"
+  steps="$(find "${GI_ROOT}/steps" -maxdepth 1 -name '*.sh' | wc -l)"
+  tools="$(find "${GI_ROOT}/tools" -maxdepth 1 -name '*.sh' | wc -l)"
+
+  grep -q "<div class=\"stat-num\">${steps}</div><div class=\"stat-label\">Numbered steps" "$page"
+  grep -q "<div class=\"stat-num\">${tools}</div><div class=\"stat-label\">Rescue scripts" "$page"
+
+  # And the version, which appears three times and must be the one the entry
+  # point declares.
+  local version
+  version="$(grep -oE '^readonly VERSION="[^"]+"' "${GI_ROOT}/gentoo-install.sh" | cut -d'"' -f2)"
+  [ -n "$version" ]
+  grep -q "v${version}" "$page"
 }
