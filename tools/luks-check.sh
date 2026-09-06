@@ -501,18 +501,26 @@ report_slots() {
 
   local s meaning
   for s in $slots; do
+    # The numbers are the installer's defaults — crypt_primary_slot,
+    # crypt_recovery_slot, crypt_tpm_slot — not a law. They are described by the
+    # role they are given rather than by one encryption variant's shape: saying
+    # "usually the key wrapped in luks-key.gpg" told a passphrase install, which
+    # is the default, that its perfectly ordinary slot 0 was something else.
     case "$s" in
-      0) meaning="usually the key wrapped in luks-key.gpg" ;;
-      2) meaning="usually the clevis key sealed in the TPM" ;;
-      *) meaning="added by hand, a user key for instance" ;;
+      0) meaning="the everyday way in: a passphrase, or a wrapped key file" ;;
+      1) meaning="the recovery passphrase" ;;
+      2) meaning="the TPM binding, when clevis sealed one" ;;
+      *) meaning="added by hand" ;;
     esac
     printf "  slot %-3s %s  %s\n" "$s" "${C_G}occupied${C_0}" "$meaning" >&2
   done
 
   echo "" >&2
-  echo "  Two occupied slots is the nominal state after a full install." >&2
-  echo "  Slot 0 alone means the TPM sealing is gone: the machine boots but" >&2
-  echo "  asks for the passphrase." >&2
+  echo "  What is nominal depends on how the machine was encrypted:" >&2
+  echo "    passphrase   slots 0 and 1 — the everyday one and the recovery one" >&2
+  echo "    keyfile      the same two, and the file itself must exist as well" >&2
+  echo "    tpm          those two and slot 2; slot 2 gone means the machine" >&2
+  echo "                 still boots, but stops to ask for the passphrase" >&2
   return 0
 }
 
@@ -603,10 +611,18 @@ report_key() {
     return 0
   fi
 
-  err "  no key file found in: ${KEY_CANDIDATES[*]}"
+  # Not an error on its own. A passphrase install — the default — keeps no key
+  # file anywhere, and reporting that in red told the operator of a healthy
+  # machine that it could not be opened. It is only a failure when a file was
+  # named and is not there, which resolve_key has already refused above.
+  warn "  no key file in: ${KEY_CANDIDATES[*]}"
   echo "" >&2
-  echo "  Without it, and without the TPM, the container cannot be opened at" >&2
-  echo "  all: the key of slot 0 exists nowhere else." >&2
+  echo "  Expected when the machine was encrypted with a passphrase: there is" >&2
+  echo "  no file to keep, and the passphrase is the way in." >&2
+  echo "" >&2
+  echo "  A problem when it was encrypted with a wrapped key file or bound to" >&2
+  echo "  the TPM: without the file, and without the TPM, the key of slot 0" >&2
+  echo "  exists nowhere else. The TPM section above says which this is." >&2
   return 1
 }
 

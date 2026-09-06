@@ -468,7 +468,11 @@ slot_label() {
   if [[ -n "$cs" && "$slot" == "$cs" ]]; then
     echo "the clevis key sealed in the TPM"
   elif [[ "$slot" == "0" ]]; then
-    echo "the key wrapped in luks-key.gpg"
+    # Named by its role, not by one encryption variant's shape: on a passphrase
+    # install — the installer's default — there is no wrapped key file at all,
+    # and calling slot 0 that told the operator their machine was something it
+    # is not.
+    echo "the everyday way in: a passphrase, or a wrapped key file"
   elif [[ -z "$cs" && "$slot" == "2" ]]; then
     echo "added by hand, or clevis: it cannot be asked from here"
   else
@@ -1049,12 +1053,15 @@ do_remove() {
   fi
   target="$SLOT"
 
-  # Slot 0 holds the key wrapped in luks-key.gpg, and that file is the only
-  # copy of it. No condition makes this tool take it away.
+  # Slot 0 is the everyday way in, whatever shape it takes: the passphrase
+  # typed at boot, or the key a wrapped file holds. Either way it is the one
+  # slot whose loss locks the machine, so no condition makes this tool take it
+  # away.
   if [[ "$target" == "0" ]]; then
     err "Slot 0 is never removed"
-    err "  It holds the key luks-key.gpg opens, the recovery path for"
-    err "  this machine, and there is no second copy of it anywhere"
+    err "  It is the everyday way into this machine — the passphrase, or the"
+    err "  key a wrapped file holds — and removing it locks the container"
+    err "  Add the new key first, prove it opens, then remove the old slot"
     exit "${EXIT_FAILURE}"
   fi
 
