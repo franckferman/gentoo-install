@@ -969,15 +969,28 @@ _stage_assert_target_mounted() {
   # 1.3 GB of stage3 landed on the installer's own disk, invisible afterwards
   # because the next successful run mounted the real filesystem on top of it.
   #
-  # The check only bites when step 20 recorded a mountpoint and it is the very
-  # path about to be written. Installing into a plain directory with --root,
-  # with no disk plan at all, stays a supported thing to do.
+  # The check only bites when step 20 recorded a mountpoint. Installing into a
+  # plain directory with --root, with no disk plan at all, stays a supported
+  # thing to do.
+  #
+  # It used to bite only when the recorded mountpoint was the very path about
+  # to be written, and that let the case it exists for walk straight past: when
+  # the two disagree, nothing is mounted on this root either, and the stage
+  # goes to the installer's own disk just the same. They disagree whenever
+  # --root changed between the run that partitioned and the run that unpacks.
   # Args: $1 = the root about to be unpacked into. Returns 1 to refuse.
   local root="$1" planned=""
   planned="$(state_get disk.mountpoint 2>/dev/null || true)"
-  [[ -n "$planned" && "$planned" == "$root" ]] || return 0
+  [[ -n "$planned" ]] || return 0
   if findmnt -rno TARGET --mountpoint "$root" >/dev/null 2>&1; then
     return 0
+  fi
+  if [[ "$planned" != "$root" ]]; then
+    err "the disk plan mounted the target on ${planned}, and this would unpack into ${root}"
+    err "       nothing is mounted on ${root}, so the stage would land on the disk"
+    err "       of the machine running the installer, not on the target"
+    err "       run:  ./gentoo-install.sh --root ${planned} --steps 40"
+    return 1
   fi
   err "nothing is mounted on ${root}, but the disk plan says step 20 mounted the target there"
   err "       step 20 failed or has not run, so this would unpack the stage onto"

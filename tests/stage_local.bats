@@ -61,3 +61,40 @@ load helper
     "${dir}/state" "${dir}/target"
   [ "$status" -eq 0 ]
 }
+
+@test "the disk plan mounts where the rest of the run builds" {
+  # Two settings named the same directory — disk_root for step 20, root for
+  # steps 40 to 95 — and agreed only until one of them was set.
+  gi_bash 'CFG[root]=/mnt/elsewhere; disk_mount_root'
+  [ "$status" -eq 0 ]
+  [ "$output" = "/mnt/elsewhere" ]
+}
+
+@test "no disk_root setting survives beside root" {
+  gi_bash 'config_init_defaults >/dev/null 2>&1; printf "%s\n" "${CFG[disk_root]+set}"'
+  [ -z "$output" ]
+}
+
+@test "the stage refuses a root the disk plan did not mount" {
+  # The guard exists because 1.3 GB of stage3 once landed on the installer's
+  # own disk. It used to bite only when the planned mountpoint was the very
+  # path about to be written, so two roots that disagreed walked past it —
+  # and nothing is mounted on that root either.
+  local dir
+  dir="$(gi_tmp)"
+  mkdir -p "${dir}/state" "${dir}/notmounted"
+  printf 'disk.mountpoint=/mnt/gentoo\n' >"${dir}/state/journal"
+  gi_bash 'STATE_FILE="$1/state/journal"; _stage_assert_target_mounted "$1/notmounted"' "$dir"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"mounted the target on /mnt/gentoo"* ]]
+  [[ "$stderr" == *"not on the target"* ]]
+}
+
+@test "a plain directory with no disk plan is still unpacked into" {
+  local dir
+  dir="$(gi_tmp)"
+  mkdir -p "${dir}/state" "${dir}/plain"
+  : >"${dir}/state/journal"
+  gi_bash 'STATE_FILE="$1/state/journal"; _stage_assert_target_mounted "$1/plain"' "$dir"
+  [ "$status" -eq 0 ]
+}

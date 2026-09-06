@@ -742,8 +742,11 @@ The directory the stage3 is unpacked into and the system is built under is the
 `root` setting, default `/mnt/gentoo` — the same name in a `.conf` (`root = /mnt/gentoo`)
 and on the command line (`--root /mnt/gentoo`), like every other declared
 setting. It is not `--target`, `--prefix` or `--destdir`; those do not exist.
-The separate `disk_root` setting is where step 20 mounts the tree it has just
-made.
+
+There is one such setting and not two. Step 20 mounts the tree it has just made
+on the same path steps 40 to 95 build in, because an install split between two
+directories is an install where the stage3 lands on the disk of the machine
+running the installer while the target sits mounted and empty.
 
 ### Meta-profiles
 

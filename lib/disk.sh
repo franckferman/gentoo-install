@@ -101,7 +101,6 @@ disk_init_defaults() {
   set_default disk_filesystem "ext4" # ext4|xfs|btrfs|f2fs
   set_default disk_lvm "auto"        # auto|yes|no — auto follows the layout
   set_default disk_vg "vg0"
-  set_default disk_root "/mnt/gentoo"
   set_default disk_swap "auto" # auto|none|<size>
 
   # 512 MiB is the number everybody copies and the first thing that fills up.
@@ -331,6 +330,19 @@ disk_list() {
   lsblk -dno NAME,TYPE 2>/dev/null \
     | awk '$2 == "disk" || $2 == "loop" { print $1 }' \
     | grep -Ev "$pattern" || true
+}
+
+disk_mount_root() {
+  # Where step 20 mounts the tree it has just made.
+  #
+  # This used to be a setting of its own, `disk_root`, beside the `root` that
+  # steps 40 to 95 read. They defaulted to the same path, so nothing showed
+  # until one of them was set: `--root /mnt/x` moved the unpacking, the chroot,
+  # the kernel and the bootloader to /mnt/x while step 20 went on mounting the
+  # target on /mnt/gentoo. The install was then split between a directory on
+  # the target disk and a directory on the installer's own. One directory, one
+  # name.
+  printf '%s\n' "${CFG[root]:-/mnt/gentoo}"
 }
 
 disk_mountpoints() {
@@ -960,7 +972,7 @@ disk_plan() {
   printf 'meta\tabout\t%s\t0\t-\t-\n' "${_DISK_ABOUT:-no description}"
   printf 'meta\tlvm\t%s\t0\t-\t-\n' "$lvm"
   printf 'meta\tvg\t%s\t0\t-\t-\n' "$vg"
-  printf 'meta\tmountpoint\t%s\t0\t-\t-\n' "${CFG[disk_root]}"
+  printf 'meta\tmountpoint\t%s\t0\t-\t-\n' "$(disk_mount_root)"
   printf 'meta\ttotal\t%s\t%s\t-\t-\n' "$(disk_human_size "$total")" "$total"
   printf 'meta\tpool\t%s\t%s\t-\t-\n' "$(disk_human_size "$pool")" "$pool"
 
