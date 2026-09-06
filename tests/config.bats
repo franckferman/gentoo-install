@@ -338,3 +338,49 @@ load helper
     }
   done
 }
+
+@test "the governor record is forgotten once it has been honoured" {
+  # The journal entry means "this run turned the governor up, and here is what
+  # it was". Left behind after the restore it outlives the run: a later one
+  # reaching step 95 reads it and sets the machine back to the governor of the
+  # day of the install, undoing a choice the operator made since.
+  local dir
+  dir="$(gi_tmp)/gov"
+  mkdir -p "${dir}/cpu0/cpufreq" "${dir}/state"
+  printf 'powersave\n' >"${dir}/cpu0/cpufreq/scaling_governor"
+  printf 'performance powersave\n' >"${dir}/cpu0/cpufreq/scaling_available_governors"
+
+  gi_bash 'CPU_SYSFS="$1"; config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no; STATE_DIR="$1/../state"; STATE_FILE="$1/../state/journal"
+    mkdir -p "$STATE_DIR"; : >"$STATE_FILE"
+    cpu_apply_governor
+    printf "set=%s journal=%s\n" "$(cpu_governor_now)" "$(state_get cpu.governor_before)"
+    cpu_restore_governor
+    printf "back=%s left=[%s]\n" "$(cpu_governor_now)" \
+      "$(state_get cpu.governor_before 2>/dev/null || true)"' "$dir"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"set=performance journal=powersave"* ]]
+  [[ "$output" == *"back=powersave left=[]"* ]]
+}
+
+@test "a governor that would not go back keeps its record" {
+  # The writes are silent on failure. Dropping the record then would lose the
+  # only note of what the machine is owed.
+  local dir
+  dir="$(gi_tmp)/govro"
+  mkdir -p "${dir}/cpu0/cpufreq" "${dir}/state"
+  printf 'performance\n' >"${dir}/cpu0/cpufreq/scaling_governor"
+  printf 'performance powersave\n' >"${dir}/cpu0/cpufreq/scaling_available_governors"
+
+  # A driver that takes the write and keeps its own answer, which is what a
+  # refused governor looks like from here. The suite runs as root, so a mode
+  # would not simulate it.
+  gi_bash 'CPU_SYSFS="$1"; config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no; STATE_DIR="$1/../state"; STATE_FILE="$1/../state/journal"
+    mkdir -p "$STATE_DIR"; printf "cpu.governor_before=powersave\n" >"$STATE_FILE"
+    cpu_governor_now() { printf "performance\n"; }
+    cpu_restore_governor
+    printf "left=[%s]\n" "$(state_get cpu.governor_before 2>/dev/null || true)"' "$dir"
+  [[ "$stderr" == *"still performance"* ]]
+  [[ "$output" == *"left=[powersave]"* ]]
+}

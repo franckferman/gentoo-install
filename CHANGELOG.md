@@ -12,6 +12,13 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Added
 
+- **A `hardened` stage has been installed, through step 60.** Steps 20 to 60 on
+  an encrypted disk: signed pointer, detached `.asc` and signed sha256 all
+  verify, and the profile that follows is `default/linux/amd64/23.0/hardened`
+  with no experimental warning — which is what `data/profiles.tsv` says it is.
+  Four flavours have now been unpacked: `base`, `musl`, `hardened`; `llvm` has
+  not.
+
 - **musl reaches step 60.** The profile is selected, `make.conf` is written and
   accepted by `emerge --info`, and `package.use`, `package.accept_keywords`,
   `package.license` and the `@gentoo-install` set are all written on a musl
@@ -51,6 +58,15 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   without a word. It measures them now and says which ones bind nothing.
 
 ### Fixed
+
+- **The governor record is forgotten once it has been honoured.** The journal
+  entry means "this run turned the governor up, and here is what it was", and
+  it was left behind after the restore. It outlives the run: a later one
+  reaching step 95 read it and set the machine back to the governor of the day
+  of the install, undoing in silence a choice the operator had made since. It
+  is now cleared — but only after reading the governor back, because the writes
+  are silent on failure and dropping the record then would lose the only note
+  of what the machine is owed.
 
 - **Step 60 asks whether the chroot is usable, not whether `/bin/true` runs
   in it.** The precondition ran `/bin/true` inside the target and took that as

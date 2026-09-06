@@ -130,6 +130,21 @@ cpu_apply_governor() {
   return 0
 }
 
+_cpu_forget_record() {
+  # The journal entry means "this run turned the governor up, and here is what
+  # it was". Once it is back, that claim is false, and the journal outlives the
+  # run: a later one reaching step 95 read it and set the machine back to the
+  # governor of the day of the install — undoing, in silence, a choice the
+  # operator had made since. A record of something that has been undone is not
+  # a record, it is a trap.
+  #
+  # Guarded on STATE_FILE the way step 95 guards its own writes: state_unset
+  # dies without a journal, and this runs from cleanup() on every exit,
+  # including the ones that never opened one.
+  [[ -n "${STATE_FILE:-}" && "$DRY_RUN" != "yes" ]] || return 0
+  state_unset cpu.governor_before 2>/dev/null || true
+}
+
 cpu_restore_governor() {
   # Args: $1 = optional governor to go back to; the journal answers otherwise.
   # Silent and successful when nothing was changed: it is called from cleanup()
@@ -141,15 +156,25 @@ cpu_restore_governor() {
   [[ -n "$back" ]] || back="$(state_get cpu.governor_before 2>/dev/null || true)"
   [[ -n "$back" ]] || return 0
   cpu_has_governor || return 0
-  [[ "$(cpu_governor_now)" == "$back" ]] && {
-    _GI_CPU_GOVERNOR_BEFORE=""
-    return 0
-  }
 
-  mapfile -t files < <(cpu_governor_files)
-  for f in "${files[@]}"; do
-    printf '%s\n' "$back" >"$f" 2>/dev/null || true
-  done
+  if [[ "$(cpu_governor_now)" != "$back" ]]; then
+    mapfile -t files < <(cpu_governor_files)
+    for f in "${files[@]}"; do
+      printf '%s\n' "$back" >"$f" 2>/dev/null || true
+    done
+  fi
+
+  # Read back before forgetting. The writes above are silent on failure — a
+  # governor can be refused by the driver — and dropping the record then would
+  # lose the only note of what this machine is owed. A record kept is a job a
+  # later run can finish; a record dropped is a machine left turned up.
+  if [[ "$(cpu_governor_now)" != "$back" ]]; then
+    warn "the cpu governor is still $(cpu_governor_now), not ${back}"
+    warn "       the journal keeps what it was, so a later run can put it back"
+    return 0
+  fi
+
   _GI_CPU_GOVERNOR_BEFORE=""
+  _cpu_forget_record
   return 0
 }
