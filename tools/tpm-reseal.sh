@@ -27,6 +27,7 @@ KEY_PATH=""              # --key    : GPG-wrapped key
 KEYSLOT=2                # --slot   : the slot clevis owns
 KEYSLOT_EXPLICIT="false" # --slot given by hand: do not second-guess it
 PCR_POLICY='{"pcr_bank":"sha256","pcr_ids":"0,2,3,6"}'
+PCRS_EXPLICIT="false" # --pcrs given by hand: do not second-guess it either
 ROOT_PREFIX="" # --root   : installed tree, when run from a LiveCD
 PASSPHRASE=""  # never exposed on the command line internally
 PASSPHRASE_SOURCE="none"
@@ -275,7 +276,10 @@ parse_arguments() {
     esac
   done
 
-  [[ -n "$pcrs" ]] && PCR_POLICY="{\"pcr_bank\":\"sha256\",\"pcr_ids\":\"$pcrs\"}"
+  if [[ -n "$pcrs" ]]; then
+    PCR_POLICY="{\"pcr_bank\":\"sha256\",\"pcr_ids\":\"$pcrs\"}"
+    PCRS_EXPLICIT="true"
+  fi
 
   if [[ -z "$PASSPHRASE" && -n "${GI_PASSPHRASE:-}" ]]; then
     PASSPHRASE="$GI_PASSPHRASE"
@@ -523,6 +527,41 @@ clevis_slot_of() {
   return 0
 }
 
+policy_of_binding() {
+  # The configuration clevis stored for this slot, verbatim, as it prints it:
+  #
+  #   2: tpm2 '{"hash":"sha256","key":"ecc","pcr_bank":"sha256","pcr_ids":"0,2,3,6"}'
+  #
+  # That JSON is exactly what `clevis luks bind` takes, so reusing it byte for
+  # byte reseals what is there rather than what this script's defaults happen
+  # to be. Args: $1 = device, $2 = slot.
+  local dev="$1" slot="$2" json
+  command -v clevis >/dev/null 2>&1 || return 1
+  json="$(clevis luks list -d "$dev" 2>/dev/null \
+    | awk -v s="${slot}:" '$1 == s' | sed -n "s/.*'\(.*\)'.*/\1/p" | head -n 1)"
+  [[ "$json" == \{*\} ]] || return 1
+  printf '%s\n' "$json"
+}
+
+adopt_real_policy() {
+  # A reseal reproduces the policy in force. It used to impose this script's
+  # default — pcr_ids 0,2,3,6 — on whatever it found, so a machine installed
+  # with another set of registers, or with an RSA key instead of ECC, came back
+  # from a reseal bound to something its operator never chose. The listing was
+  # even printed on screen, two lines under the policy about to replace it.
+  # --pcrs given by hand always wins.
+  # Args: $1 = device.
+  local dev="$1" found
+  [[ "$PCRS_EXPLICIT" == "true" ]] && return 0
+  found="$(policy_of_binding "$dev" "$KEYSLOT")" || return 0
+  [[ "$found" != "$PCR_POLICY" ]] || return 0
+  log "policy taken from the binding in place, not from this script's default"
+  log "  in place: $found"
+  log "  default : $PCR_POLICY"
+  log "  Pass --pcrs to seal against a different set."
+  PCR_POLICY="$found"
+}
+
 adopt_real_slot() {
   # Called before anything is removed. --slot given by hand always wins.
   local dev="$1" found
@@ -644,13 +683,16 @@ do_reseal() {
     exit "$EXIT_FAILURE"
   }
 
+  existing="$(current_binding "$dev")"
+  if [[ -n "$existing" ]]; then
+    adopt_real_slot "$dev"
+    adopt_real_policy "$dev"
+  fi
+
   ok "Container : $dev"
   ok "Key file  : $key"
   ok "Keyslot   : $KEYSLOT"
   ok "Policy    : $PCR_POLICY"
-
-  existing="$(current_binding "$dev")"
-  [[ -n "$existing" ]] && adopt_real_slot "$dev"
 
   printf '\n' >&2
   if [[ -n "$existing" ]]; then

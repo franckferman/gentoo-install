@@ -216,3 +216,46 @@ gi_tools() {
   [ "$status" -ne 0 ]
   [ -z "$output" ]
 }
+
+@test "a reseal reproduces the policy in force, not this script's default" {
+  # tpm-reseal.sh read the binding, printed it, and then resealed with its own
+  # default — pcr_ids 0,2,3,6. A machine installed with another set of
+  # registers, or with an RSA key instead of ECC, came back from a reseal bound
+  # to something its operator never chose, with the old configuration printed
+  # two lines above the new one.
+  #
+  # The function is lifted out of the tool: what matters is the value it
+  # returns, and the tool around it needs root, a TPM and a container.
+  run bash -c '
+    eval "$(sed -n "/^policy_of_binding()/,/^}/p" "$1/tools/tpm-reseal.sh")"
+    clevis() {
+      printf "%s\n" "2: tpm2 '"'"'{\"hash\":\"sha256\",\"key\":\"ecc\",\"pcr_bank\":\"sha256\",\"pcr_ids\":\"0,7\"}'"'"'"
+    }
+    policy_of_binding /dev/sdz 2
+  ' bash "$GI_ROOT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == '{"hash":"sha256","key":"ecc","pcr_bank":"sha256","pcr_ids":"0,7"}' ]]
+}
+
+@test "a slot with no binding yields no policy to adopt" {
+  run bash -c '
+    eval "$(sed -n "/^policy_of_binding()/,/^}/p" "$1/tools/tpm-reseal.sh")"
+    clevis() { printf "%s\n" "2: tpm2 '"'"'{\"pcr_ids\":\"0\"}'"'"'"; }
+    policy_of_binding /dev/sdz 1
+  ' bash "$GI_ROOT"
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+}
+
+@test "the reseal adopts the slot and the policy before announcing either" {
+  # Both were read from the container; only one was used. The order is the
+  # test: what is printed as "Policy" has to be what will be sealed.
+  local tool
+  tool="${GI_ROOT}/tools/tpm-reseal.sh"
+  local adopt announce
+  adopt="$(grep -n 'adopt_real_policy "\$dev"' "$tool" | head -n1 | cut -d: -f1)"
+  announce="$(grep -n 'ok "Policy    : \$PCR_POLICY"' "$tool" | head -n1 | cut -d: -f1)"
+  [ -n "$adopt" ]
+  [ -n "$announce" ]
+  [ "$adopt" -lt "$announce" ]
+}

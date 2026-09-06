@@ -12,6 +12,14 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **A reseal reproduces the policy in force.** `tools/tpm-reseal.sh` read the
+  binding it was about to replace, printed it on screen, and then resealed with
+  its own default — `pcr_ids 0,2,3,6`. A machine installed with another set of
+  registers, or with an RSA key rather than ECC, came back from a reseal bound
+  to something its operator never chose, with the old configuration displayed
+  two lines above the new one. The stored configuration is reused verbatim now
+  unless `--pcrs` says otherwise.
+
 - **Two files are compared with whatever the medium carries.** `backup_file()`
   used `cmp` to avoid stacking a second identical backup, and `cmp` comes from
   diffutils, which the Gentoo minimal ISO does not have. So every file written
