@@ -133,8 +133,22 @@ unlock. The installer says this before the disk is erased, not after.
 it stopped where it should: `dracut: luksOpen /dev/vdb2`, then
 `Enter passphrase for /dev/vdb2:`, and nothing further until it is answered.
 
-**What none of it covers.** `efistub` has not been booted, nor has a `musl` or
-`hardened` stage. Version `0.1.0` should still meet a disk you would miss with `--dry-run`
+**`efistub` has been booted too**, which was the last of the four with nothing
+behind it. Installed from a live medium — so the NVRAM entry the variant needs
+was written, the guard permitting exactly that case — and started with no
+bootloader of any kind in between:
+
+```
+BdsDxe: starting Boot0001 "gentoo" from HD(1,GPT,…)/\EFI\gentoo\vmlinuz.efi
+[    0.000000] Linux version 6.18.48-gentoo-dist-bin …
+[    1.402508] dracut: luksOpen /dev/vda2 luks-60d45970-cd99-4677-a465-4fed57f74bbb
+Enter passphrase for /dev/vda2:
+```
+
+**What none of it covers.** No `musl` or `hardened` stage has been installed,
+and `efistub` has not been booted from the removable path — that one needs a
+kernel with its command line compiled in, because the fallback is started with
+no load options at all. Version `0.1.0` should still meet a disk you would miss with `--dry-run`
 first.
 
 One finding from that run is worth repeating here, because it is the difference
@@ -544,7 +558,7 @@ here reboots on its own.
 | Axis | Setting | Values | Default |
 |---|---|---|---|
 | Encryption | `crypt` | `none` · `luks-passphrase` · `luks-tpm` · `luks-keyfile-gpg` | `luks-passphrase` |
-| Bootloader | `bootloader` | `grub` · `efistub` · `systemd-boot` | `grub` |
+| Bootloader | `bootloader` | `grub` · `uki` · `efistub` · `systemd-boot` | `grub` |
 | Kernel | `kernel` | `dist-kernel` · `genkernel` · `manual` | `dist-kernel` |
 | Disk layout | `disk_layout` | `minimal` · `server` · `desktop` · `custom` | `desktop` |
 
@@ -718,7 +732,7 @@ step runs:
 $ ./gentoo-install.sh --config bad.conf
 [*] configuration read from bad.conf
 [x] Invalid value for bootloader: frobnicate
-[x]        one of: grub, efistub, systemd-boot
+[x]        one of: grub, efistub, systemd-boot, uki
 [x]        example:  bootloader = grub
 ```
 
@@ -887,7 +901,7 @@ gentoo-install.sh      the entry point, the step registry, and the only
 lib/                   core, config, state, ui, disk, crypt, stage, chroot
 steps/                 one file per step: 10_preflight.sh … 95_finalize.sh
 variants/crypt/        none, luks-passphrase, luks-tpm, luks-keyfile-gpg
-variants/boot/         grub, efistub, systemd-boot
+variants/boot/         grub, uki, efistub, systemd-boot
 variants/kernel/       dist-kernel, genkernel, manual
 variants/layout/       minimal, server, desktop, custom
 tools/                 the ten standalone rescue scripts

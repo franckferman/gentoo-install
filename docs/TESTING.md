@@ -288,21 +288,32 @@ Same encryption, three boot paths. This is where the matrix earns its keep.
 | 3c | `systemd-boot` | `bootctl list` shows the entry. Does **not** need `--init systemd`: bootctl comes from `sys-apps/systemd-utils` |
 | 3d | `uki` | one signed binary at `\EFI\BOOT\BOOTX64.EFI`, started with no entry at all |
 
-**`systemd-boot` and `uki` pass.** Both were booted on an encrypted disk, through
-to the passphrase prompt.
+**All four pass.** Each has been booted on an encrypted disk, through to the
+passphrase prompt.
 
-**`efistub` cannot be proved from a machine that is not the target**, and it is
-worth saying why rather than leaving it open. An efistub install has no
-configuration file: the NVRAM entry *is* the configuration — it carries the
-kernel command line and the `initrd=`. So it needs an entry to be written, and
-this installer refuses to write one unless it is running from a live medium or
-reinstalling the very disk it booted from (`lib/disk.sh`,
-`disk_may_write_firmware_state`). Testing it therefore takes one of:
+**`efistub` passed on 6 September**, by the first of the two routes this page
+already named and nobody had taken. An efistub install has no configuration
+file: the NVRAM entry *is* the configuration — it carries the kernel command
+line and the `initrd=` — so it needs an entry, and the installer refuses to
+write one unless it runs from a live medium or reinstalls the disk it booted
+from (`lib/disk.sh`, `disk_may_write_firmware_state`). A run from the live ISO
+is exactly the permitted case, so the entry was written, and the firmware
+started the kernel with nothing in between:
 
-- a run from a live medium, where writing the entry is legitimate; or
-- `boot_removable = yes` **and** a kernel with its command line compiled in
-  (`kernel_embed_cmdline`), since the fallback path is launched with no load
-  options — which means building a kernel rather than using the distribution's.
+```
+BdsDxe: starting Boot0001 "gentoo" from HD(1,GPT,…)/\EFI\gentoo\vmlinuz.efi
+[    0.000000] Linux version 6.18.48-gentoo-dist-bin …
+[    1.402508] dracut: luksOpen /dev/vda2 luks-60d45970-cd99-4677-a465-4fed57f74bbb
+Enter passphrase for /dev/vda2:
+```
+
+Eleven steps, none failed, and step 95 clear on all five checks including
+`Boot entry  efistub on uefi, label gentoo`.
+
+The second route is still untaken and still worth naming: `boot_removable = yes`
+**and** a kernel with its command line compiled in (`kernel_embed_cmdline`),
+since the fallback path is launched with no load options — which means building
+a kernel rather than using the distribution's.
 
 The `uki` bootloader exists partly because of this. It carries the command line
 and the initramfs inside the binary, so it needs neither an entry nor a rebuilt

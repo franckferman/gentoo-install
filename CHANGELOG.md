@@ -12,6 +12,14 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **`efistub` has been booted**, which was the last of the four bootloaders with
+  nothing behind it. It needs an NVRAM entry, because for that variant the entry
+  *is* the configuration, and the installer writes one when it runs from a live
+  medium — the case the guard permits. Eleven steps, none failed, and the
+  firmware started the kernel with no bootloader in between. Three lists in the
+  README that still named three bootloaders now name four, including one that
+  claimed to quote the installer's own refusal.
+
 - **`luks-check.sh` looks for the ESP where this installer mounts it.** It tested
   `/boot/efi`, hardcoded — the layout of the machine this tooling grew up on —
   while gentoo-install's own layouts mount the ESP at `/boot`. On a machine it

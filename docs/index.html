@@ -493,13 +493,17 @@ sudo ./gentoo-install.sh --resume</pre>
     disk as far as the passphrase prompt, and a second <code>uki</code> install
     was booted against a firmware whose NVRAM had never heard of it: it started
     from <code>\EFI\BOOT\BOOTX64.EFI</code>, where the same firmware with a
-    GRUB install had fallen through to PXE the day before.
+    GRUB install had fallen through to PXE the day before. <code>efistub</code>
+    was booted too, from the NVRAM entry step 80 writes, with no bootloader of
+    any kind in between — which makes all four of them started at least once.
   </p>
   <p style="color:var(--muted);font-size:.92rem;line-height:1.8;margin-top:1rem;max-width:720px">
     <strong style="color:var(--text)">What none of it covers:</strong>
-    <code>efistub</code> has not been booted, nor a <code>musl</code> or
-    <code>hardened</code> stage. Read the plan before you point version 0.1.0 at a
-    disk you would miss.
+    no <code>musl</code> or <code>hardened</code> stage has been installed, and
+    <code>efistub</code> has not been booted from the removable path — that one
+    needs a kernel with its command line compiled in, because the fallback is
+    started with no load options at all. Read the plan before you point version
+    0.1.0 at a disk you would miss.
   </p>
 </div>
 </div>
