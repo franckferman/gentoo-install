@@ -12,6 +12,21 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Added
 
+- **The three variants nothing had ever run are under test.**
+  `kernel/genkernel`, `kernel/manual` and the removable path of `boot/efistub`
+  had no test naming them. Eight now do, and five fail with the corresponding
+  guard broken. Reading a refusal is not the same as watching it fire: the
+  vocabularies these files compare against — `crypt_family`'s `keyfile`,
+  `target_topology`'s `lvm` — are the two that have each cost this project a
+  whole install by drifting.
+
+- **`docs/TESTING.md` settles efistub on the removable path.** It is possible
+  for an unencrypted root that is not on LVM, and for nothing else: the
+  fallback path is launched with no load options, which leaves the command line
+  homeless (compile it in) *and* the initramfs homeless (nothing solves that).
+  A machine that forgets NVRAM entries and has an encrypted root wants `grub`
+  or `uki`, and the refusal says so.
+
 - **The four stage3 flavours have all been unpacked.** `llvm` was the last, and
   it is sound through step 60: a real libc++ userland (`libc++.so.1`, clang 22,
   `CC="clang"` from the profile), `default/linux/amd64/23.0/llvm` selected with

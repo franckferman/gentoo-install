@@ -582,6 +582,35 @@ gives the installer a terminal and keeps the transcript.
 
 ---
 
+## efistub on the removable path — settled
+
+It is possible for exactly one kind of machine, and the installer refuses every
+other combination with the reason. `\EFI\BOOT\BOOTX64.EFI` is launched with
+no load options at all, and that is two problems and not one:
+
+- the **command line** has nowhere to travel, unless it is compiled into the
+  image: `efistub_cmdline = builtin`, which needs `kernel = manual` and
+  `kernel_embed_cmdline = yes`;
+- the **initramfs** has nowhere to travel either, and nothing solves that.
+  `initrd=` is a load option too.
+
+So the removable path boots an unencrypted root that is not on LVM, and nothing
+else. Both refusals were exercised (2026-09-07) and both are under test in
+`tests/variants.bats`:
+
+```
+[x] boot_removable = yes cannot hand the kernel an initramfs either
+[x]        initrd= is a load option too, and the fallback path is launched without any
+[x]        crypt = passphrase and topology = plain cannot reach the root without one
+[x]        bootloader = grub    if this machine forgets NVRAM entries, which is what removable is for
+```
+
+That last line is the answer for the machine this option exists for: a firmware
+that forgets NVRAM entries and a root that is encrypted wants `grub` or `uki`,
+both of which carry their own initramfs to the kernel.
+
+---
+
 ## What a run has to produce to count
 
 A run counts when **all** of these hold:
