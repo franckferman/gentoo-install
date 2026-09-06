@@ -85,30 +85,38 @@ because that is what was asked.
 GPG-wrapped key file deployed onto the ESP, and both ways in exercised: the key
 file opens slot 0, the recovery passphrase opens slot 1.
 
-**`luks-tpm` has now been run inside a VM with a software TPM**, and it found
-something worth stating plainly, at the top of the page rather than in a
-footnote: **`app-crypt/clevis` is not in the official Gentoo repository.** The
-sealing this variant performs needs it, and on a stock Gentoo the package
-cannot be merged at all — it lives in the GURU overlay:
+**`luks-tpm` has been run to the end**, inside a VM with a software TPM: the
+installer running in the guest, an LVM layout on an encrypted disk, and then
+the machine booted from its own disk with no ISO and no help. It unlocked
+itself, checked four filesystems and reached a login prompt without asking
+anyone anything. From inside it:
+
+```console
+gitpm ~ # clevis luks list -d /dev/vda2
+2: tpm2 '{"hash":"sha256","key":"ecc","pcr_bank":"sha256","pcr_ids":"0,2,3,6"}'
+```
+
+Getting there took two things a stock Gentoo does not give you, and both are
+worth knowing before you choose this variant. **`app-crypt/clevis` is not in the
+official Gentoo repository** — it is in GURU, where it is also unstable — and
+its dracut modules only exist with `USE=dracut`, which the installer now writes
+for you:
 
 ```bash
 # in the target, before ./gentoo-install.sh --steps 50,75
 eselect repository enable guru && emaint sync -r guru
+echo '*/*::guru ~amd64' >> /etc/portage/package.accept_keywords/guru
 emerge --ask app-crypt/clevis
 ```
 
-Without it the run still produces a working encrypted machine: the container is
-built, the recovery passphrase is proved against it, the kernel and the
+Without clevis the run still produces a working encrypted machine: the container
+is built, the recovery passphrase is proved against it, the kernel and the
 bootloader are installed, and step 75 says — in those words — that nothing was
 sealed and what to do about it. The one thing you do not get is the automatic
 unlock. The installer says this before the disk is erased, not after.
 
-**What none of it covers.** The automatic unlock itself has not been booted, for
-the reason above. The LVM layout that run used was carried from an empty disk to
-a configured system — volume group, four volumes, filesystems, fstab, chroot,
-portage, accounts — but that machine was not booted either, because the run that
-built it is the run that found the missing package. `efistub` has not been
-booted, nor has a `musl` or `hardened` stage. Version `0.1.0` should still meet a disk you would miss with `--dry-run`
+**What none of it covers.** `efistub` has not been booted, nor has a `musl` or
+`hardened` stage. Version `0.1.0` should still meet a disk you would miss with `--dry-run`
 first.
 
 One finding from that run is worth repeating here, because it is the difference

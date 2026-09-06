@@ -330,6 +330,29 @@ mode this whole project was shaped by.
   --hostname gitpm --user tester
 ```
 
+**Passed, 6 September 2026**, and the sequence that got there is worth keeping
+because no single run does it: the installer in the guest, `--steps 20,30,40,50,60`
+first, then GURU and its keyword line written into the target, then
+`--steps 50,70,75,80,95`. Between phases the target has to be mounted again —
+the installer releases what it mounted when it exits, and only step 20 mounts
+the tree — so `tools/luks-open.sh` is what puts it back:
+
+```bash
+GI_PASSPHRASE=... ./tools/luks-open.sh open --device /dev/vda2 \
+    --target /mnt/gentoo --luks-pass --force
+```
+
+What the run produced, read from the machine itself after booting from its own
+disk with no ISO attached:
+
+```console
+gitpm ~ # clevis luks list -d /dev/vda2
+2: tpm2 '{"hash":"sha256","key":"ecc","pcr_bank":"sha256","pcr_ids":"0,2,3,6"}'
+```
+
+It reached `gitpm login:` without asking for anything, having checked root,
+`/dev/vda1`, `/home` and `/var` on the way, and root logs in.
+
 - the recovery passphrase is not optional here and the installer refuses
   `crypt_recovery = no`. Note what you type: it is the way back in.
 - **first boot must unlock without asking.**

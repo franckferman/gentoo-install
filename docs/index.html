@@ -116,15 +116,20 @@
   </header>
 
   <div class="note">
-    <p><strong>Status: 0.1.0. One machine has been installed by this script and
-    booted.</strong> A disk image went from an empty GPT to a login prompt —
-    unencrypted, GRUB on UEFI, the distribution kernel — and was then started
-    under QEMU with OVMF firmware, where the account the installer created logged
-    in and escalated with <code>sudo</code>.</p>
-    <p>What that does not cover: nothing encrypted has been carried through to a
-    machine that asks for a passphrase at power-on, and neither
-    <code>efistub</code> nor <code>systemd-boot</code> has been booted. Read the
-    plan before you point version 0.1.0 at a disk you would miss.</p>
+    <p><strong>Status: 0.1.0. An encrypted machine has been installed by this
+    script and has unlocked itself.</strong> Under QEMU with OVMF firmware and a
+    software TPM: an LVM layout on a LUKS2 container, a keyslot sealed to the
+    chip, and then a boot from that disk alone — no ISO, no help — which checked
+    four filesystems and reached a login prompt without asking for anything. It
+    says so itself:</p>
+    <pre><code>gitpm ~ # clevis luks list -d /dev/vda2
+2: tpm2 '{"hash":"sha256","key":"ecc","pcr_bank":"sha256","pcr_ids":"0,2,3,6"}'</code></pre>
+    <p>An unencrypted disk was carried from an empty GPT to a login prompt
+    earlier, and <code>systemd-boot</code> and <code>uki</code> were booted on an
+    encrypted disk as far as the passphrase prompt. What none of it covers:
+    <code>efistub</code> has not been booted, nor a <code>musl</code> or
+    <code>hardened</code> stage. Read the plan before you point version 0.1.0 at
+    a disk you would miss.</p>
   </div>
 
   <h2>What it is</h2>
