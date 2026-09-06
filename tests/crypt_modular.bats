@@ -298,11 +298,18 @@ load helper
     target_crypt() { printf "tpm\n"; }
     kernel_pkg_installed() { return 1; }
     kernel_write_package_use() { return 0; }
+    kernel_write_dracut_conf() { printf "REWROTE %s\n" "$1"; }
     kernel_emerge() { shift; case "$*" in *clevis*) return 1 ;; esac; return 0; }
     kernel_ensure_crypt_packages /mnt/gentoo
   '
   [ "$status" -eq 0 ]
   [[ "$stderr" == *"guru"* || "$stderr" == *"GURU"* ]]
+  # And the initramfs configuration is written again afterwards, because the
+  # first one was written before anything was installed and still names the
+  # modules clevis would have provided. dracut fails the whole initramfs over a
+  # module it cannot find, and that initramfs is built inside the emerge of the
+  # kernel — so the list has to stop asking.
+  [[ "$output" == *"REWROTE /mnt/gentoo"* ]]
 }
 
 @test "but cryptsetup and dracut still do" {
@@ -313,6 +320,7 @@ load helper
     target_crypt() { printf "tpm\n"; }
     kernel_pkg_installed() { return 1; }
     kernel_write_package_use() { return 0; }
+    kernel_write_dracut_conf() { return 0; }
     kernel_emerge() { shift; case "$*" in *cryptsetup*) return 1 ;; esac; return 0; }
     kernel_ensure_crypt_packages /mnt/gentoo
   '
@@ -332,4 +340,94 @@ load helper
   [ "$status" -eq 0 ]
   [[ "$stderr" == *"not in the official Gentoo repository"* ]]
   [[ "$stderr" == *"guru"* ]]
+}
+
+@test "the dracut module list stops asking for what is not in the target" {
+  # The list is written before the packages exist, so it names what the
+  # configuration wants. If it still names them when dracut looks — and dracut
+  # looks from inside the emerge of the kernel — the kernel does not install:
+  #
+  #   dist-kernel_install_kernel: die "Kernel install failed"
+  #
+  # A missing clevis therefore has to be dropped from the list, not just
+  # tolerated in the emerge. A missing crypt is a different matter: without it
+  # the machine cannot open its container at all, and an initramfs built that
+  # way is a machine that does not start.
+  local root
+  root="$(gi_tmp)/prune"
+  mkdir -p "${root}/usr/lib/dracut/modules.d/90crypt" \
+    "${root}/usr/lib/dracut/modules.d/90dm" "${root}/usr/lib/dracut/modules.d/90lvm"
+
+  local kept
+  kept="$(gi_capture 'kernel_dracut_prune_modules "$1" "crypt dm lvm clevis clevis-pin-tpm2"' "$root" 2>/dev/null)"
+  [ "$kept" = "crypt dm lvm" ]
+
+  # Nothing is pruned before dracut itself is installed: "not there yet" is
+  # not "not coming", and that is the first write of the run.
+  local empty
+  empty="$(gi_tmp)/empty"
+  mkdir -p "$empty"
+  kept="$(gi_capture 'kernel_dracut_prune_modules "$1" "crypt dm clevis"' "$empty" 2>/dev/null)"
+  [ "$kept" = "crypt dm clevis" ]
+}
+
+@test "a missing crypt module is refused, because that machine would not start" {
+  local root
+  root="$(gi_tmp)/nocrypt"
+  mkdir -p "${root}/usr/lib/dracut/modules.d/90lvm"
+  gi_bash 'kernel_dracut_prune_modules "$1" "crypt lvm"' "$root"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"cannot start"* ]]
+}
+
+@test "an LVM root gets the lvm binary, not just device-mapper" {
+  # sys-fs/lvm2 without USE=lvm installs device-mapper and no lvm binary, and
+  # cryptsetup pulls it in exactly that way — so the package is present, looks
+  # right, and dracut says:
+  #
+  #   dracut[E]: Module 'lvm' cannot be installed.
+  #
+  # which fails the initramfs, which fails the kernel's install phase, which
+  # leaves a partitioned disk with no kernel on it. Every LVM install with the
+  # distribution kernel hit this.
+  gi_bash '
+    config_init_defaults
+    target_topology() { printf "lvm\n"; }
+    kernel_pkg_installed() { return 1; }
+    kernel_write_package_use() { printf "USE %s\n" "$*"; }
+    kernel_emerge() { shift; printf "EMERGE %s\n" "$*"; }
+    kernel_ensure_lvm_tools /mnt/gentoo
+  '
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sys-fs/lvm2 lvm"* ]]
+  [[ "$output" == *"EMERGE sys-fs/lvm2"* ]]
+}
+
+@test "an lvm2 already installed without the flag is rebuilt with it" {
+  # --noreplace on a package that is already there is a no-op, which is the
+  # right default everywhere else and wrong here: the package is present
+  # precisely because something else pulled it in without the flag.
+  gi_bash '
+    config_init_defaults
+    target_topology() { printf "lvm\n"; }
+    kernel_pkg_installed() { return 0; }
+    kernel_write_package_use() { return 0; }
+    kernel_in_target() { shift; printf "RAN %s\n" "$*"; }
+    kernel_ensure_lvm_tools /mnt/gentoo
+  '
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--changed-use"* ]]
+  [[ "$output" == *"sys-fs/lvm2"* ]]
+}
+
+@test "a plain layout is not given lvm tools it will never use" {
+  gi_bash '
+    config_init_defaults
+    target_topology() { printf "plain\n"; }
+    kernel_write_package_use() { printf "USE %s\n" "$*"; }
+    kernel_emerge() { printf "EMERGE %s\n" "$*"; }
+    kernel_ensure_lvm_tools /mnt/gentoo
+  '
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
 }

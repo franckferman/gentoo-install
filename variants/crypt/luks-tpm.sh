@@ -63,8 +63,10 @@ _lt_refuse_no_clevis() {
   err "       clevis luks bind is what seals the key into the TPM; there is"
   err "       no substitute this module can fall back on"
   err "       app-crypt/clevis is not in the official Gentoo repository, which"
-  err "       an install run found the hard way: the GURU overlay carries it"
+  err "       an install run found the hard way: GURU carries it, keyworded"
+  err "       ~amd64, so both of these are needed in the target"
   err "         eselect repository enable guru && emaint sync -r guru"
+  err "         echo '*/*::guru ~amd64' >> /etc/portage/package.accept_keywords/guru"
   err "         emerge --ask app-crypt/clevis"
   err "       nothing is lost meanwhile: the container is built and the"
   err "       recovery passphrase opens it, proved, so the machine boots and"
@@ -122,8 +124,10 @@ crypt_variant_check() {
   # recovery passphrase whether or not a slot is ever sealed, and an operator
   # who enables the overlay between step 30 and step 75 gets both.
   warn "app-crypt/clevis is not in the official Gentoo repository"
-  warn "       the sealing in step 75 needs it in the target, from GURU:"
+  warn "       the sealing in step 75 needs it in the target, from GURU, where"
+  warn "       it is also unstable-keyworded — so it takes two steps there:"
   warn "         eselect repository enable guru && emaint sync -r guru"
+  warn "         echo '*/*::guru ~amd64' >> /etc/portage/package.accept_keywords/guru"
   warn "       without it this run ends with a working encrypted machine that"
   warn "       asks for the recovery passphrase at every boot, and says so"
 

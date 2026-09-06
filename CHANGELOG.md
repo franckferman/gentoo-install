@@ -12,6 +12,27 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **An LVM root never got the `lvm` binary, so no LVM install could boot.**
+  `sys-fs/lvm2` installs device-mapper and nothing more unless it is built with
+  `USE=lvm`, and it arrives as a dependency of cryptsetup — present, correct
+  looking, and missing the one file dracut's `lvm` module checks for. dracut
+  then says `Module 'lvm' cannot be installed`, the initramfs fails, the
+  kernel's own install phase fails with it, and step 70 ends with a partitioned
+  disk, a stage3 and no kernel. Step 70 now writes the flag and rebuilds the
+  package with `--changed-use` when it is already there without it.
+- **A dracut module that is not in the target is no longer asked for.** The
+  module list is written before the packages exist, so it names what the
+  configuration wants; when dracut then cannot find one it fails the whole
+  initramfs, and that initramfs is built inside the emerge of the kernel. So a
+  missing `clevis` did not cost the automatic unlock, it cost the kernel. The
+  list is written again once the packages are in place, without the modules
+  that are genuinely absent, saying for each one what the machine loses — and
+  still refusing when what is missing is `crypt`, `dm` or `lvm`, because that
+  machine would not start at all.
+- **`app-crypt/clevis` is unstable-keyworded in GURU**, so enabling the overlay
+  is not enough on a stable target. Every message that names the overlay now
+  names the keyword line too.
+
 - **Nine of the ten tools looked for a volume group named `vg1`.** That is the
   group the machine this tooling grew up on happened to have; `gentoo-install`
   creates `vg0`. So every "detected from the volume group" path found nothing on

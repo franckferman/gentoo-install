@@ -399,11 +399,73 @@ kernel_check_dracut_modules() {
   return 0
 }
 
+kernel_dracut_prune_modules() {
+  # Drop the modules that are not in the target, and say what each one costs.
+  #
+  # dracut fails the entire initramfs when it is asked for a module it cannot
+  # find, and that initramfs is built inside the emerge of the kernel. So a
+  # module named here and missing there does not degrade the machine — it stops
+  # the kernel from installing at all:
+  #
+  #   dist-kernel_install_kernel: die "Kernel install failed, please fix the
+  #   problems and run emerge --config"
+  #
+  # which is what happened with clevis, whose package is not in the official
+  # Gentoo repository. Letting that emerge fail was not enough; the module list
+  # has to stop asking for what is not there.
+  #
+  # Nothing is pruned while dracut itself is absent — that is the first write,
+  # before any package is installed, and "not there yet" is not "not coming".
+  # Args: $1 = target root, $2 = the module list. Prints what survives.
+  local root="$1" module lost=0
+  local -a kept=() wanted=()
+  read -r -a wanted <<<"${2:-}"
+
+  ((${#wanted[@]} > 0)) || return 0
+  [[ -d "${root%/}/usr/lib/dracut/modules.d" ]] || {
+    printf '%s\n' "${wanted[*]}"
+    return 0
+  }
+
+  for module in "${wanted[@]}"; do
+    if kernel_dracut_module_present "$root" "$module"; then
+      kept+=("$module")
+      continue
+    fi
+    case "$module" in
+      clevis | clevis-pin-tpm2)
+        warn "dracut module ${module} is not in the target; leaving it out"
+        warn "       app-crypt/clevis provides it, and it is not in the official"
+        warn "       Gentoo repository — the GURU overlay carries it"
+        warn "       the machine boots and asks for the recovery passphrase;"
+        warn "       step 75 says the same thing and how to seal it later"
+        ;;
+      crypt-gpg)
+        warn "dracut module ${module} is not in the target; leaving it out"
+        warn "       it comes from sys-kernel/dracut and needs app-crypt/gnupg"
+        warn "       the machine boots and asks for the recovery passphrase"
+        ;;
+      *)
+        err "dracut module ${module} is not in the target"
+        err "       it is what opens the container at boot, so an initramfs"
+        err "       without it produces a machine that cannot start"
+        err "       sys-kernel/dracut provides crypt, dm and lvm"
+        lost=$((lost + 1))
+        ;;
+    esac
+  done
+
+  ((lost == 0)) || return 1
+  printf '%s\n' "${kept[*]}"
+}
+
 kernel_dracut_conf_body() {
   # Renders the configuration; writes nothing.
-  local cmdline modules omit
+  # Args: $1 = target root, for the modules that have to be there.
+  local root="${1:-/}" cmdline modules omit
   cmdline="$(kernel_cmdline)" || return 1
   modules="$(kernel_dracut_modules)" || return 1
+  modules="$(kernel_dracut_prune_modules "$root" "$modules")" || return 1
   omit="$(kernel_dracut_omit)"
 
   cat <<EOF
@@ -500,7 +562,7 @@ kernel_write_dracut_conf() {
   # Args: $1 = target root.
   local root="$1" conf="${1}/etc/dracut.conf.d/70-gentoo-install.conf" body
 
-  body="$(kernel_dracut_conf_body)" || return 1
+  body="$(kernel_dracut_conf_body "$root")" || return 1
 
   # write_validated, not write_file: dracut has no --check, but sourcing the
   # file back and reading the effective value across the whole directory
@@ -694,6 +756,51 @@ kernel_write_package_use() {
   printf '%s\n' "$@" | write_block "$target" "kernel USE flags"
 }
 
+kernel_ensure_lvm_tools() {
+  # dracut's lvm module needs the lvm binary, and sys-fs/lvm2 does not install
+  # one unless it is built with USE=lvm — without the flag the package is
+  # device-mapper and nothing else.
+  #
+  # cryptsetup pulls sys-fs/lvm2 in as a dependency, so it is present and looks
+  # right, and dracut then says one line about it:
+  #
+  #   dracut[E]: Module 'lvm' cannot be installed.
+  #   ERROR: Installing 6.18.48-gentoo-dist-bin failed
+  #
+  # which fails the initramfs, which fails the kernel's own install phase, which
+  # fails step 70 — and the operator is left with a partitioned disk, a stage3,
+  # no kernel and a message about a dracut module. Every LVM install with the
+  # distribution kernel hit this; it is why an LVM layout had never booted.
+  # Args: $1 = target root.
+  local root="$1"
+
+  [[ "$(target_topology)" == "lvm" ]] || return 0
+
+  kernel_write_package_use "$root" \
+    "# dracut builds an lvm module for an LVM root, and that module needs the" \
+    "# lvm binary itself — sys-fs/lvm2 installs device-mapper and no more" \
+    "# without this flag." \
+    "sys-fs/lvm2 lvm" || return 1
+
+  if ! kernel_pkg_installed "$root" "sys-fs/lvm2"; then
+    kernel_emerge "$root" "sys-fs/lvm2" || return 1
+    return 0
+  fi
+
+  # Already there — as a dependency of cryptsetup, most likely, and therefore
+  # without the flag. --noreplace would leave it exactly as it is, so this is
+  # the one case that has to ask for a rebuild.
+  log "sys-fs/lvm2 is installed; rebuilding it if the lvm flag is new"
+  kernel_in_target "$root" emerge --verbose --changed-use --quiet-build=n \
+    sys-fs/lvm2 || {
+    err "sys-fs/lvm2 would not rebuild with USE=lvm"
+    err "       dracut's lvm module needs the lvm binary; without it the"
+    err "       initramfs cannot activate the volume group and the machine"
+    err "       stops in a dracut shell with no root"
+    return 1
+  }
+}
+
 kernel_ensure_crypt_packages() {
   # The dracut modules the crypt variant needs come from packages, and dracut
   # builds an initramfs without them without saying a word. Emerging them here
@@ -715,9 +822,16 @@ kernel_ensure_crypt_packages() {
   local root="$1" crypt
   local -a want=() optional=() missing=() spare=() use=()
 
+  kernel_ensure_lvm_tools "$root" || return 1
+
   crypt="$(target_crypt)"
   case "$crypt" in
-    none) return 0 ;;
+    none)
+      # An unencrypted LVM install needs the lvm tools just the same, and the
+      # dracut configuration has to be rewritten with what is really there.
+      kernel_write_dracut_conf "$root"
+      return
+      ;;
     passphrase) want=(sys-fs/cryptsetup sys-kernel/dracut) ;;
     tpm)
       want=(sys-fs/cryptsetup sys-kernel/dracut)
@@ -750,12 +864,15 @@ kernel_ensure_crypt_packages() {
     return 1
   fi
 
-  ((${#spare[@]} > 0)) || return 0
-  if kernel_emerge "$root" "${spare[@]}"; then
-    return 0
+  if ((${#spare[@]} > 0)) && ! kernel_emerge "$root" "${spare[@]}"; then
+    _kernel_warn_no_sealing "${spare[*]}"
   fi
-  _kernel_warn_no_sealing "${spare[*]}"
-  return 0
+
+  # Written once more, now that the packages are either there or known not to
+  # be. The first write happened before any of them existed, so it could only
+  # name what the configuration asks for; this one names what dracut will
+  # actually find. Getting that wrong costs the kernel, not the feature.
+  kernel_write_dracut_conf "$root"
 }
 
 _kernel_warn_no_sealing() {
@@ -764,8 +881,12 @@ _kernel_warn_no_sealing() {
   # Args: $1 = the packages that would not merge.
   warn "the TPM sealing helpers would not merge: $1"
   warn "       app-crypt/clevis is not in the official Gentoo repository — the"
-  warn "       GURU overlay carries it:  eselect repository enable guru"
-  warn "       then, in the target:  emerge --ask app-crypt/clevis"
+  warn "       GURU overlay carries it, and there it is unstable-keyworded:"
+  warn "         app-crypt/clevis-23-r1::guru (masked by: ~amd64 keyword)"
+  warn "       so it takes both steps, in the target:"
+  warn "         eselect repository enable guru && emaint sync -r guru"
+  warn "         echo '*/*::guru ~amd64' >> /etc/portage/package.accept_keywords/guru"
+  warn "         emerge --ask app-crypt/clevis"
   warn "       this does not stop the install and does not cost the kernel:"
   warn "       the container opens with the recovery passphrase, at every boot,"
   warn "       and step 75 will say plainly that nothing was sealed"
