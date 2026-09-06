@@ -12,6 +12,16 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **`key-backup.sh` reads what the installer recorded before guessing.** Its two
+  candidate paths are a convention; the install journal is a fact about the
+  machine in front of it. Composing that fact takes both entries and neither is
+  enough alone: `crypt.keyfile` is the path the initramfs is told, relative to
+  the root of the filesystem carrying it, and `disk.esp_mount` is where that
+  filesystem is mounted — so a key recorded as `/efi/luks-key.gpg` with an ESP
+  at `/boot` is `/boot/efi/luks-key.gpg` to anything walking the installed tree.
+  The candidates remain, for the machine whose journal is gone, and the "looked
+  in" message names the recorded path too.
+
 - **A command line that names only a serial console is called out.** The kernel
   prints to every `console=` it is given and makes the last one `/dev/console`,
   so naming only `ttyS0` takes the framebuffer away — and this project's own

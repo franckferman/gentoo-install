@@ -308,3 +308,66 @@ gi_tools() {
   [ "$status" -eq 0 ]
   [ "$output" = "/etc/keys/db.key" ]
 }
+
+@test "key-backup composes the key's path from the two journal entries" {
+  # Neither entry is enough on its own. crypt.keyfile is what the initramfs is
+  # told, and that path is relative to the root of the filesystem carrying it —
+  # rd.luks.key names it that way — while disk.esp_mount says where that
+  # filesystem is mounted in the installed system. A key recorded as
+  # /efi/luks-key.gpg with an ESP at /boot is /boot/efi/luks-key.gpg to anything
+  # walking the tree, and reading either entry alone gives a path that is not
+  # there.
+  local root
+  root="$(gi_tmp)/kb"
+  mkdir -p "${root}/var/lib/gentoo-install" "${root}/boot/efi"
+  printf 'crypt.keyfile=/efi/luks-key.gpg\ndisk.esp_mount=/boot\n' \
+    >"${root}/var/lib/gentoo-install/state"
+  printf 'envelope\n' >"${root}/boot/efi/luks-key.gpg"
+
+  run bash -c '
+    ROOT_PREFIX="$2"
+    KEY_PATH=""; KEY_CANDIDATES=("/nowhere/luks-key.gpg")
+    err() { printf "ERR %s\n" "$*" >&2; }
+    eval "$(sed -n "/^journal_var()/,/^}/p"      "$1/tools/key-backup.sh")"
+    eval "$(sed -n "/^journal_key_path()/,/^}/p" "$1/tools/key-backup.sh")"
+    eval "$(sed -n "/^resolve_key()/,/^}/p"      "$1/tools/key-backup.sh")"
+    resolve_key
+  ' bash "$GI_ROOT" "$root"
+  [ "$status" -eq 0 ]
+  [ "$output" = "${root}/boot/efi/luks-key.gpg" ]
+}
+
+@test "and says it looked there when nothing is found" {
+  local root
+  root="$(gi_tmp)/kb2"
+  mkdir -p "${root}/var/lib/gentoo-install"
+  printf 'crypt.keyfile=/efi/luks-key.gpg\ndisk.esp_mount=/boot\n' \
+    >"${root}/var/lib/gentoo-install/state"
+  run bash -c '
+    ROOT_PREFIX="$2"; KEY_CANDIDATES=("/boot/efi/luks-key.gpg")
+    eval "$(sed -n "/^journal_var()/,/^}/p"           "$1/tools/key-backup.sh")"
+    eval "$(sed -n "/^journal_key_path()/,/^}/p"      "$1/tools/key-backup.sh")"
+    eval "$(sed -n "/^key_candidates_searched()/,/^}/p" "$1/tools/key-backup.sh")"
+    key_candidates_searched
+  ' bash "$GI_ROOT" "$root"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"${root}/boot/efi/luks-key.gpg"* ]]
+}
+
+@test "no journal means the conventional candidates, exactly as before" {
+  local root
+  root="$(gi_tmp)/kb3"
+  mkdir -p "${root}/boot/efi"
+  printf 'envelope\n' >"${root}/boot/efi/luks-key.gpg"
+  run bash -c '
+    ROOT_PREFIX="$2"
+    KEY_PATH=""; KEY_CANDIDATES=("/boot/efi/luks-key.gpg")
+    err() { :; }
+    eval "$(sed -n "/^journal_var()/,/^}/p"      "$1/tools/key-backup.sh")"
+    eval "$(sed -n "/^journal_key_path()/,/^}/p" "$1/tools/key-backup.sh")"
+    eval "$(sed -n "/^resolve_key()/,/^}/p"      "$1/tools/key-backup.sh")"
+    resolve_key
+  ' bash "$GI_ROOT" "$root"
+  [ "$status" -eq 0 ]
+  [ "$output" = "${root}/boot/efi/luks-key.gpg" ]
+}

@@ -338,13 +338,42 @@ on_encrypted_volume() {
   cryptsetup status "$(basename "$pv")" >/dev/null 2>&1
 }
 
+journal_var() {
+  # One value from the installer's state journal, or nothing. Args: $1 = key.
+  local key="$1" file="${ROOT_PREFIX}/var/lib/gentoo-install/state"
+  [[ -r "$file" ]] || return 0
+  sed -n "s/^${key}=//p" "$file" | tail -n 1
+}
+
+journal_key_path() {
+  # Where the installer put the key file, composed rather than guessed.
+  #
+  # Two journal entries are needed and neither is enough alone. crypt.keyfile is
+  # the path the initramfs is told, and that path is relative to the root of the
+  # filesystem that carries it — the ESP — because rd.luks.key names it that
+  # way. disk.esp_mount is where that filesystem is mounted in the installed
+  # system. So a key recorded as /efi/luks-key.gpg with an ESP at /boot is
+  # /boot/efi/luks-key.gpg to anything walking the installed tree, and reading
+  # either entry on its own gives a path that does not exist.
+  #
+  # A returned value, so stdout; empty when the journal says nothing.
+  local rel esp
+  rel="$(journal_var crypt.keyfile)"
+  [[ -n "$rel" ]] || return 0
+  esp="$(journal_var disk.esp_mount)"
+  [[ -n "$esp" ]] || esp=""
+  printf '%s/%s\n' "${esp%/}" "${rel#/}"
+}
+
 key_candidates_searched() {
   # The paths actually looked at, prefix included. Printing the bare candidates
   # made a run with --root read as though --root had been ignored: the search
   # used <root>/boot/efi/luks-key.gpg and the message said /boot/efi/luks-key.gpg,
   # which is the LiveCD's own. An operator debugging a missing key should be told
   # where it was really looked for.
-  local candidate out=""
+  local candidate out="" recorded
+  recorded="$(journal_key_path)"
+  [[ -n "$recorded" ]] && out+="${ROOT_PREFIX}${recorded} "
   for candidate in "${KEY_CANDIDATES[@]}"; do
     out+="${ROOT_PREFIX}${candidate} "
   done
@@ -352,7 +381,7 @@ key_candidates_searched() {
 }
 
 resolve_key() {
-  local candidate
+  local candidate recorded
   if [[ -n "$KEY_PATH" ]]; then
     [[ -f "$KEY_PATH" ]] || {
       err "Key not found: $KEY_PATH"
@@ -361,6 +390,17 @@ resolve_key() {
     echo "$KEY_PATH"
     return 0
   fi
+
+  # What the installer recorded, before what this tool would guess: the two
+  # candidates below are a convention, and the journal is a fact about this
+  # machine. It is still only tried, never trusted — a journal from an install
+  # that was later changed by hand names a file that is not there.
+  recorded="$(journal_key_path)"
+  if [[ -n "$recorded" && -f "${ROOT_PREFIX}${recorded}" ]]; then
+    echo "${ROOT_PREFIX}${recorded}"
+    return 0
+  fi
+
   for candidate in "${KEY_CANDIDATES[@]}"; do
     [[ -f "${ROOT_PREFIX}${candidate}" ]] && {
       echo "${ROOT_PREFIX}${candidate}"
