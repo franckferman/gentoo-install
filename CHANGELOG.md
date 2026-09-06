@@ -84,6 +84,19 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **A `--resume` no longer writes a TPM slot into the journal that nothing
+  sealed.** On the already-provisioned path, the `luks-tpm` variant asserted
+  `crypt_tpm_slot` outright, and it was wrong in both directions. Where step 75
+  had never succeeded — no TPM in the target, clevis absent, a sealing the chip
+  refused, all of which this project has hit — the journal came out saying the
+  TPM opens this container. And where the sealing *had* succeeded, clevis may
+  have taken another slot: it picks the first free one when the one asked for
+  is busy, which the sealing code says a few lines down while reading the real
+  slot back. So the resume replaced a true record with the configured number,
+  and the tools that read `crypt.slots` reported it. The slot is read from the
+  journal now, never invented; step 75 writes it when it has actually sealed
+  something, on every pass including a re-run.
+
 - **Two file comparisons still called `cmp`, which the minimal ISO does not
   have.** `files_identical` exists because of exactly that, with the story in
   its own comment, and two callers had never been moved over. The one that

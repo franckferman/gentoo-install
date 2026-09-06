@@ -170,6 +170,22 @@ crypt_variant_show() {
   fi
 }
 
+_lt_recorded_tpm_slot() {
+  # The slot the journal says clevis owns, or nothing. A returned value, so
+  # stdout. Read rather than assumed: it is the only thing on this medium that
+  # knows whether a sealing ever happened, and on which slot.
+  local slots entry
+  declare -F state_get >/dev/null 2>&1 || return 0
+  slots="$(state_get 'crypt.slots' 2>/dev/null || true)"
+  for entry in $slots; do
+    if [[ "$entry" == *:tpm2 ]]; then
+      printf '%s\n' "${entry%%:*}"
+      return 0
+    fi
+  done
+  return 0
+}
+
 crypt_variant_apply() {
   local dev="$CRYPT_DEVICE"
   local recovery_pass=""
@@ -177,8 +193,23 @@ crypt_variant_apply() {
 
   if [[ "$_LT_PROVISIONED" == "yes" ]]; then
     skip "${dev}: already provisioned, nothing rebuilt"
+    # What the journal already says about the TPM slot, and nothing invented.
+    #
+    # This asserted crypt_tpm_slot outright, and it was wrong in both
+    # directions. On a machine where step 75 never succeeded — no TPM in the
+    # target, clevis absent, a sealing the chip refused, all of which this
+    # project has hit — a --resume wrote into the journal that the TPM opens
+    # this container. And where the sealing did succeed, clevis may have taken
+    # another slot: it picks the first free one when the one asked for is busy,
+    # as crypt_variant_seal says a few lines down while reading the real slot
+    # back. So the resume replaced a true record with the configured number.
+    #
+    # Step 75 writes the tpm2 entry when it has actually sealed something, on
+    # every pass including a re-run. Nothing here has to guess it.
+    local recorded
+    recorded="$(_lt_recorded_tpm_slot)"
     # shellcheck disable=SC2034  # read by steps/30_crypt.sh after apply()
-    CRYPT_RECORD="${record} ${CFG[crypt_tpm_slot]}:tpm2"
+    CRYPT_RECORD="${record}${recorded:+ ${recorded}:tpm2}"
     return 0
   fi
 

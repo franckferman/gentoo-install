@@ -556,3 +556,41 @@ load helper
   [ "$status" -eq 0 ]
   [[ "$stderr" == *"none of them is the screen"* ]]
 }
+
+@test "a resume claims no TPM slot the journal does not know about" {
+  # apply() asserted crypt_tpm_slot on the already-provisioned path. On a
+  # machine where step 75 never succeeded — no TPM in the target, clevis
+  # absent, a sealing the chip refused — a --resume then wrote into the
+  # journal that the TPM opens this container.
+  gi_bash 'source "${GI_ROOT}/variants/crypt/luks-tpm.sh"
+    config_init_defaults >/dev/null 2>&1
+    CRYPT_DEVICE=/dev/sdz2; _LT_PROVISIONED=yes
+    CFG[crypt_primary_slot]=1; CFG[crypt_tpm_slot]=2
+    state_get() { [[ "$1" == crypt.slots ]] && printf "1:recovery-passphrase\n"; }
+    crypt_variant_apply >/dev/null 2>&1
+    printf "%s\n" "$CRYPT_RECORD"'
+  [ "$output" = "1:recovery-passphrase" ]
+}
+
+@test "and keeps the slot clevis really took, not the configured one" {
+  # clevis picks the first free slot when the one asked for is busy, which the
+  # sealing code says while reading the real slot back. A resume replaced that
+  # true record with crypt_tpm_slot.
+  gi_bash 'source "${GI_ROOT}/variants/crypt/luks-tpm.sh"
+    config_init_defaults >/dev/null 2>&1
+    CRYPT_DEVICE=/dev/sdz2; _LT_PROVISIONED=yes
+    CFG[crypt_primary_slot]=1; CFG[crypt_tpm_slot]=2
+    state_get() { [[ "$1" == crypt.slots ]] && printf "1:recovery-passphrase 3:tpm2\n"; }
+    crypt_variant_apply >/dev/null 2>&1
+    printf "%s\n" "$CRYPT_RECORD"'
+  [ "$output" = "1:recovery-passphrase 3:tpm2" ]
+}
+
+@test "the recorded TPM slot is read, never guessed" {
+  gi_bash 'source "${GI_ROOT}/variants/crypt/luks-tpm.sh"
+    state_get() { [[ "$1" == crypt.slots ]] && printf "%s\n" "$SLOTS"; }
+    SLOTS=""                                 ; printf "[%s]" "$(_lt_recorded_tpm_slot)"
+    SLOTS="1:recovery-passphrase"            ; printf "[%s]" "$(_lt_recorded_tpm_slot)"
+    SLOTS="1:recovery-passphrase 7:tpm2"     ; printf "[%s]\n" "$(_lt_recorded_tpm_slot)"'
+  [ "$output" = "[][][7]" ]
+}
