@@ -25,7 +25,7 @@ _GI_UI_LOADED=1
 _ui_input_source() {
   # Prompts read from the terminal, not from stdin, so that a step can pipe
   # data into a helper without eating the operator's answer.
-  if [[ -r /dev/tty ]]; then
+  if core_have_tty; then
     printf '%s\n' "/dev/tty"
   else
     printf '%s\n' "/dev/stdin"
@@ -72,7 +72,7 @@ confirm_typed() {
 
   warn "$what"
 
-  if [[ "$NON_INTERACTIVE" == "yes" || ! -r /dev/tty ]]; then
+  if [[ "$NON_INTERACTIVE" == "yes" ]] || ! core_have_tty; then
     err "This is irreversible and needs a typed confirmation: ${expected}"
     err "       --yes and --force do not lift it, by design"
     err "       run gentoo-install from a terminal to confirm it"
@@ -152,7 +152,7 @@ prompt_secret() {
     die "internal: prompt_secret() got an invalid variable name: ${varname}"
   fi
 
-  if [[ "$NON_INTERACTIVE" == "yes" || ! -r /dev/tty ]]; then
+  if [[ "$NON_INTERACTIVE" == "yes" ]] || ! core_have_tty; then
     err "Cannot ask for ${prompt} without a terminal"
     err "       supply it through a configuration file or a key file instead"
     err "       secrets are never accepted on the command line: they land in ps and in shell history"
@@ -204,7 +204,7 @@ menu() {
     die "internal: menu() was given no entries"
   fi
 
-  if [[ "$NON_INTERACTIVE" == "yes" || ! -r /dev/tty ]]; then
+  if [[ "$NON_INTERACTIVE" == "yes" ]] || ! core_have_tty; then
     skip "${title}: taking the first entry (${1}) — no terminal to ask on"
     printf '%s\n' "$1"
     return 0

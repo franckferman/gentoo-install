@@ -496,7 +496,7 @@ crypt_read_passphrase() {
     return 0
   fi
 
-  if [[ "$NON_INTERACTIVE" == "yes" || ! -r /dev/tty ]]; then
+  if [[ "$NON_INTERACTIVE" == "yes" ]] || ! core_have_tty; then
     err "No ${label}, and no terminal to ask on"
     err "       ${env_name}=... is the unattended route"
     err "       ${file_key} = FILE reads it from the first line of a file"

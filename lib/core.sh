@@ -252,6 +252,19 @@ run_quiet() {
 # --------------------------------------------------------------------------- #
 #  Interactive primitive                                                      #
 # --------------------------------------------------------------------------- #
+core_have_tty() {
+  # Is there a terminal to ask a question on?
+  #
+  # `[[ -r /dev/tty ]]` answers a different question: it reads the permissions
+  # on the device node, which are 0666 on every Linux system, so it says yes
+  # to a process that has no controlling terminal at all. Opening it is the
+  # only test that answers this one — without a controlling terminal the open
+  # fails with ENXIO, and the caller that trusted -r then reports "nothing
+  # typed" instead of "there is no terminal here", which is the difference
+  # between a message the operator can act on and one that looks like a crash.
+  { : </dev/tty; } 2>/dev/null
+}
+
 core_read_yes_no() {
   # The raw y/n reader. lib/ui.sh builds confirm() on top of it and adds the
   # policy (--yes, --non-interactive); core keeps only the I/O so that the
@@ -261,7 +274,7 @@ core_read_yes_no() {
   if [[ "$default" == "yes" ]]; then
     hint="[Y/n]"
   fi
-  if [[ -r /dev/tty ]]; then
+  if core_have_tty; then
     source="/dev/tty"
   fi
   printf '%s%s%s %s ' "$C_Y" "$prompt" "$C_0" "$hint" >&2

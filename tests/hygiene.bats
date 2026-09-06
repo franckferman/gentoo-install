@@ -430,3 +430,17 @@ GI_INTERNAL_TOKENS='trinity|cagip|ca-gip|matric|gundabad|thrain|keepass|gps_'
   [ -n "$version" ]
   grep -q "v${version}" "$page"
 }
+
+@test "no file asks whether there is a terminal by reading a permission bit" {
+  # `[[ -r /dev/tty ]]` is true on a process with no controlling terminal:
+  # the node is mode 0666, and the permission bits are not the question. Eight
+  # guards asked it that way, and every one of them reported the wrong reason
+  # when the open then failed. core_have_tty() opens the thing instead.
+  local hits
+  hits="$(gi_shell_files | xargs grep -n -- '-r /dev/tty' \
+    | grep -v 'lib/core.sh:.*#' || true)"
+  if [[ -n "$hits" ]]; then
+    printf 'a terminal is not a permission bit:\n%s\n' "$hits" >&2
+    return 1
+  fi
+}

@@ -1407,7 +1407,7 @@ _fin_reboot() {
       return 0
       ;;
     *)
-      if [[ "$NON_INTERACTIVE" == "yes" || "$ASSUME_YES" == "yes" || ! -r /dev/tty ]]; then
+      if [[ "$NON_INTERACTIVE" == "yes" || "$ASSUME_YES" == "yes" ]] || ! core_have_tty; then
         skip "not rebooting: --yes does not answer this one"
         log "       pass --reboot yes to mean it, or reboot by hand:"
         _fin_fix "reboot"

@@ -502,7 +502,7 @@ chroot_enter() {
   _chroot_require_attached
   local rc="${CHROOT_ROOT}/tmp/.gentoo-install-rc"
 
-  if [[ "${NON_INTERACTIVE:-no}" == "yes" || ! -r /dev/tty ]]; then
+  if [[ "${NON_INTERACTIVE:-no}" == "yes" ]] || ! core_have_tty; then
     err "Cannot open an interactive chroot without a terminal"
     err "       chroot_run executes a single command instead"
     err "       example:  $(chroot_command_hint)"
