@@ -629,8 +629,8 @@ mount_from_fstab() {
   # Sorted by mountpoint so that /var comes before /var/log, and /boot before
   # /boot/efi, whatever order the file happens to be in.
   while read -r src mnt type rest; do
-    case "$src" in ''|'#'*) continue ;; esac
-    case "$type" in swap|proc|sysfs|devtmpfs|tmpfs|devpts) continue ;; esac
+    case "$src" in '' | '#'*) continue ;; esac
+    case "$type" in swap | proc | sysfs | devtmpfs | tmpfs | devpts) continue ;; esac
     [[ "$mnt" == /* && "$mnt" != "/" ]] || continue
     resolved="$src"
     case "$src" in
