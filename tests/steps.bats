@@ -249,3 +249,51 @@ load helper
   '
   [ "$status" -eq 0 ]
 }
+
+@test "the chroot readiness probe names what is missing" {
+  # step 60's precondition ran /bin/true inside the target and called that
+  # proof that step 50 had mounted the pseudo-filesystems. /bin/true needs
+  # none of them: it passed on a target with no /proc, no /sys and no /dev,
+  # and the step then wrote make.conf, watched emerge --info fail on "Failed
+  # to validate a sane '/dev'", and blamed the file.
+  gi_bash 'CHROOT_ROOT=/nowhere; _chroot_require_attached() { return 0; }
+    chroot_run_quiet() {
+      case "$*" in
+        *"/proc/self/mounts"*) return 1 ;;
+        *"/dev/fd/0"*) return 1 ;;
+        *) return 0 ;;
+      esac
+    }
+    chroot_pseudo_ready'
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"missing: /proc"* ]]
+  [[ "$stderr" == *"/dev/fd"* ]]
+  [[ "$stderr" != *"missing: /sys"* ]]
+  [[ "$stderr" == *"--steps 50,60"* ]]
+}
+
+@test "a chroot with everything mounted is called ready" {
+  gi_bash 'CHROOT_ROOT=/nowhere; _chroot_require_attached() { return 0; }
+    chroot_run_quiet() { return 0; }
+    chroot_pseudo_ready'
+  [ "$status" -eq 0 ]
+  [ -z "$stderr" ]
+}
+
+@test "step 60 asks whether the chroot is ready, not whether /bin/true runs" {
+  local body
+  body="$(sed -n '/^step_60_portage/,/^}/p' "${GI_ROOT}/steps/60_portage.sh")"
+  [[ "$body" == *"chroot_pseudo_ready"* ]]
+}
+
+@test "a make.conf refusal reports Portage's own words" {
+  # The caller used to guess: "one unbalanced quote is enough" about a file
+  # emerge had refused to look at for a reason it stated plainly.
+  gi_bash 'CHROOT_ROOT=/nowhere; _chroot_require_attached() { return 0; }
+    chroot_run_quiet() { return 1; }
+    chroot() { printf "Failed to validate a sane '"'"'/dev'"'"'.\n"; return 1; }
+    portage_validate_make_conf || true
+    printf "%s\n" "$PORTAGE_EMERGE_REFUSAL"'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sane"* ]]
+}

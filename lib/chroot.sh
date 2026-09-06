@@ -478,6 +478,45 @@ chroot_run_quiet() {
   run_quiet chroot "$CHROOT_ROOT" /bin/bash -c "$_GI_CHROOT_PRELUDE" "$@"
 }
 
+chroot_pseudo_ready() {
+  # Is this chroot usable for real work, or only for /bin/true?
+  #
+  # step 60's precondition ran `/bin/true` inside the target and took that as
+  # proof that "step 50 mounts the pseudo-filesystems this step needs".
+  # /bin/true needs none of them. It passed on a target with no /proc, no /sys
+  # and no /dev, and the step then wrote make.conf, watched `emerge --info`
+  # fail on "Failed to validate a sane '/dev'", and reported the file as
+  # rejected — "one unbalanced quote is enough" — about a file that was
+  # perfectly good.
+  #
+  # So probe what the work needs and name what is missing. The last one is the
+  # one Portage refuses on by name: without /dev/fd, bash process substitution
+  # does not work and emerge stops before reading anything.
+  _chroot_require_attached
+  local -a missing=()
+
+  chroot_run_quiet test -r /proc/self/mounts || missing+=("/proc")
+  chroot_run_quiet test -d /sys/class || missing+=("/sys")
+  chroot_run_quiet test -c /dev/null || missing+=("/dev")
+  # /dev/fd, by the plainest test there is. The first version of this probe
+  # ran `read -r _ < <(printf x)` and reported a broken chroot on a working
+  # one: printf left no trailing newline, so read returned 1 having assigned —
+  # the same trap this repository has now been bitten by three times.
+  chroot_run_quiet test -e /dev/fd/0 \
+    || missing+=("/dev/fd — bash process substitution does not work")
+
+  ((${#missing[@]} > 0)) || return 0
+
+  err "the chroot at ${CHROOT_ROOT} is not ready for work"
+  local item
+  for item in "${missing[@]}"; do
+    err "       missing: ${item}"
+  done
+  err "       step 50 mounts these; run it in the same invocation"
+  err "       example:  ./gentoo-install.sh --steps 50,60"
+  return 1
+}
+
 chroot_capture() {
   # Run a command inside the chroot and print its stdout — a returned value.
   # Deliberately not routed through run_cmd: a dry run has nothing mounted, so

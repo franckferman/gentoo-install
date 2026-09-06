@@ -735,17 +735,27 @@ EMERGE_DEFAULT_OPTS="${opts}"
 EOF
 }
 
+PORTAGE_EMERGE_REFUSAL=""
+
 portage_validate_make_conf() {
   # `emerge --info` parses make.conf, the profile and every repository before
   # printing a line, so it is the checker this file has. sshd -t, visudo -c and
   # findmnt --verify are the same idea in the same project.
-  chroot_run_quiet emerge --info
+  #
+  # Its own words are kept, because the caller used to guess at the reason and
+  # guessed wrong: "one unbalanced quote is enough" about a make.conf that
+  # emerge had refused to look at for a reason it stated plainly.
+  PORTAGE_EMERGE_REFUSAL=""
+  chroot_run_quiet emerge --info && return 0
+  PORTAGE_EMERGE_REFUSAL="$(chroot "$CHROOT_ROOT" /bin/bash -c \
+    "$_GI_CHROOT_PRELUDE" emerge --info 2>&1 | tail -n 5 || true)"
+  return 1
 }
 
 portage_write_make_conf() {
   # Write the marked block, then let Portage have the last word, then put the
   # backup back when it objects. Args: $1 = root.
-  local root="$1" conf body rc=0
+  local root="$1" conf body rc=0 _line
   conf="${root}/etc/portage/make.conf"
 
   body="$(portage_make_conf_body)" || {
@@ -788,8 +798,15 @@ EOF
   else
     err "       there was no previous make.conf; ${conf} is left as written"
   fi
-  err "       one unbalanced quote is enough, and Portage names no file"
-  err "       read the refusal:  chroot ${root} /bin/bash -lc 'emerge --info'"
+  if [[ -n "$PORTAGE_EMERGE_REFUSAL" ]]; then
+    err "       what it said:"
+    while IFS= read -r _line; do
+      [[ -n "$_line" ]] && err "         ${_line}"
+    done <<<"$PORTAGE_EMERGE_REFUSAL"
+  else
+    err "       one unbalanced quote is enough, and Portage names no file"
+  fi
+  err "       read it in full:  chroot ${root} /bin/bash -lc 'emerge --info'"
   WRITE_RESULT="failed"
   return 1
 }
@@ -1185,6 +1202,7 @@ step_60_portage() {
     err "       example:  ./gentoo-install.sh --steps 50,60"
     return "$EXIT_FAILURE"
   fi
+  chroot_pseudo_ready || return "$EXIT_FAILURE"
 
   log "target: ${root}"
 

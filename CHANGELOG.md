@@ -12,6 +12,12 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Added
 
+- **musl reaches step 60.** The profile is selected, `make.conf` is written and
+  accepted by `emerge --info`, and `package.use`, `package.accept_keywords`,
+  `package.license` and the `@gentoo-install` set are all written on a musl
+  tree: `default/linux/amd64/23.0/musl`, `MAKEOPTS="-j16"`, 14 packages. Two
+  steps, none failed.
+
 - **A `musl` stage has been installed.** Never done before: the flavour was
   offered, the tables named it, and nothing had ever unpacked one. Steps 20 to
   50 on an encrypted disk, four steps and none failed — the signed pointer, the
@@ -45,6 +51,20 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   without a word. It measures them now and says which ones bind nothing.
 
 ### Fixed
+
+- **Step 60 asks whether the chroot is usable, not whether `/bin/true` runs
+  in it.** The precondition ran `/bin/true` inside the target and took that as
+  proof that "step 50 mounts the pseudo-filesystems this step needs".
+  `/bin/true` needs none of them. On a target with no `/proc`, no `/sys` and no
+  `/dev`, the check passed, the step wrote `make.conf`, `emerge --info` failed
+  with *"Failed to validate a sane '/dev'"*, and the step reported the file as
+  rejected — *"one unbalanced quote is enough"* — then restored the backup. The
+  operator was left with a reverted `make.conf` and a wrong explanation.
+  `chroot_pseudo_ready()` probes `/proc`, `/sys`, `/dev` and `/dev/fd` and
+  names the ones that are missing, before anything is written.
+
+- **A `make.conf` refusal quotes Portage instead of guessing.** When
+  `emerge --info` says why, its own last lines are shown.
 
 - **A system can be installed in more than one language, and given a DNS
   domain and an SSH key.** All three were read by step 90 through a candidate
