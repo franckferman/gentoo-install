@@ -662,12 +662,24 @@ kernel_emerge() {
 
 kernel_pkg_installed() {
   # Read-only, works on an unmounted tree and inside a chroot alike.
+  #
+  # A package directory is name-version, and a Gentoo version always starts with
+  # a digit. Checking that matters more than it looks: the glob for
+  # sys-boot/grub also matches sys-boot/grub-themes-gentoo, so a machine with
+  # only the theme installed answered "sys-boot/grub already installed", the
+  # emerge was skipped, and step 80 died on "chroot: cannot execute
+  # grub-install: No such file or directory" — with the log one line above it
+  # saying grub was there. The same trap is waiting for sys-kernel/linux against
+  # linux-firmware, and for anything else whose name is a prefix of a sibling's.
   # Args: $1 = target root, $2 = category/name.
-  local root="$1" atom="$2" dir
+  local root="$1" atom="$2" dir name rest
+  name="${atom##*/}"
   for dir in "${root}/var/db/pkg/${atom}"-*; do
-    if [[ -d "$dir" ]]; then
-      return 0
-    fi
+    [[ -d "$dir" ]] || continue
+    rest="${dir##*/}"
+    rest="${rest#"${name}-"}"
+    [[ "$rest" == [0-9]* ]] || continue
+    return 0
   done
   return 1
 }

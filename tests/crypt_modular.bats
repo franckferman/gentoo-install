@@ -94,3 +94,28 @@ load helper
               target_init() { printf "openrc\n"; }
               kernel_dracut_modules' | grep -qx "dm lvm"
 }
+
+@test "a package is not installed just because a sibling shares its name prefix" {
+  # sys-boot/grub-themes-gentoo made sys-boot/grub look installed, so the emerge
+  # was skipped and step 80 died on "chroot: cannot execute grub-install" — with
+  # the line above it saying grub was already there. A Gentoo package directory
+  # is name-version and a version starts with a digit; that is the whole test.
+  local root
+  root="$(gi_tmp)/fakeroot"
+  mkdir -p "${root}/var/db/pkg/sys-boot/grub-themes-gentoo-1.0-r2"
+  mkdir -p "${root}/var/db/pkg/sys-kernel/linux-firmware-20260101"
+
+  gi_bash 'kernel_pkg_installed "$1" sys-boot/grub' "$root"
+  [ "$status" -ne 0 ]
+
+  gi_bash 'kernel_pkg_installed "$1" sys-kernel/linux' "$root"
+  [ "$status" -ne 0 ]
+
+  # The ones that really are there must still answer yes.
+  gi_bash 'kernel_pkg_installed "$1" sys-boot/grub-themes-gentoo' "$root"
+  [ "$status" -eq 0 ]
+
+  mkdir -p "${root}/var/db/pkg/sys-boot/grub-2.12-r6"
+  gi_bash 'kernel_pkg_installed "$1" sys-boot/grub' "$root"
+  [ "$status" -eq 0 ]
+}

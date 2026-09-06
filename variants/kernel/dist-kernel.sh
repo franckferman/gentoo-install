@@ -90,6 +90,25 @@ kernel_dist_kernel_build() {
     return 1
   }
 
+  # A merge that already happened is a no-op, and this package deploys /boot from
+  # its postinst — so a first attempt that failed there leaves the package
+  # installed and /boot empty, and every later run emerges nothing and then finds
+  # nothing. That is not a corner case: a dracut module that will not build is
+  # enough, and it is exactly what a --resume after such a failure walks into.
+  # The ebuild names the way out itself.
+  if [[ "$DRY_RUN" != "yes" ]] && ! kernel_installed "$root" >/dev/null 2>&1; then
+    warn "${package} is installed but deployed no kernel image"
+    warn "       /boot is written by its postinst, and that did not finish"
+    log "re-running the deployment: emerge --config ${package}"
+    if ! kernel_in_target "$root" emerge --config "$package"; then
+      err "emerge --config ${package} deployed no kernel either"
+      err "       the initramfs is the usual reason; the dracut lines above name the module"
+      err "       kernel_build = source compiles the same configuration instead"
+      return 1
+    fi
+    ok "deployment re-run: ${package}"
+  fi
+
   # The dist kernel is signed by Gentoo's own key. That key is not enrolled in
   # most firmware, so it is not a Secure Boot answer on its own — step 80 signs
   # with the operator's key when one is given, and says so when none is.
