@@ -143,6 +143,15 @@ done
   empty. `debian-server-post-install` prints "completed successfully" after a
   failed step. A script that always succeeds tells you nothing.
 
+- **One exception, declared in a table and not in an `if`.** Some failures are
+  not a result to report next to the others: they are the reason the rest must
+  not happen. `STEP_HALTS` names them, and today it names exactly one — step 10,
+  whose checks decide whether anything may be written at all. Accumulating past
+  it was found by running it: pre-flight refused a disk for being under the
+  minimum it insists on, said `--force does not lift these: they are proofs,
+  not confirmations`, and the run erased that disk anyway. A proof nothing acts
+  on is a decoration.
+
 - `parse_step_selection` accepts `1,3-7,15` and expands it. Reject an
   unknown step number at parse time, not in the middle of an `emerge`.
 

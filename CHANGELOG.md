@@ -12,6 +12,15 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **A failed pre-flight stops the run.** The runner accumulates failures, which
+  is right for almost every step and wrong for the one whose checks decide
+  whether anything may be written at all. A real run showed it: pre-flight
+  refused a 16 GiB disk — `minimum 20`, and `--force does not lift these: they
+  are proofs, not confirmations` — and the run went on to erase that disk and
+  install onto it. `STEP_HALTS` names the steps whose failure ends the run, in
+  a table rather than an `if` on a number, and the report says how many steps
+  were not run and that nothing they would have written was written.
+
 - **A reseal reproduces the policy in force.** `tools/tpm-reseal.sh` read the
   binding it was about to replace, printed it on screen, and then resealed with
   its own default — `pcr_ids 0,2,3,6`. A machine installed with another set of

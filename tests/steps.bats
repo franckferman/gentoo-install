@@ -193,3 +193,59 @@ load helper
     return 1
   fi
 }
+
+# --------------------------------------------------------------------------- #
+#  A failure that must stop the run                                           #
+# --------------------------------------------------------------------------- #
+@test "a failed pre-flight stops the run instead of being accumulated" {
+  # Found by running it. Pre-flight refused a 16 GiB disk — "minimum 20", and
+  # "--force does not lift these: they are proofs, not confirmations" — and the
+  # run carried on and erased that disk anyway. Accumulating is right for
+  # almost every step; it is wrong for the one whose job is to decide whether
+  # anything may be written at all.
+  gi_bash '
+    config_init_defaults
+    state_done() { :; }
+    state_is_done() { return 1; }
+    step_10_preflight() { return 1; }
+    step_20_disk()      { printf "ERASED\n"; return 0; }
+    STEP_MAP=([10]=step_10_preflight [20]=step_20_disk)
+    run_steps 10 20
+  '
+  [ "$status" -ne 0 ]
+  [[ "$output" != *"ERASED"* ]]
+  [[ "$stderr" == *"stopped at step 10"* ]]
+  [[ "$stderr" == *"were not run"* ]]
+}
+
+@test "every other failure is still accumulated, and every step still runs" {
+  # The other half of DESIGN.md §4: a failed bootloader does not stop the
+  # accounts from being created, and the summary names what went wrong.
+  gi_bash '
+    config_init_defaults
+    state_done() { :; }
+    state_is_done() { return 1; }
+    step_80_boot()   { return 1; }
+    step_90_system() { printf "RAN 90\n"; return 0; }
+    step_95_finalize() { printf "RAN 95\n"; return 0; }
+    STEP_MAP=([80]=step_80_boot [90]=step_90_system [95]=step_95_finalize)
+    run_steps 80 90 95
+  '
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"RAN 90"* ]]
+  [[ "$output" == *"RAN 95"* ]]
+  [[ "$stderr" == *"1 of 3 step(s) failed"* ]]
+  [[ "$stderr" != *"stopped at step"* ]]
+}
+
+@test "the halting table names a step the registry actually has" {
+  # A number in STEP_HALTS that no step answers to would be a rule nothing can
+  # ever apply.
+  gi_bash '
+    for n in "${!STEP_HALTS[@]}"; do
+      [[ -n "${STEP_MAP[$n]:-}" ]] || { printf "%s\n" "$n"; exit 1; }
+    done
+    exit 0
+  '
+  [ "$status" -eq 0 ]
+}

@@ -81,6 +81,28 @@ declare -A STEP_MAP=(
   [95]=step_95_finalize
 )
 
+# Steps whose failure stops the run instead of being accumulated.
+#
+# Accumulating is right for almost everything: a failed bootloader should not
+# stop the accounts from being created, and the final summary names what went
+# wrong (DESIGN.md §4). Pre-flight is the exception, and it took a real run to
+# see it. Its checks decide whether anything may be written at all, and it says
+# so itself —
+#
+#   [x] Pre-flight failed: 1 blocking, 0 warning(s)
+#   [x]        blocking: disk
+#   [x]        --force does not lift these: they are proofs, not confirmations
+#
+# — after which the run carried on and erased the disk it had just refused,
+# because 16 GiB is under the 20 the same check insists on. A proof nothing
+# acts on is a decoration.
+#
+# A table and not an `if` on a step number: the registry is the contract, and
+# the loop below stays free of special cases.
+declare -A STEP_HALTS=(
+  [10]="pre-flight decides whether anything may be written at all"
+)
+
 declare -A STEP_DESC=(
   [10]="pre-flight: privileges, tools, network, disk inventory"
   [20]="partition and format the target disks (DESTRUCTIVE)"
@@ -713,7 +735,7 @@ run_steps() {
   # them. A run that prints "completed successfully" after a failed step tells
   # the operator nothing.
   local -a selected=("$@") failed=()
-  local n fn started elapsed entry
+  local n fn started elapsed entry ran=0 halted=""
 
   started=$SECONDS
 
@@ -724,12 +746,21 @@ run_steps() {
       continue
     fi
     log "step ${n} — ${fn}"
+    ran=$((ran + 1))
     if "$fn"; then
       state_done "$n"
       ok "step ${n} ${fn}: done"
-    else
-      err "step ${n} ${fn}: failed"
-      failed+=("${n} ${fn}")
+      continue
+    fi
+
+    err "step ${n} ${fn}: failed"
+    failed+=("${n} ${fn}")
+
+    # Some failures are not a result to report alongside the others: they are
+    # the reason the rest must not happen. STEP_HALTS says which.
+    if [[ -n "${STEP_HALTS[$n]:-}" ]]; then
+      halted="$n"
+      break
     fi
   done
 
@@ -738,6 +769,14 @@ run_steps() {
   if ((${#failed[@]} == 0)); then
     ok "${#selected[@]} step(s) in ${elapsed}s, none failed"
     return "$EXIT_SUCCESS"
+  fi
+
+  if [[ -n "$halted" ]]; then
+    err "stopped at step ${halted} after ${elapsed}s: ${STEP_HALTS[$halted]}"
+    err "       $((${#selected[@]} - ran)) step(s) after it were not run, and"
+    err "       nothing they would have written was written"
+    err "       fix the cause, then: ./${SCRIPT_NAME} --resume"
+    return "$EXIT_FAILURE"
   fi
 
   err "${#failed[@]} of ${#selected[@]} step(s) failed in ${elapsed}s:"
