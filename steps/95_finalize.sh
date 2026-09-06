@@ -1369,6 +1369,16 @@ _fin_release() {
     warn "leaving the encryption layer alone: the tree above it is still held"
   fi
 
+  # 4. The governor step 40 changed on the machine running the installer.
+  # Unconditional: it belongs to this machine and not to the target, so a
+  # failed teardown is no reason to leave it turned up.
+  local governor
+  governor="$(state_get cpu.governor_before 2>/dev/null || true)"
+  if [[ -n "$governor" ]]; then
+    log "putting the cpu governor back to ${governor}"
+    cpu_restore_governor "$governor"
+  fi
+
   ((failed == 0)) || return 1
   return 0
 }

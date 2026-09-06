@@ -326,6 +326,13 @@ cleanup() {
   fi
   _GI_CLEANED="yes"
 
+  # Before the unmounts, because it touches nothing they own and because a
+  # cleanup that fails halfway should still have handed the machine back its
+  # governor.
+  if declare -F cpu_restore_governor >/dev/null 2>&1; then
+    cpu_restore_governor || true
+  fi
+
   local i path
   # Reverse order: the last mount is the innermost one.
   for ((i = ${#_GI_MOUNTS[@]} - 1; i >= 0; i--)); do

@@ -86,6 +86,12 @@ _step_40_body() {
   arch="${CFG[arch]:-amd64}"
   root="$(stage_root)"
 
+  # Here rather than in step 60, because everything from the decompression of
+  # the archive onwards is CPU-bound and this is the first of it. What it
+  # changes belongs to the machine running the installer; it is announced, it
+  # is recorded in the journal, and step 95 and cleanup() put it back.
+  cpu_apply_governor
+
   # ------------------------------------------------------------------- #
   #  1. Tools                                                           #
   # ------------------------------------------------------------------- #

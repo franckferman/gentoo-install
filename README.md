@@ -110,6 +110,22 @@ gitpm ~ # clevis luks list -d /dev/vda2
 2: tpm2 '{"hash":"sha256","key":"ecc","pcr_bank":"sha256","pcr_ids":"0,2,3,6"}'
 ```
 
+
+There is not one PCR policy, and `crypt_pcrs` takes a name as well as a list:
+
+| name | registers | what it binds |
+|---|---|---|
+| `firmware` | `0,2,3,6` | the default — firmware code, option ROMs, platform events |
+| `secureboot` | `7` | the Secure Boot policy state alone |
+| `firmware+secureboot` | `0,2,3,6,7` | both; reseal when either changes |
+| `strict` | `0-7` | adds the boot binary — expect to reseal after every kernel |
+
+Registers 2, 3 and 6 are empty on a good deal of consumer firmware: they hold
+the value of a register extended with `EV_SEPARATOR` and nothing else, so
+sealing against them binds nothing and the default policy rests on PCR 0. The
+installer measures them and says so before sealing; `./tools/tpm-pcr.sh show`
+says the same thing register by register.
+
 Getting there took two things a stock Gentoo does not give you, and both are
 worth knowing before you choose this variant. **`app-crypt/clevis` is not in the
 official Gentoo repository** — it is in GURU, where it is also unstable — and
@@ -735,6 +751,21 @@ $ ./gentoo-install.sh --config bad.conf
 [x]        one of: grub, efistub, systemd-boot, uki
 [x]        example:  bootloader = grub
 ```
+
+### The CPU governor while it builds
+
+An install is one long compile, and a live medium boots on whatever governor
+its image shipped with — usually `powersave` or `schedutil`, which is the right
+default for a laptop reading a web page and the wrong one for four hours of
+gcc. `cpu_governor` is `performance` by default and `keep` opts out.
+
+What it changes belongs to the machine running the installer and not to the
+target, so it is announced, recorded in the state journal, and put back three
+ways: by step 95, by the exit trap, and from the journal on the next run if the
+machine lost power in between. A name this machine's cpufreq driver does not
+offer is refused at the prompt — the list comes from
+`scaling_available_governors`, because `intel_pstate` has two and
+`acpi-cpufreq` has five.
 
 ### The target root
 

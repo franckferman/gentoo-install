@@ -60,6 +60,8 @@ source "${LIB_DIR}/crypt.sh"
 source "${LIB_DIR}/stage.sh"
 # shellcheck source=lib/chroot.sh
 source "${LIB_DIR}/chroot.sh"
+# shellcheck source=lib/cpu.sh
+source "${LIB_DIR}/cpu.sh"
 
 # --------------------------------------------------------------------------- #
 #  Step registry                                                              #
@@ -810,6 +812,22 @@ main() {
   # step 30 would then refuse.
   crypt_validate_early || exit "$EXIT_USAGE"
   crypt_validate_pbkdf_params || exit "$EXIT_USAGE"
+
+  # Same reason, one layer down: the governors a machine has depend on its
+  # cpufreq driver, so the list is asked of the machine rather than kept here.
+  cpu_validate_governor "${CFG[cpu_governor]}" || exit "$EXIT_USAGE"
+
+  # A named PCR policy becomes its numbers here, once, so that everything
+  # downstream — the plan, the seal, the journal, a later reseal — reads the
+  # same list.
+  crypt_expand_pcrs
+
+  # And the whole crypt surface is judged here, not at step 30. The function
+  # says of itself "ten milliseconds, before a single sector is touched", and
+  # it was called from step 30 alone: `--crypt-pcrs bogus` was accepted at the
+  # prompt and refused after step 20 had erased the disk. Step 30 still calls
+  # it, so the step stays drivable on its own.
+  crypt_validate_config
   if [[ "${CFG[resume]}" == "yes" && "${CFG[restart]}" == "yes" ]]; then
     die_usage "--resume and --restart contradict each other" \
       "--resume   skip the steps the state journal marks as done" \

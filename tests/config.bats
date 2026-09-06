@@ -221,3 +221,103 @@ load helper
     }
   done
 }
+
+@test "the governor is put back to what the machine had" {
+  # An install is one long compile, and a live medium boots on whatever
+  # governor its image happened to ship. What this changes belongs to the
+  # machine running the installer, so it is announced, recorded and restored.
+  local dir c
+  dir="$(gi_tmp)/cpu"
+  for c in 0 1; do
+    mkdir -p "${dir}/cpu${c}/cpufreq"
+    printf 'powersave\n' >"${dir}/cpu${c}/cpufreq/scaling_governor"
+    printf 'performance powersave\n' >"${dir}/cpu${c}/cpufreq/scaling_available_governors"
+  done
+
+  gi_bash 'CPU_SYSFS="$1"; config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no; STATE_FILE=""
+    cpu_apply_governor
+    printf "applied=%s\n" "$(cpu_governor_now)"
+    cpu_restore_governor
+    printf "restored=%s\n" "$(cpu_governor_now)"' "$dir"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"applied=performance"* ]]
+  [[ "$output" == *"restored=powersave"* ]]
+}
+
+@test "a dry run never touches the governor" {
+  local dir
+  dir="$(gi_tmp)/cpudry"
+  mkdir -p "${dir}/cpu0/cpufreq"
+  printf 'powersave\n' >"${dir}/cpu0/cpufreq/scaling_governor"
+  printf 'performance powersave\n' >"${dir}/cpu0/cpufreq/scaling_available_governors"
+
+  gi_bash 'CPU_SYSFS="$1"; config_init_defaults >/dev/null 2>&1
+    DRY_RUN=yes; STATE_FILE=""
+    cpu_apply_governor
+    printf "%s\n" "$(cpu_governor_now)"' "$dir"
+  [ "$status" -eq 0 ]
+  [ "$output" = "powersave" ]
+}
+
+@test "cpu_governor = keep changes nothing, and a machine with no cpufreq says so" {
+  local dir
+  dir="$(gi_tmp)/cpukeep"
+  mkdir -p "${dir}/cpu0/cpufreq"
+  printf 'schedutil\n' >"${dir}/cpu0/cpufreq/scaling_governor"
+  printf 'performance schedutil\n' >"${dir}/cpu0/cpufreq/scaling_available_governors"
+
+  gi_bash 'CPU_SYSFS="$1"; config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no; STATE_FILE=""; CFG[cpu_governor]=keep
+    cpu_apply_governor
+    printf "%s\n" "$(cpu_governor_now)"' "$dir"
+  [ "$output" = "schedutil" ]
+
+  gi_bash 'CPU_SYSFS="$1/nothing-here"; config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no; STATE_FILE=""
+    cpu_apply_governor' "$dir"
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"no cpufreq governor"* ]]
+}
+
+@test "a governor this machine does not have is refused before anything is erased" {
+  local dir
+  dir="$(gi_tmp)/cpubad"
+  mkdir -p "${dir}/cpu0/cpufreq"
+  printf 'powersave\n' >"${dir}/cpu0/cpufreq/scaling_governor"
+  printf 'performance powersave\n' >"${dir}/cpu0/cpufreq/scaling_available_governors"
+
+  gi_bash 'CPU_SYSFS="$1"; config_init_defaults >/dev/null 2>&1
+    cpu_validate_governor ondemand' "$dir"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"no ondemand governor"* ]]
+  [[ "$stderr" == *"performance powersave"* ]]
+}
+
+@test "a PCR policy can be named, and the name becomes its numbers once" {
+  # There is not one PCR policy. Naming the ones that get used means an
+  # operator picks a policy instead of copying numbers whose meaning is
+  # somewhere else.
+  local pair
+  for pair in "firmware:0,2,3,6" "secureboot:7" \
+    "firmware+secureboot:0,2,3,6,7" "strict:0,1,2,3,4,5,6,7" "0,7:0,7"; do
+    gi_bash 'config_init_defaults >/dev/null 2>&1
+      CFG[crypt_pcrs]="$1"; crypt_expand_pcrs >/dev/null 2>&1
+      printf "%s\n" "${CFG[crypt_pcrs]}"' "${pair%%:*}"
+    [ "$output" = "${pair#*:}" ] || {
+      printf '%s expanded to %s\n' "${pair%%:*}" "$output" >&2
+      return 1
+    }
+  done
+}
+
+@test "the whole crypt surface is judged before step 20 erases anything" {
+  # crypt_validate_config says of itself "ten milliseconds, before a single
+  # sector is touched", and it was called from step 30 alone: --crypt-pcrs
+  # bogus was taken at the prompt and refused after the disk was gone.
+  run --separate-stderr "$GI_ENTRY" --dry-run --crypt luks-tpm \
+    --crypt-pcrs bogus --steps 20,30
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"Invalid PCR list: bogus"* ]]
+  [[ "$stderr" != *"step 20"* ]]
+}

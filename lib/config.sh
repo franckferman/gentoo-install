@@ -365,7 +365,7 @@ config_init_defaults() {
   # declared and unreachable, spellable neither in a .conf nor as a flag. The
   # declare -F guard is what makes listing a step function here safe.
   for fn in disk_init_defaults crypt_config_defaults stage_init_defaults \
-    portage_init_defaults; do
+    cpu_init_defaults portage_init_defaults; do
     if declare -F "$fn" >/dev/null; then
       "$fn"
     fi

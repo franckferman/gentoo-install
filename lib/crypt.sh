@@ -214,12 +214,42 @@ crypt_validate_config() {
   crypt_validate_pcrs "${CFG[crypt_pcrs]}"
 }
 
+crypt_pcr_named() {
+  # There is not one PCR policy, there are several, and which one is right
+  # depends on what the machine is defending against and on what its firmware
+  # actually measures. Naming the three that get used means an operator picks
+  # a policy instead of copying a list of numbers whose meaning is elsewhere.
+  # A raw list is still accepted and still wins: this only expands a name.
+  # Args: $1 = what the setting holds. Prints the list, so stdout.
+  case "${1:-}" in
+    firmware) printf '0,2,3,6\n' ;; # the default: what a BIOS update moves
+    secureboot) printf '7\n' ;;     # the Secure Boot policy state alone
+    firmware+secureboot) printf '0,2,3,6,7\n' ;;
+    strict) printf '0,1,2,3,4,5,6,7\n' ;; # everything up to the boot binary
+    *) printf '%s\n' "${1:-}" ;;
+  esac
+}
+
+crypt_pcr_names() { printf 'firmware secureboot firmware+secureboot strict\n'; }
+
+crypt_expand_pcrs() {
+  # Called once, at parse time, so everything downstream sees numbers. The
+  # setting keeps the expanded value: a policy that reads back differently
+  # from what was sealed is how a reseal comes to bind something else.
+  local given="${CFG[crypt_pcrs]}" expanded
+  expanded="$(crypt_pcr_named "$given")"
+  [[ "$expanded" == "$given" ]] && return 0
+  CFG[crypt_pcrs]="$expanded"
+  log "PCR policy ${given} is ${expanded}"
+}
+
 crypt_validate_pcrs() {
   local list="$1" n
+  list="$(crypt_pcr_named "$list")"
   if [[ ! "$list" =~ ^[0-9]+(,[0-9]+)*$ ]]; then
     die_usage "Invalid PCR list: ${list}" \
-      "comma-separated register numbers, no spaces" \
-      "example:  crypt_pcrs = 0,2,3,6"
+      "comma-separated register numbers, no spaces, or one of: $(crypt_pcr_names)" \
+      "example:  crypt_pcrs = firmware"
   fi
   for n in ${list//,/ }; do
     if ((10#$n > 23)); then
@@ -251,6 +281,41 @@ crypt_pcr_rationale() {
   log "          switched off without the TPM noticing. Add 7 to crypt_pcrs if"
   log "          your threat model needs it, and reseal whenever you touch the"
   log "          Secure Boot keys."
+  log "       there is more than one policy, and these are spellable by name:"
+  log "          firmware             0,2,3,6   the default, above"
+  log "          secureboot           7         the Secure Boot state alone"
+  log "          firmware+secureboot  0,2,3,6,7 both, resealed on either change"
+  log "          strict               0-7       adds the boot binary: expect to"
+  log "                                         reseal after every kernel"
+  crypt_warn_empty_pcrs
+}
+
+# A SHA-256 register extended with EV_SEPARATOR and nothing else ends here. It
+# is the signature of a register in which no option ROM, no add-in card and no
+# vendor event was ever measured. tools/tpm-pcr.sh carries the same constant.
+readonly CRYPT_EMPTY_PCR="3D458CFE55CC03EA1F443F1562BEEC8DF51C75E14A9FCF9A7234A13F198E7969"
+
+crypt_warn_empty_pcrs() {
+  # Measured on the machine in front of us, not assumed. On a good deal of
+  # consumer firmware, registers 2, 3 and 6 hold exactly the empty value, so
+  # the default policy binds one register — 0 — and the other three add
+  # nothing at all. Worth knowing before trusting the list, and cheap to say:
+  # the registers are world-readable in sysfs.
+  local dir="/sys/class/tpm/tpm0/pcr-${CFG[crypt_pcr_bank]:-sha256}" n v
+  local -a empty=()
+
+  [[ -d "$dir" ]] || return 0
+  for n in ${CFG[crypt_pcrs]//,/ }; do
+    [[ -r "${dir}/${n}" ]] || continue
+    v="$(tr -d " \r\n" <"${dir}/${n}")"
+    [[ "${v^^}" == "$CRYPT_EMPTY_PCR" ]] && empty+=("$n")
+  done
+  ((${#empty[@]} > 0)) || return 0
+
+  warn "on this machine, PCR ${empty[*]} hold the value of a register that"
+  warn "       measured nothing at all. Sealing against them binds nothing."
+  warn "       What is left of ${CFG[crypt_pcrs]} here is the rest of the list."
+  warn "       ./tools/tpm-pcr.sh show says the same thing register by register."
 }
 
 # --------------------------------------------------------------------------- #

@@ -10,7 +10,39 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ## [Unreleased]
 
+### Added
+
+- **`cpu_governor`, `performance` by default.** An install is one long compile
+  and a live medium boots on whatever governor its image shipped with, which
+  is the right default for a laptop reading a web page and the wrong one for
+  four hours of gcc. What it changes belongs to the machine running the
+  installer, so it is announced, recorded in the journal, and put back three
+  ways: step 95, the exit trap, and the journal on the next run if the machine
+  lost power in between. A governor this machine's cpufreq driver does not
+  offer is refused at the prompt, from `scaling_available_governors` rather
+  than a table — `intel_pstate` has two and `acpi-cpufreq` has five. `keep`
+  opts out.
+
+- **PCR policies have names.** There is not one policy: `crypt_pcrs` now takes
+  `firmware` (`0,2,3,6`, the default), `secureboot` (`7`),
+  `firmware+secureboot` and `strict` (`0-7`), as well as a raw list. The name
+  becomes its numbers once, at parse time, so the plan, the seal, the journal
+  and a later reseal all read the same thing.
+
+- **The installer says when a policy binds nothing.** Registers 2, 3 and 6 are
+  empty on a good deal of consumer firmware — the value of a register extended
+  with `EV_SEPARATOR` and nothing else — so the default policy rests on PCR 0
+  alone. `tools/tpm-pcr.sh` reported that; the installer sealed against them
+  without a word. It measures them now and says which ones bind nothing.
+
 ### Fixed
+
+- **The crypt settings are judged before step 20 erases anything.**
+  `crypt_validate_config` describes itself as "ten milliseconds, before a
+  single sector is touched" and was called from step 30 alone, so
+  `--crypt-pcrs bogus` was accepted at the prompt and refused after the disk
+  was gone. It runs at parse time; step 30 still calls it, so the step stays
+  drivable on its own.
 
 - **`bios-maint.sh` asks clevis two different questions again.** "Which slot
   does the TPM own" and "did anything but a typed passphrase open this
