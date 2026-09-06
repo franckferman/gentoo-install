@@ -350,6 +350,19 @@ detect_container() {
   return 1
 }
 
+journal_device() {
+  # The container the installer recorded, when there is a journal to read and
+  # the device it names is still a container. Checked rather than trusted: a
+  # disk is /dev/vda2 to the machine that was installed and can be /dev/sdb2 to
+  # the rescue medium looking at it.
+  local file="${ROOT_PREFIX}/var/lib/gentoo-install/state" dev
+  [[ -r "$file" ]] || return 1
+  dev="$(sed -n 's/^crypt\.device=//p' "$file" | tail -n 1)"
+  [[ -n "$dev" && -b "$dev" ]] || return 1
+  cryptsetup isLuks "$dev" 2>/dev/null || return 1
+  printf '%s\n' "$dev"
+}
+
 resolve_device() {
   local dev
 
@@ -363,6 +376,14 @@ resolve_device() {
       err "$dev is not a LUKS container"
       return 1
     }
+    echo "$dev"
+    return 0
+  fi
+
+
+  # What the installer recorded about this machine, before searching for it.
+  if dev="$(journal_device)"; then
+    log "Container from the install journal: $dev"
     echo "$dev"
     return 0
   fi

@@ -371,3 +371,51 @@ gi_tools() {
   [ "$status" -eq 0 ]
   [ "$output" = "${root}/boot/efi/luks-key.gpg" ]
 }
+
+@test "every tool that resolves a container asks the journal first" {
+  # The journal is a fact about the machine in front of the tool; the volume
+  # group enumeration below it is a search. bios-update.sh was given that shape
+  # for the Secure Boot pair and key-backup.sh for the key file; this is the
+  # same rule for the container itself, in the seven tools that look for one.
+  # And it checks the call, not the definition: removing the two lines that
+  # invoke it left an earlier version of this test perfectly green, because the
+  # helper was still sitting there unused.
+  local tool missing=""
+  while read -r tool; do
+    grep -q '^resolve_device()' "$tool" || continue
+    sed -n '/^resolve_device() {/,/^}/p' "$tool" | grep -q 'journal_device' \
+      || missing+=" ${tool##*/}"
+  done < <(gi_tools)
+  if [[ -n "$missing" ]]; then
+    printf 'tools that resolve a container without reading the journal:%s\n' "$missing" >&2
+    return 1
+  fi
+}
+
+@test "the recorded container is checked, not trusted" {
+  # A disk is /dev/vda2 to the machine that was installed and can be /dev/sdb2
+  # to the rescue medium looking at it. A recorded name that no longer points at
+  # a LUKS header is worth less than the search that follows it.
+  local root
+  root="$(gi_tmp)/jd"
+  mkdir -p "${root}/var/lib/gentoo-install"
+  printf 'crypt.device=/dev/definitely-not-here\n' >"${root}/var/lib/gentoo-install/state"
+
+  run bash -c '
+    ROOT_PREFIX="$2"
+    eval "$(sed -n "/^journal_device()/,/^}/p" "$1/tools/luks-check.sh")"
+    journal_device
+  ' bash "$GI_ROOT" "$root"
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+
+  # And no journal at all is simply no answer, not an error the caller has to
+  # special-case.
+  run bash -c '
+    ROOT_PREFIX="$2/empty"
+    eval "$(sed -n "/^journal_device()/,/^}/p" "$1/tools/luks-check.sh")"
+    journal_device
+  ' bash "$GI_ROOT" "$root"
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+}

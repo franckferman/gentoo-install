@@ -12,6 +12,16 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **Nine tools ask the install journal for the container before searching for
+  it.** The journal is a fact about the machine in front of them; the volume
+  group enumeration underneath is a search. It is checked and not trusted — a
+  disk is `/dev/vda2` to the machine that was installed and can be `/dev/sdb2`
+  to the rescue medium looking at it, so a recorded name that no longer carries
+  a LUKS header is worth less than the search. A test requires every tool with a
+  `resolve_device()` to make that call, and it checks the call rather than the
+  definition, because an earlier version of it stayed green with the helper
+  present and unused.
+
 - **`key-backup.sh` reads what the installer recorded before guessing.** Its two
   candidate paths are a convention; the install journal is a fact about the
   machine in front of it. Composing that fact takes both entries and neither is
