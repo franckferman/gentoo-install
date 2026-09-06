@@ -165,3 +165,46 @@ load helper
   [[ "$out" == *"/dev/sda2"* ]]
   [[ "$out" != *"mapper"* ]]
 }
+
+# --------------------------------------------------------------------------- #
+#  Secure Boot                                                                #
+# --------------------------------------------------------------------------- #
+@test "signing needs both halves of the pair, and says which one is missing" {
+  # secureboot_keyfile was read by the code and declared by nothing until this
+  # was found by sweeping the settings, so this path had never run at all. Half
+  # a pair is a mistake worth stopping for: the alternative is an unsigned
+  # binary on a machine whose operator believes it is signed.
+  local dir
+  dir="$(gi_tmp)"
+  : >"${dir}/key"
+  : >"${dir}/cert"
+
+  gi_bash 'config_init_defaults; CFG[secureboot_keyfile]="$1"; boot_secureboot_ready' "${dir}/key"
+  [ "$status" -ne 0 ]
+
+  gi_bash 'config_init_defaults; CFG[secureboot_cert]="$1"; boot_secureboot_ready' "${dir}/cert"
+  [ "$status" -ne 0 ]
+
+  # sbsign is the third thing it insists on, and the test container has no
+  # signing tools; the question here is the pairing, so only that is stubbed.
+  gi_bash 'config_init_defaults
+           have() { [[ "$1" == sbsign ]] || command -v "$1" >/dev/null 2>&1; }
+           CFG[secureboot_keyfile]="$1"; CFG[secureboot_cert]="$2"
+           boot_secureboot_ready' "${dir}/key" "${dir}/cert"
+  [ "$status" -eq 0 ]
+}
+
+@test "the unified image is signed before it is copied to the fallback path" {
+  # Order, not decoration. A firmware with Secure Boot on starts
+  # EFI/BOOT/BOOTX64.EFI and refuses it unsigned — so copying first and signing
+  # after would leave the one file that actually boots without a signature.
+  # Verified on a real image as well: sbverify --cert says "Signature
+  # verification OK" for both the image and its copy.
+  local sign copy
+  sign="$(grep -n 'boot_install_efi' "${GI_ROOT}/variants/boot/uki.sh" | head -n1 | cut -d: -f1)"
+  copy="$(grep -n 'boot_uki_write_fallback "\$root"' "${GI_ROOT}/variants/boot/uki.sh" \
+    | tail -n1 | cut -d: -f1)"
+  [ -n "$sign" ]
+  [ -n "$copy" ]
+  [ "$sign" -lt "$copy" ]
+}

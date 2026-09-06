@@ -64,6 +64,13 @@ between. That is the answer to the failure the other three share: an NVRAM entry
 is firmware state, and when another installer overwrites it or a firmware update
 clears it, an intact system stops booting.
 
+That image has also been **signed and booted signed**: `sbverify --cert` reports
+`Signature verification OK` for both the image and the copy at the fallback
+path, and the machine still reaches its passphrase prompt. Signing before
+copying is the order that matters — a firmware with Secure Boot on starts
+`\EFI\BOOT\BOOTX64.EFI`, so signing after the copy would leave the one file
+that actually boots unsigned.
+
 **`systemd-boot` has been booted too**, on the same encrypted disk: `bootctl`
 installed, the loader entry written, and the machine started from
 `\EFI\BOOT\BOOTX64.EFI` through to the passphrase prompt.
