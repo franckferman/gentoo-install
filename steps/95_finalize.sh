@@ -838,6 +838,17 @@ _fin_check_bootentry() {
   fi
 
   if [[ "$firmware" == "uefi" && "$nvram" == "no" ]]; then
+    # No entry, but the removable path is there. When boot_removable asked for
+    # exactly that, warning about the entry it deliberately did not create is
+    # noise on a machine that boots — and noise in a verdict list is how a real
+    # warning stops being read. The fallback is what the firmware tries with no
+    # entry to guide it, so say so and pass.
+    if [[ "$(target_fact boot_removable "" "no")" == "yes" ]]; then
+      _fin_verdict PASS bootentry "Boot entry" "${variant} on the removable path, no entry needed"
+      _fin_note "EFI/BOOT/BOOTX64.EFI is what a firmware starts when nothing in"
+      _fin_note "NVRAM points anywhere, which is what boot_removable asked for."
+      return 0
+    fi
     _fin_verdict WARN bootentry "Boot entry" "${variant} installed, not in NVRAM"
     _fin_note "The files are on the EFI system partition and the firmware has no"
     _fin_note "entry for them. Many machines still find the removable fallback"

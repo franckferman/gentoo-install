@@ -176,6 +176,24 @@ Two things to watch that Run 1 could not show:
 - the installer says which keymap the console is on before asking for the
   passphrase. Type one whose characters sit in the same place on a US keyboard,
   or the machine will ask for something you cannot type at the next boot.
+- **type the passphrase yourself, at the VM window.** Driving that prompt from
+  outside does not work, and the ways it fails are worth knowing before you
+  spend an evening on them. QEMU's `sendkey` delivers the characters — they
+  echo — and dracut's reader never sees the line end. A serial console does not
+  help either: with `console=tty0 console=ttyS0` the prompt is printed on the
+  last console and read from the first, and with `console=ttyS0` alone the
+  prompt arrives on the socket and input written to it is still not consumed,
+  though the dracut debug shell on that same socket answers `echo` perfectly.
+  What can be checked from outside is that the passphrase is the right one:
+
+  ```bash
+  printf '%s' 'the-passphrase' \
+    | sudo cryptsetup luksOpen --test-passphrase --key-file - /dev/loopXp2
+  ```
+
+  A passphrase given through `crypt_pass_file` is stored without the newline a
+  prompt would not send, so the file and the keyboard agree — that command is
+  what proves it.
 - **the boot must stop and ask for the passphrase.** If it boots straight
   through, the initramfs is opening the container some other way and that is a
   finding, not a success.
