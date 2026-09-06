@@ -455,6 +455,7 @@ sudo ./gentoo-install.sh --resume</pre>
 
   <div class="features-grid">
     <div class="feature-card"><div class="feat-icon red">🔌</div><h3>Firmware state</h3><p>It will not write an NVRAM entry, or reboot, for a disk this machine did not boot from — unless it is running from a live medium. An install to a disk image once replaced a working laptop's own boot entry and then rebooted it.</p></div>
+    <div class="feature-card"><div class="feat-icon green">🛑</div><h3>A failed pre-flight</h3><p>Its eleven checks decide whether anything may be written at all, so its failure ends the run rather than joining the others in the summary. It was accumulated like the rest until a run refused a disk for being too small and erased it anyway.</p></div>
     <div class="feature-card"><div class="feat-icon orange">↩️</div><h3>The reboot</h3><p><code>--yes</code> does not answer it. Only <code>--reboot yes</code>, written on purpose, does — a reboot is irreversible in the way a typed proof is.</p></div>
     <div class="feature-card"><div class="feat-icon purple">🔐</div><h3>One way in</h3><p>An encrypted install does not report success with a single credential. A container only the TPM opens is one firmware update away from a rebuild.</p></div>
     <div class="feature-card"><div class="feat-icon blue">🧭</div><h3>A plan from another life</h3><p>Resuming mounts the tree the recorded plan describes — unless that plan names the disk this machine booted from, which would mount a running system under <code>/mnt/gentoo</code>.</p></div>

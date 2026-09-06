@@ -282,6 +282,12 @@ refusal per attempt. The aggregate decides: a `FAIL` stops, a `WARN` asks, and
 `--force` answers only the question a `WARN` asks. Nothing lifts a `FAIL`,
 because a `FAIL` is a proof that failed.
 
+"Stops" means the run ends there. Every other step's failure is accumulated and
+reported at the end, which is right — a failed bootloader should not stop the
+accounts being created — but this one decides whether anything may be written at
+all. It was accumulated like the rest until a run refused a disk for being under
+the minimum and then erased it anyway.
+
 The firmware check is the one that decides what comes later: no
 `/sys/firmware/efi` means the machine booted in BIOS/CSM mode, which takes
 systemd-boot and the EFI stub off the table and makes GRUB the only answer.
