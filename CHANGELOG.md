@@ -12,6 +12,16 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **The generated fstab is compared with the disk plan.** Step 90 writes the
+  fstab from the kernel's mount table and step 80 installs the bootloader
+  against the plan, and nothing checked that the two agree. A target whose ESP
+  was mounted at `/boot/efi` while the plan said `/boot` produced an fstab
+  naming the first and a `grub-install` asking for the second, which answered
+  `/boot doesn't look like an EFI partition` — a message about the ESP, caused
+  by a disagreement two steps earlier that neither step mentioned. Every
+  mountpoint the plan describes is now looked for in the fstab, and the ones
+  that are missing are named, in a dry run as well.
+
 - **A state journal that a reboot forgets now says so.** The default is
   `/var/lib/gentoo-install`, and on the medium this installer is designed for —
   a live ISO — that is RAM: the Gentoo ISO mounts its root as an overlay whose

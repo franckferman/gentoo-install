@@ -251,3 +251,64 @@ plan_fixture() {
   [ "$status" -eq 0 ]
   [ "$output" = "ext4" ]
 }
+
+# --------------------------------------------------------------------------- #
+#  The fstab and the plan, which have to agree                                #
+# --------------------------------------------------------------------------- #
+@test "an fstab missing a mountpoint the plan describes is called out" {
+  # A target reattached by hand had its ESP mounted at /boot/efi while the plan
+  # said /boot. Step 90 wrote /boot/efi into the fstab, step 80 asked
+  # grub-install for /boot, and grub answered "/boot doesn't look like an EFI
+  # partition" — a message about the ESP, produced by a disagreement two steps
+  # earlier and never mentioned by either of them.
+  gi_bash '
+    config_init_defaults
+    disk_saved_plan() {
+      printf "esp\tesp\t/boot\t1024\tvfat\t/dev/vda1\n"
+      printf "lv\troot\t/\t8192\text4\t/dev/vg0/root\n"
+    }
+    _sys_fstab_check_against_plan "$(printf "UUID=x / ext4 defaults 0 1\nUUID=y /boot/efi vfat defaults 0 2\n")"
+  '
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"does not carry every mountpoint"* ]]
+  [[ "$stderr" == *"/boot"* ]]
+}
+
+@test "an fstab that carries the plan says nothing" {
+  gi_bash '
+    config_init_defaults
+    disk_saved_plan() {
+      printf "esp\tesp\t/boot\t1024\tvfat\t/dev/vda1\n"
+      printf "lv\troot\t/\t8192\text4\t/dev/vg0/root\n"
+      printf "lv\tswap\tswap\t2048\tswap\t/dev/vg0/swap\n"
+    }
+    _sys_fstab_check_against_plan "$(printf "UUID=x / ext4 defaults 0 1\nUUID=y /boot vfat defaults 0 2\n")"
+  '
+  [ "$status" -eq 0 ]
+  [ -z "$stderr" ]
+}
+
+@test "no plan at all means nothing to disagree with" {
+  gi_bash '
+    config_init_defaults
+    disk_saved_plan() { return 1; }
+    _sys_fstab_check_against_plan "$(printf "UUID=x / ext4 defaults 0 1\n")"
+  '
+  [ "$status" -eq 0 ]
+  [ -z "$stderr" ]
+}
+
+@test "step 90 runs that comparison, including in a dry run" {
+  # The wiring, on purpose: removing the call left every test above green.
+  # And a dry run is exactly when an operator wants to hear it — before the
+  # fstab is written, not after the bootloader has been installed elsewhere.
+  gi_bash '
+    config_init_defaults
+    DRY_RUN=yes
+    _sys_fstab_render() { printf "UUID=x / ext4 defaults 0 1\n"; }
+    _sys_fstab_check_against_plan() { printf "COMPARED\n"; }
+    _sys_fstab /mnt/gentoo
+  '
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"COMPARED"* ]]
+}

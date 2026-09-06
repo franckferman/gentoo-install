@@ -386,6 +386,48 @@ _sys_fstab_validate() {
   return "$rc"
 }
 
+_sys_fstab_check_against_plan() {
+  # The mount table says what is mounted; the plan says what step 20 built.
+  # When they disagree, the fstab is written from the first and the bootloader
+  # is installed against the second, and nobody says a word.
+  #
+  # That is not hypothetical. A target reattached by hand had its ESP mounted at
+  # /boot/efi while the plan said /boot: step 90 wrote /boot/efi into the fstab,
+  # step 80 asked grub-install for /boot, and grub answered "/boot doesn't look
+  # like an EFI partition" — a message about the ESP, produced by a
+  # disagreement two steps earlier.
+  #
+  # A warning and not a refusal: what is mounted is what the machine has, and an
+  # operator who mounted less than the plan describes may have meant to.
+  # Args: $1 = the rendered fstab body.
+  local body="$1" plan mount kind name dev fs absent=""
+
+  declare -F disk_saved_plan >/dev/null 2>&1 || return 0
+  plan="$(disk_saved_plan)" || return 0
+
+  while IFS=$'\t' read -r kind name mount _ fs dev; do
+    [[ -n "$mount" && "$mount" == /* ]] || continue
+    [[ "$fs" != "swap" && "$fs" != "lvm" ]] || continue
+    if ! awk -v m="$mount" '$1 !~ /^#/ && $2 == m { found = 1 } END { exit !found }' \
+      <<<"$body"; then
+      absent+="  ${mount} (${kind} ${name}, ${dev})"$'\n'
+    fi
+  done < <(disk_plan_rows "$plan" volume)
+
+  [[ -n "$absent" ]] || return 0
+
+  warn "the fstab does not carry every mountpoint the disk plan describes:"
+  printf '%s' "$absent" | while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    warn "     ${line}"
+  done
+  warn "       the fstab is written from what is mounted now, and the bootloader"
+  warn "       is installed against the plan — a machine built from both would"
+  warn "       look for its kernel somewhere its fstab never mounts"
+  warn "       mount what is missing and run this step again, or --restart if"
+  warn "       the plan is the stale one"
+}
+
 _sys_fstab() {
   # Args: $1 = root.
   local root="$1"
@@ -397,6 +439,8 @@ _sys_fstab() {
   if ! body="$(_sys_fstab_render "$root")"; then
     return 1
   fi
+
+  _sys_fstab_check_against_plan "$body"
 
   if [[ "$DRY_RUN" == "yes" ]]; then
     log "dry-run: ${fstab} would be:"
