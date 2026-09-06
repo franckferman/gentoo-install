@@ -320,3 +320,59 @@ GI_INTERNAL_TOKENS='trinity|cagip|ca-gip|matric|gundabad|thrain|keepass|gps_'
     return 1
   fi
 }
+
+# --------------------------------------------------------------------------- #
+#  Comparing two files on a medium that has almost nothing                    #
+# --------------------------------------------------------------------------- #
+@test "two files are compared with whatever the medium carries" {
+  # backup_file() used cmp to avoid stacking a second identical backup. cmp
+  # comes from diffutils, and the Gentoo minimal ISO — the medium this
+  # installer is written for — does not have it, so every write during an
+  # install printed "cmp: command not found" and then took a backup it did not
+  # need, a failed comparison reading as "different".
+  local dir
+  dir="$(gi_tmp)/identical"
+  mkdir -p "$dir"
+  printf 'same\n' >"${dir}/a"
+  printf 'same\n' >"${dir}/b"
+  printf 'other\n' >"${dir}/c"
+
+  gi_bash 'files_identical "$1/a" "$1/b"' "$dir"
+  [ "$status" -eq 0 ]
+  gi_bash 'files_identical "$1/a" "$1/c"' "$dir"
+  [ "$status" -ne 0 ]
+
+  # The medium of the day: no cmp anywhere.
+  gi_bash 'have() { [[ "$1" != cmp ]] && command -v "$1" >/dev/null 2>&1; }
+           files_identical "$1/a" "$1/b"' "$dir"
+  [ "$status" -eq 0 ]
+  gi_bash 'have() { [[ "$1" != cmp ]] && command -v "$1" >/dev/null 2>&1; }
+           files_identical "$1/a" "$1/c"' "$dir"
+  [ "$status" -ne 0 ]
+}
+
+@test "a medium with no way to compare is told they differ, not that they match" {
+  # One backup too many is a wasted copy; one too few is a lost original.
+  local dir
+  dir="$(gi_tmp)/nocompare"
+  mkdir -p "$dir"
+  printf 'same\n' >"${dir}/a"
+  printf 'same\n' >"${dir}/b"
+  gi_bash 'have() { return 1; }; files_identical "$1/a" "$1/b"' "$dir"
+  [ "$status" -ne 0 ]
+}
+
+@test "backup_file asks that question instead of running cmp itself" {
+  local dir
+  dir="$(gi_tmp)/backups"
+  mkdir -p "$dir"
+  printf 'content\n' >"${dir}/f"
+  gi_bash '
+    DRY_RUN=no
+    files_identical() { printf "ASKED\n"; return 0; }
+    _GI_BACKUP_OF["$1/f"]="$1/f"
+    backup_file "$1/f"
+  ' "$dir"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ASKED"* ]]
+}

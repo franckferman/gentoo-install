@@ -12,6 +12,14 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **Two files are compared with whatever the medium carries.** `backup_file()`
+  used `cmp` to avoid stacking a second identical backup, and `cmp` comes from
+  diffutils, which the Gentoo minimal ISO does not have. So every file written
+  during an install on that ISO printed `cmp: command not found` and then took
+  a backup it did not need — a failed comparison reads as "different". It falls
+  back to a checksum now, and when nothing can tell it says "different", because
+  one backup too many is a wasted copy and one too few is a lost original.
+
 - **The generated fstab is compared with the disk plan.** Step 90 writes the
   fstab from the kernel's mount table and step 80 installs the bootloader
   against the plan, and nothing checked that the two agree. A target whose ESP

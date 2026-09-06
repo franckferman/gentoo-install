@@ -361,6 +361,53 @@ core_install_traps() {
 # --------------------------------------------------------------------------- #
 #  Backups                                                                    #
 # --------------------------------------------------------------------------- #
+files_identical() {
+  # Same bytes? Asked of whatever this medium happens to carry.
+  #
+  # This was `cmp -s`, and cmp comes from diffutils, which the Gentoo minimal
+  # ISO — the medium this installer is written for — does not have. So every
+  # file written during an install on that ISO printed
+  #
+  #   lib/core.sh: line 373: cmp: command not found
+  #
+  # and then took a backup it did not need, because a failed comparison reads
+  # as "different". A directory of identical copies, and a line of noise per
+  # write, on the one medium that matters.
+  #
+  # Args: $1, $2 = paths. Returns 0 only when they are certainly identical.
+  local a="$1" b="$2" tool sum_a sum_b
+  [[ -f "$a" && -f "$b" ]] || return 1
+  [[ "$(_core_byte_size "$a")" == "$(_core_byte_size "$b")" ]] || return 1
+
+  if have cmp; then
+    cmp -s -- "$a" "$b"
+    return
+  fi
+  for tool in sha256sum md5sum cksum; do
+    have "$tool" || continue
+    sum_a="$("$tool" -- "$a" 2>/dev/null | cut -d' ' -f1)"
+    sum_b="$("$tool" -- "$b" 2>/dev/null | cut -d' ' -f1)"
+    [[ -n "$sum_a" && "$sum_a" == "$sum_b" ]]
+    return
+  done
+
+  # Nothing here can tell. The safe answer is "not certainly identical": one
+  # backup too many is a wasted copy, one too few is a lost original.
+  return 1
+}
+
+_core_byte_size() {
+  # A file's size, or an empty string when it cannot be read. A returned value.
+  local path="$1" size=""
+  if have stat; then
+    size="$(stat -c '%s' -- "$path" 2>/dev/null || true)"
+  fi
+  if [[ -z "$size" ]] && have wc; then
+    size="$(wc -c <"$path" 2>/dev/null | tr -d ' ' || true)"
+  fi
+  printf '%s\n' "$size"
+}
+
 backup_file() {
   # Timestamped copy beside the original, remembered so restore_backup() and
   # cleanup() can find it. A missing target is not an error: nothing to save.
@@ -370,7 +417,7 @@ backup_file() {
   # then write_file may ask resolve_conflict to back up again) and a directory
   # of identical copies is a directory nobody reads.
   previous="${_GI_BACKUP_OF[$target]:-}"
-  if [[ -n "$previous" && -e "$previous" ]] && cmp -s -- "$target" "$previous"; then
+  if [[ -n "$previous" && -e "$previous" ]] && files_identical "$target" "$previous"; then
     return 0
   fi
   stamp="$(date -u '+%Y%m%dT%H%M%SZ')"
