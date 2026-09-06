@@ -272,6 +272,18 @@ Watch that the catalogue is skipped entirely and the checksum is checked.
 Then run it again without `--stage-checksum` and watch it say, loudly, that
 nothing verified the archive.
 
+**Both halves pass** (2026-09-06). Two things the first run showed that this
+page did not promise:
+
+- a `.asc` sitting beside the archive is found and used without being named, so
+  an archive downloaded from a mirror with its signature is verified by
+  signature *and* by checksum, not by checksum alone;
+- with neither a signature nor a checksum the run does not stop. It says
+  `nothing verified this archive`, names both ways to fix it, and unpacks —
+  *"because that is what was asked"*. That is the right call for a flag whose
+  whole purpose is to install something the catalogue does not know about, and
+  it is worth knowing before you rely on it.
+
 ---
 
 ## What a run has to produce to count

@@ -75,6 +75,12 @@ that actually boots unsigned.
 installed, the loader entry written, and the machine started from
 `\EFI\BOOT\BOOTX64.EFI` through to the passphrase prompt.
 
+**A stage of your own works too.** `--stage-file` skips the catalogue, finds a
+`.asc` sitting beside the archive without being told about it, checks both the
+signature and the sha256 — and, given an archive with neither, says `nothing
+verified this archive`, names the two ways to fix that, and unpacks it anyway,
+because that is what was asked.
+
 **What none of it covers.** `luks-tpm` and `luks-keyfile-gpg` have been exercised
 against throwaway containers, never carried through to a boot. `efistub` has not
 been booted, nor has an LVM layout, nor a `musl` or `hardened` stage. Version `0.1.0` should

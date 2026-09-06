@@ -174,6 +174,7 @@
       <h3>Bootloader</h3>
       <ul>
         <li><code class="def">grub</code> — default, boots everywhere</li>
+        <li><code>uki</code> — one signed binary, no NVRAM entry</li>
         <li><code>efistub</code></li>
         <li><code>systemd-boot</code></li>
       </ul>
@@ -196,6 +197,19 @@
       </ul>
     </div>
   </div>
+
+  <h2>When the firmware forgets</h2>
+  <p>An NVRAM boot entry is firmware state, not something on your disk. Another
+  operating system's installer overwrites it, a firmware update clears it, a dead
+  CMOS battery loses it — and an intact system stops booting. This installer
+  replaced one itself, on the machine it was written on, which is where the
+  <code>uki</code> bootloader came from.</p>
+
+  <p>A unified kernel image carries the kernel, the initramfs and the command
+  line in a single signed EFI binary, written to
+  <code>\EFI\BOOT\BOOTX64.EFI</code> — the path a firmware tries when nothing
+  in NVRAM points anywhere. It boots in the machine it was built in, in a
+  different machine, and after the NVRAM has been wiped.</p>
 
   <h2>Also in the repository</h2>
   <p>Ten standalone rescue scripts for a machine that is already installed and no
