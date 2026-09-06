@@ -297,3 +297,50 @@ load helper
   [ "$status" -eq 0 ]
   [[ "$output" == *"sane"* ]]
 }
+
+@test "the two hardware-derived values say where they came from" {
+  # VIDEO_CARDS is read off the PCI bus of the machine running the installer
+  # and written into the machine being installed. On a live medium booted on
+  # the target those are the same machine and it is right; with --root they are
+  # not. The generated file carried a comment saying "Detected from lspci"; the
+  # operator watching the run was told nothing at all.
+  gi_bash 'config_init_defaults >/dev/null 2>&1
+    portage_init_defaults
+    portage_video_cards() { printf "intel i965 iris\n"; }
+    portage_grub_platforms() { printf "efi-64\n"; }
+    portage_say_hardware_source'
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"GRUB_PLATFORMS efi-64, from how the installer itself booted"* ]]
+  [[ "$stderr" == *"VIDEO_CARDS intel i965 iris"* ]]
+  [[ "$stderr" == *"PCI bus of the machine running"* ]]
+  [[ "$stderr" == *"portage_video_cards = "* ]]
+}
+
+@test "a value that was asked for is not explained as a detection" {
+  gi_bash 'config_init_defaults >/dev/null 2>&1
+    portage_init_defaults
+    CFG[portage_video_cards]="amdgpu radeonsi"
+    CFG[portage_grub_platforms]="pc"
+    portage_say_hardware_source'
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"GRUB_PLATFORMS pc, as asked"* ]]
+  [[ "$stderr" == *"VIDEO_CARDS amdgpu radeonsi, as asked"* ]]
+  [[ "$stderr" != *"PCI bus"* ]]
+}
+
+@test "nothing matching the table is said out loud, not left blank" {
+  gi_bash 'config_init_defaults >/dev/null 2>&1
+    portage_init_defaults
+    portage_video_cards() { return 1; }
+    portage_grub_platforms() { printf "efi-64\n"; }
+    portage_say_hardware_source'
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"VIDEO_CARDS left out"* ]]
+  [[ "$stderr" == *"profile's own default stands"* ]]
+}
+
+@test "step 60 says it before it writes make.conf" {
+  local body
+  body="$(sed -n '/^portage_write_make_conf/,/^}/p' "${GI_ROOT}/steps/60_portage.sh")"
+  [[ "$body" == *"portage_say_hardware_source"* ]]
+}

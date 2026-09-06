@@ -12,6 +12,16 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Added
 
+- **The four stage3 flavours have all been unpacked.** `llvm` was the last, and
+  it is sound through step 60: a real libc++ userland (`libc++.so.1`, clang 22,
+  `CC="clang"` from the profile), `default/linux/amd64/23.0/llvm` selected with
+  the experimental warning the table asks for, `make.conf` accepted by
+  `emerge --info`. Four things were measured rather than assumed on the way and
+  all four were sound: no stage3 ships a `COMMON_FLAGS` or a `USE` line the
+  installer's block would silently replace, `CC`/`CXX` come from the profile
+  and not from `make.conf`, and the `use` column of `data/profiles.tsv` reaches
+  `make.conf` as a delta for the two rows that carry one.
+
 - **A `hardened` stage has been installed, through step 60.** Steps 20 to 60 on
   an encrypted disk: signed pointer, detached `.asc` and signed sha256 all
   verify, and the profile that follows is `default/linux/amd64/23.0/hardened`
@@ -58,6 +68,17 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   without a word. It measures them now and says which ones bind nothing.
 
 ### Fixed
+
+- **`VIDEO_CARDS` and `GRUB_PLATFORMS` say where they came from.** Both are
+  facts about the machine running the installer, written into the machine being
+  installed: one read off the PCI bus with `lspci`, the other from how this very
+  boot happened. Booted from a live medium on the target they are the same
+  machine and both are right; with `--root`, or onto a disk destined for
+  somewhere else, they are not. The generated file carried a comment saying
+  "Detected from lspci" for whoever opened it afterwards; the operator watching
+  the run was told nothing at all. Now each is announced with its source and the
+  setting that overrides it, and a run where no graphics device matched says so
+  instead of leaving a blank.
 
 - **The governor record is forgotten once it has been honoured.** The journal
   entry means "this run turned the governor up, and here is what it was", and

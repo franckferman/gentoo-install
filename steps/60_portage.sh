@@ -601,6 +601,46 @@ portage_profile_use() {
 # --------------------------------------------------------------------------- #
 #  VIDEO_CARDS                                                                #
 # --------------------------------------------------------------------------- #
+portage_say_hardware_source() {
+  # Two of the values in make.conf are facts about the machine running the
+  # installer, written into the machine being installed. On a live medium
+  # booted on the target they are the same machine and it is exactly right;
+  # with --root, or onto a disk destined for elsewhere, they are not — and
+  # nothing said so. The generated file carried "Detected from lspci" for
+  # whoever opened it afterwards; the operator watching the run was told
+  # nothing at all.
+  #
+  # Rendering only: prints and changes nothing (DESIGN.md §7), which is why it
+  # is called from the writer and not from the function that builds the body.
+  local platforms cards explicit_cards explicit_platforms
+  platforms="$(portage_grub_platforms)"
+
+  explicit_platforms="$(_portage_cfg "" portage_grub_platforms)"
+  if [[ -n "$explicit_platforms" ]]; then
+    log "GRUB_PLATFORMS ${platforms}, as asked"
+  else
+    log "GRUB_PLATFORMS ${platforms}, from how the installer itself booted"
+    log "       portage_grub_platforms = pc says otherwise"
+  fi
+
+  explicit_cards="$(_portage_cfg "" portage_video_cards)"
+  if [[ -n "$explicit_cards" ]]; then
+    log "VIDEO_CARDS ${explicit_cards}, as asked"
+    return 0
+  fi
+  if cards="$(portage_video_cards)"; then
+    log "VIDEO_CARDS ${cards}, read from the PCI bus of the machine running"
+    log "       the installer. That is the target's own bus when this runs from"
+    log "       a live medium on it, and somebody else's when it does not:"
+    log "       portage_video_cards = amdgpu radeonsi"
+  else
+    log "VIDEO_CARDS left out: no graphics device here matched the table"
+    log "       the profile's own default stands; name yours to override it:"
+    log "       portage_video_cards = amdgpu radeonsi"
+  fi
+  return 0
+}
+
 portage_video_cards() {
   # data/video-cards.tsv, first match wins, rows ordered specific to general.
   # When nothing matches the variable is left out of make.conf entirely: the
@@ -757,6 +797,8 @@ portage_write_make_conf() {
   # backup back when it objects. Args: $1 = root.
   local root="$1" conf body rc=0 _line
   conf="${root}/etc/portage/make.conf"
+
+  portage_say_hardware_source
 
   body="$(portage_make_conf_body)" || {
     err "could not compose make.conf"
