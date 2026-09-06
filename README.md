@@ -56,6 +56,14 @@ end. The keyslot itself is exercised on every remount with
 `cryptsetup open --key-file`, so what is unproven is the last keystroke, not the
 container.
 
+**A fourth bootloader now exists: `uki`.** One EFI binary carrying the kernel,
+the initramfs and the command line, written to `\EFI\BOOT\BOOTX64.EFI` — the
+path a firmware tries when nothing in NVRAM points anywhere. It has been booted
+on the encrypted disk with no NVRAM entry, no GRUB and no systemd-boot in
+between. That is the answer to the failure the other three share: an NVRAM entry
+is firmware state, and when another installer overwrites it or a firmware update
+clears it, an intact system stops booting.
+
 **`systemd-boot` has been booted too**, on the same encrypted disk: `bootctl`
 installed, the loader entry written, and the machine started from
 `\EFI\BOOT\BOOTX64.EFI` through to the passphrase prompt.

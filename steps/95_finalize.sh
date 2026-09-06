@@ -745,6 +745,37 @@ _fin_check_bootentry() {
         fi
       fi
       ;;
+    uki)
+      # One file is the whole boot path: kernel, initramfs and command line in a
+      # single PE binary. There is no loader to find and no configuration to
+      # parse, so the check is that the image is on the ESP — and that it is at
+      # the fallback path, because a UKI reachable only through an NVRAM entry
+      # has given up the property it was chosen for.
+      # EFI/Linux, and not any .efi on the partition: an ESP that carried GRUB
+      # before is full of .efi modules, and the first one found made the verdict
+      # name /grub/x86_64-efi/core.efi as though it were the kernel.
+      primary="$(find "${esp}/EFI/Linux" -maxdepth 1 -type f -iname '*.efi' \
+        -print -quit 2>/dev/null || true)"
+      fallback="$(_fin_find_efi "$esp" 'bootx64.efi' || true)"
+      if [[ -z "$primary" ]]; then
+        _fin_verdict FAIL bootentry "Boot entry" "no EFI image on ${esp}"
+        _fin_note "A unified kernel image is the only thing that boots this"
+        _fin_note "machine, and there is none on the EFI system partition."
+        _fin_fix "./gentoo-install.sh --steps 70,80"
+        return 0
+      fi
+      if [[ -z "$fallback" ]]; then
+        _fin_verdict WARN bootentry "Boot entry" "unified image on ${esp}, not at the fallback path"
+        _fin_note "EFI/BOOT/BOOTX64.EFI is what a firmware starts with nothing in"
+        _fin_note "NVRAM, and needing no entry is the reason to build a UKI."
+        _fin_fix "./gentoo-install.sh --steps 80 --boot-removable yes"
+        return 0
+      fi
+      _fin_verdict PASS bootentry "Boot entry" "unified kernel image at the fallback path"
+      _fin_note "${primary#"$esp"} — kernel, initramfs and command line in one"
+      _fin_note "binary, started with no NVRAM entry and no loader in between."
+      return 0
+      ;;
     systemd-boot)
       primary="$(_fin_find_efi "$esp" 'systemd-boot*.efi' || true)"
       fallback="$(_fin_find_efi "$esp" 'boot*.efi' || true)"

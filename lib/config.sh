@@ -190,7 +190,7 @@ validate_list() {
 # closed set to check against.
 declare -A CFG_ENUM=(
   [assume_yes]="yes|no"
-  [bootloader]="grub|efistub|systemd-boot"
+  [bootloader]="grub|efistub|systemd-boot|uki"
   [color]="auto|never"
   [crypt]="none|luks-passphrase|luks-tpm|luks-keyfile-gpg"
   [crypt_pbkdf]="argon2id|argon2i|pbkdf2"
@@ -318,7 +318,7 @@ config_init_defaults() {
   set_default initramfs ""
   set_default dracut_modules_extra ""
   # Bootloader
-  set_default bootloader "grub" # grub|efistub|systemd-boot
+  set_default bootloader "grub" # grub|efistub|systemd-boot|uki
   set_default boot_label ""
   set_default boot_timeout ""
   set_default boot_removable ""

@@ -82,7 +82,7 @@ boot_efi_path() {
 
 boot_needs_efi() {
   case "$(boot_variant)" in
-    efistub | systemd-boot) return 0 ;;
+    efistub | systemd-boot | uki) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -447,11 +447,14 @@ step_80_boot() {
     grub) fn="boot_grub_install" ;;
     efistub) fn="boot_efistub_install" ;;
     systemd-boot) fn="boot_systemd_boot_install" ;;
+    uki) fn="boot_uki_install" ;;
     *)
       err "Unknown bootloader: ${variant}"
       err "       grub          works everywhere, legacy BIOS included; the default"
       err "       efistub       the firmware starts the kernel itself, no loader at all"
       err "       systemd-boot  small UEFI loader, one file per boot entry"
+      err "       uki           kernel, initramfs and command line in one signed EFI binary,"
+      err "                     started from the fallback path with no NVRAM entry at all"
       err "       example:  bootloader = grub"
       return 1
       ;;
