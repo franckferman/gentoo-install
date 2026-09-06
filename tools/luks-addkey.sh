@@ -415,6 +415,41 @@ normalize_device() {
   echo "$input"
 }
 
+journal_var() {
+  # One value from the installer's state journal, or nothing. Args: $1 = key.
+  local key="$1" file="${ROOT_PREFIX}/var/lib/gentoo-install/state"
+  [[ -r "$file" ]] || return 0
+  sed -n "s/^${key}=//p" "$file" | tail -n 1
+}
+
+esp_mount_point() {
+  # Where the ESP is, asked of the journal before being assumed.
+  local esp
+  esp="$(journal_var disk.esp_mount)"
+  [[ -n "$esp" ]] || esp="/boot/efi"
+  printf '%s\n' "${esp%/}"
+}
+
+lands_on_the_esp() {
+  # Would a file written in this directory ship with the machine?
+  #
+  # Two tests, because either one alone has a hole. The mountpoint, taken from
+  # the journal and then from the two conventions, catches an ESP that is not
+  # mounted right now. The filesystem type catches an ESP mounted somewhere
+  # this list does not name — and it is the honest test in its own right: a
+  # passphrase does not belong on a filesystem that has no permissions to
+  # protect it with. Args: $1 = a resolved directory.
+  local dir="$1" esp fstype
+  fstype="$(findmnt -no FSTYPE --target "$dir" 2>/dev/null || true)"
+  case "$fstype" in
+    vfat | msdos | exfat) return 0 ;;
+  esac
+  for esp in "$(esp_mount_point)" /boot/efi /efi; do
+    [[ "$dir" == "$esp" || "$dir" == "$esp"/* ]] && return 0
+  done
+  return 1
+}
+
 journal_device() {
   # The container the installer recorded, when there is a journal to read and
   # the device it names is still a container.
@@ -530,23 +565,40 @@ slot_count() {
   echo 32
 }
 
-clevis_slot() {
-  # Asked of clevis, never assumed. The binding sits on slot 2 after a
-  # nominal install, and on whatever slot was free the day it was made
-  # everywhere else.
-  local dev="$1" s
+clevis_slots() {
+  # Every slot clevis owns, one per line. Asked of clevis, never assumed: the
+  # binding sits on slot 2 after a nominal install, and on whatever slot was
+  # free the day it was made everywhere else.
+  #
+  # All of them, not the first. This read `head -n 1`, and clevis is built to
+  # hold several — a tpm2 pin for the machine that unlocks itself and a tang
+  # pin for the one that asks the network is its own documented shape. With
+  # two bindings the refusal below compared the slot being removed against the
+  # first one only, so `remove --slot <the second>` killed the keyslot and
+  # left its token behind: exactly what the refusal says it prevents.
+  local dev="$1" out
   command -v clevis >/dev/null 2>&1 || return 1
-  s="$(clevis luks list -d "$dev" 2>/dev/null | head -n 1 | cut -d: -f1 | tr -d ' ')" || true
-  [[ -n "$s" ]] || return 1
-  echo "$s"
+  out="$(clevis luks list -d "$dev" 2>/dev/null \
+    | awk '{ sub(":", "", $1); if ($1 ~ /^[0-9]+$/) print $1 }')" || true
+  [[ -n "$out" ]] || return 1
+  printf '%s\n' "$out"
   return 0
+}
+
+slot_is_clevis() {
+  # Args: $1 = device, $2 = slot. Returns 0 when clevis owns that slot.
+  local dev="$1" want="$2" s
+  while read -r s; do
+    [[ "$s" == "$want" ]] && return 0
+  done < <(clevis_slots "$dev" 2>/dev/null || true)
+  return 1
 }
 
 slot_label() {
   local dev="$1" slot="$2" cs
-  cs="$(clevis_slot "$dev")" || cs=""
+  cs="$(clevis_slots "$dev" | paste -sd, -)" || cs=""
 
-  if [[ -n "$cs" && "$slot" == "$cs" ]]; then
+  if slot_is_clevis "$dev" "$slot"; then
     echo "the clevis key sealed in the TPM"
   elif [[ "$slot" == "0" ]]; then
     # Named by its role, not by one encryption variant's shape: on a passphrase
@@ -584,12 +636,11 @@ resolve_target_slot() {
   # --slot auto. Left to cryptsetup the choice lands on the lowest free slot,
   # which an orchestrator cannot predict and which may be the one clevis is
   # about to be rebound into.
-  local dev="$1" cs max s
-  cs="$(clevis_slot "$dev")" || cs=""
+  local dev="$1" max s
   max="$(slot_count "$dev")"
 
   for ((s = 1; s < max; s++)); do
-    [[ -n "$cs" && "$s" == "$cs" ]] && continue
+    slot_is_clevis "$dev" "$s" && continue
     if slot_is_free "$dev" "$s"; then
       echo "$s"
       return 0
@@ -760,28 +811,38 @@ unlock_from_key() {
 # from tpm: clevis reads its own key back. This is the recovery path, and the
 # only one that needs no secret from the operator at all.
 unlock_from_tpm() {
-  local dev="$1" s
+  local dev="$1" s slots
 
   command -v clevis >/dev/null 2>&1 || {
     log "  clevis not installed here"
     return 1
   }
 
-  s="$(clevis_slot "$dev")" || {
+  slots="$(clevis_slots "$dev")" || {
     log "  no clevis binding, or it names no slot"
     return 1
   }
-  log "clevis owns slot $s, asking the TPM to release it"
 
-  if ! clevis luks pass -d "$dev" -s "$s" >"$UNLOCK_FILE" 2>>"$ERR_LOG"; then
-    err "  the TPM refused to release the key"
+  # Every binding, in turn. A machine can carry a tpm2 pin and a tang pin at
+  # once, and asking only the first means a tang-first machine is told the
+  # TPM refused when the TPM was never asked.
+  for s in $slots; do
+    log "clevis owns slot $s, asking it to release the key"
+    if clevis luks pass -d "$dev" -s "$s" >"$UNLOCK_FILE" 2>>"$ERR_LOG"; then
+      break
+    fi
+    # A failed release can still have written something. Overwritten rather
+    # than truncated, for the same reason cleanup_unlock shreds: this file is
+    # only certainly in RAM when secure_tmpdir found a tmpfs.
+    shred "$UNLOCK_FILE" 2>/dev/null || true
+    : >"$UNLOCK_FILE"
+  done
+
+  if [[ ! -s "$UNLOCK_FILE" ]]; then
+    err "  no clevis binding released a key"
     err "  The sealing is invalid: a BIOS update is enough to cause it"
     return 1
   fi
-  [[ -s "$UNLOCK_FILE" ]] || {
-    err "  the TPM returned nothing"
-    return 1
-  }
   return 0
 }
 
@@ -917,10 +978,19 @@ write_new_passphrase_out() {
 
   # The ESP travels with the machine, and it is where luks-key.gpg lives. A
   # passphrase left there ships with the disk it is supposed to protect.
-  if [[ "$resolved" == *"/boot/efi"* ]]; then
+  #
+  # This tested for "/boot/efi" anywhere in the path — the layout of the
+  # machine this tooling grew up on. gentoo-install mounts the ESP at /boot,
+  # so on a machine it installed the refusal never fired and the passphrase
+  # was written onto the partition the firmware reads before anything is
+  # decrypted. The chmod below would not have helped either: vfat has no
+  # modes, and "mode 600" was a sentence about a file that had none.
+  if lands_on_the_esp "$resolved"; then
     err "Refusing to write the passphrase under $resolved"
-    err "  That is where luks-key.gpg lives: the passphrase would travel"
-    err "  with the machine it protects, which cancels the encryption"
+    err "  That is the ESP: the partition the firmware reads before anything"
+    err "  is decrypted, and where luks-key.gpg lives. A passphrase left"
+    err "  there travels with the machine it protects, which cancels the"
+    err "  encryption. It has no file modes to protect it with either."
     return 1
   fi
 
@@ -947,7 +1017,18 @@ write_new_passphrase_out() {
     return 1
   fi
 
-  ok "Passphrase written to $target (mode 600), read back and identical"
+  # The mode it has, not the mode that was asked for. chmod succeeds on a
+  # filesystem that carries no modes and changes nothing, and a line claiming
+  # 600 about a world-readable file is worse than no line.
+  local mode
+  mode="$(stat -c '%a' "$target" 2>/dev/null || echo '?')"
+  if [[ "$mode" == "600" ]]; then
+    ok "Passphrase written to $target (mode 600), read back and identical"
+  else
+    ok "Passphrase written to $target, read back and identical"
+    warn "  its mode is ${mode}, not 600: this filesystem does not carry modes"
+    warn "  Anyone who can read the filesystem can read the passphrase"
+  fi
   return 0
 }
 
@@ -1138,7 +1219,7 @@ do_add() {
 }
 
 do_remove() {
-  local dev target proven answer count cs s
+  local dev target proven answer count s
 
   dev="$(resolve_device)" || exit "${EXIT_FAILURE}"
   ok "Container: $dev"
@@ -1180,9 +1261,8 @@ do_remove() {
     exit "${EXIT_FAILURE}"
   fi
 
-  cs="$(clevis_slot "$dev")" || cs=""
-  if [[ -n "$cs" && "$target" == "$cs" ]]; then
-    err "Slot $target is the one clevis owns"
+  if slot_is_clevis "$dev" "$target"; then
+    err "Slot $target is one clevis owns"
     err "  luksKillSlot would leave its token behind, pointing at a slot"
     err "  that no longer exists. Take the binding away instead:"
     err "    ./tpm-reseal.sh unbind --slot $target"

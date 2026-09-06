@@ -489,3 +489,119 @@ gi_tools() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"What is nominal depends"* ]]
 }
+
+@test "every clevis binding is refused, not only the first" {
+  # clevis holds several pins at once by design: a tpm2 pin for the machine
+  # that unlocks itself, a tang pin for the one that asks the network. The
+  # guard in luks-addkey read `head -n 1`, so with two bindings
+  # `remove --slot <the second>` killed the keyslot and left its token behind,
+  # pointing at a slot that no longer exists — which is what the refusal it
+  # printed for the first one says it prevents.
+  run bash -c '
+    eval "$(sed -n "/^clevis_slots()/,/^}/p" "$1/tools/luks-addkey.sh")"
+    eval "$(sed -n "/^slot_is_clevis()/,/^}/p" "$1/tools/luks-addkey.sh")"
+    clevis() {
+      printf "%s\n" "1: tang '"'"'{\"url\":\"http://tang\"}'"'"'"
+      printf "%s\n" "2: tpm2 '"'"'{\"pcr_ids\":\"0,7\"}'"'"'"
+    }
+    slot_is_clevis /dev/sdz 1 || echo "slot 1 not owned"
+    slot_is_clevis /dev/sdz 2 || echo "slot 2 not owned"
+    slot_is_clevis /dev/sdz 3 && echo "slot 3 wrongly owned"
+    printf "slots=%s\n" "$(clevis_slots /dev/sdz | paste -sd, -)"
+  ' bash "$GI_ROOT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"slots=1,2"* ]]
+  [[ "$output" != *"not owned"* ]]
+  [[ "$output" != *"wrongly owned"* ]]
+}
+
+@test "the TPM tools work on the tpm2 binding, not on whichever came first" {
+  # A BIOS flash breaks a tpm2 sealing and does nothing to a tang one, so
+  # picking the first binding pointed both tools at a slot that has nothing to
+  # do with the TPM.
+  local tool
+  for tool in tpm-reseal bios-maint; do
+    run bash -c '
+      eval "$(sed -n "/^clevis_slot_of()/,/^}/p" "$1/tools/$2.sh")"
+      clevis() {
+        printf "%s\n" "1: tang '"'"'{\"url\":\"http://tang\"}'"'"'"
+        printf "%s\n" "2: tpm2 '"'"'{\"pcr_ids\":\"0,7\"}'"'"'"
+      }
+      command() { [[ "$2" == clevis ]] && return 0; builtin command "$@"; }
+      clevis_slot_of /dev/sdz
+    ' bash "$GI_ROOT" "$tool"
+    [ "$status" -eq 0 ]
+    [ "$output" = "2" ] || {
+      printf '%s picked slot %s\n' "$tool" "$output" >&2
+      return 1
+    }
+  done
+}
+
+@test "a machine with no tpm2 binding gives the TPM tools nothing to adopt" {
+  local tool
+  for tool in tpm-reseal bios-maint; do
+    run bash -c '
+      eval "$(sed -n "/^clevis_slot_of()/,/^}/p" "$1/tools/$2.sh")"
+      clevis() { printf "%s\n" "1: tang '"'"'{\"url\":\"http://tang\"}'"'"'"; }
+      command() { [[ "$2" == clevis ]] && return 0; builtin command "$@"; }
+      clevis_slot_of /dev/sdz
+    ' bash "$GI_ROOT" "$tool"
+    [ "$status" -ne 0 ]
+  done
+}
+
+@test "the new passphrase is refused on the ESP this installer mounts" {
+  # luks-addkey refused "/boot/efi" anywhere in the path — the layout of the
+  # machine this tooling grew up on. gentoo-install mounts the ESP at /boot,
+  # so on a machine it had installed the refusal never fired and
+  # `--gen --pass-out /boot/pw` wrote the passphrase onto the partition the
+  # firmware reads before anything is decrypted.
+  local dir
+  dir="$(gi_tmp)"
+  mkdir -p "${dir}/j/var/lib/gentoo-install"
+  printf 'disk.esp_mount=/boot\n' >"${dir}/j/var/lib/gentoo-install/state"
+  run bash -c '
+    for f in journal_var esp_mount_point lands_on_the_esp; do
+      eval "$(sed -n "/^${f}()/,/^}/p" "$1/tools/luks-addkey.sh")"
+    done
+    ROOT_PREFIX="$2"
+    lands_on_the_esp /boot            && echo "boot refused"
+    lands_on_the_esp /boot/EFI/gentoo && echo "subdir refused"
+    lands_on_the_esp /root            || echo "root allowed"
+  ' bash "$GI_ROOT" "${dir}/j"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"boot refused"* ]]
+  [[ "$output" == *"subdir refused"* ]]
+  [[ "$output" == *"root allowed"* ]]
+}
+
+@test "with no journal the conventional ESP paths are still refused" {
+  run bash -c '
+    for f in journal_var esp_mount_point lands_on_the_esp; do
+      eval "$(sed -n "/^${f}()/,/^}/p" "$1/tools/luks-addkey.sh")"
+    done
+    ROOT_PREFIX=/nonexistent
+    lands_on_the_esp /boot/efi && echo "boot/efi refused"
+    lands_on_the_esp /efi      && echo "efi refused"
+  ' bash "$GI_ROOT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"boot/efi refused"* ]]
+  [[ "$output" == *"efi refused"* ]]
+}
+
+@test "a vfat mount is refused wherever it sits" {
+  # The mountpoint list cannot name every layout, and the filesystem answers
+  # for itself: vfat has no modes, so the chmod 600 this tool reports would
+  # have been a sentence about a file that had none.
+  run bash -c '
+    for f in journal_var esp_mount_point lands_on_the_esp; do
+      eval "$(sed -n "/^${f}()/,/^}/p" "$1/tools/luks-addkey.sh")"
+    done
+    ROOT_PREFIX=/nonexistent
+    findmnt() { printf "vfat\n"; }
+    lands_on_the_esp /srv/somewhere && echo "vfat refused"
+  ' bash "$GI_ROOT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"vfat refused"* ]]
+}

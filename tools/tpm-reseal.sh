@@ -545,7 +545,13 @@ clevis_slot_of() {
   # binding while a second one was created next to it.
   local dev="$1" s
   command -v clevis >/dev/null 2>&1 || return 1
-  s="$(clevis luks list -d "$dev" 2>/dev/null | head -n 1 | cut -d: -f1 | tr -d ' ' || true)"
+  # The tpm2 binding, named rather than taken first. clevis holds several pins
+  # at once by design — a tpm2 pin for the machine that unlocks itself and a
+  # tang pin for the one that asks the network — and `head -n 1` gave whichever
+  # was created first. On a tang-first machine this script then resealed, or
+  # reported on, a binding that has nothing to do with the TPM.
+  s="$(clevis luks list -d "$dev" 2>/dev/null \
+    | awk '$2 == "tpm2" { sub(":", "", $1); print $1; exit }')" || true
   [[ "$s" =~ ^[0-9]+$ ]] || return 1
   echo "$s"
   return 0

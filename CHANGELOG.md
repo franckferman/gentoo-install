@@ -12,6 +12,32 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **`luks-addkey.sh` refuses every clevis-owned keyslot, not the first one.**
+  clevis is built to hold several pins at once — a tpm2 pin for the machine
+  that unlocks itself, a tang pin for the one that asks the network — and the
+  guard read `clevis luks list | head -n 1`. With two bindings,
+  `remove --slot <the second>` killed the keyslot and left its token behind
+  pointing at a slot that no longer exists: exactly what the refusal printed
+  for the first binding says it prevents. `--from tpm` now asks each binding in
+  turn instead of only the first, so a tang-first machine is no longer told the
+  TPM refused when the TPM was never asked.
+
+- **`tpm-reseal.sh` and `bios-maint.sh` name the pin they mean.** Both took the
+  first binding as "the one clevis owns". A BIOS flash breaks a tpm2 sealing
+  and does nothing to a tang one, so on a tang-first machine both tools worked
+  on a slot that has nothing to do with the TPM — one of them resealing it.
+  They select the `tpm2` line, and report nothing to adopt when there is none.
+
+- **A generated passphrase is refused on the ESP wherever it is.** The check
+  was `/boot/efi` anywhere in the path — the layout the tooling grew up on —
+  while gentoo-install mounts the ESP at `/boot`. On a machine it had
+  installed, `--gen --pass-out /boot/pw` wrote the passphrase onto the
+  partition the firmware reads before anything is decrypted, and reported it
+  as "mode 600": vfat has no modes, and the `chmod` had changed nothing. The
+  mountpoint comes from the journal, the filesystem type answers for layouts
+  no list names, and the success line now states the mode the file actually
+  has.
+
 - **Two more names for the target root, removed.** `disk_root` went last
   cycle; `chroot_dir` and `target_root` were declared beside it and did the
   same job worse. Measured across the seven resolvers rather than read:
