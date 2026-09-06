@@ -72,6 +72,10 @@
   }
   .note strong { font-weight: 600; }
   .note p:last-child { margin-bottom: 0; }
+  ol.steps { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+  ol.steps li { display: flex; gap: 1rem; align-items: baseline; padding: 0.5rem 0; border-bottom: 1px solid var(--line); }
+  ol.steps b { font-family: var(--mono); color: var(--accent); min-width: 2.2rem; font-weight: 600; }
+  ol.steps span { color: var(--muted); }
   .choices { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
   @media (min-width: 34rem) { .choices { grid-template-columns: 1fr 1fr; } }
   .choice { background: var(--panel); padding: 1.1rem 1.2rem; }
@@ -112,11 +116,15 @@
   </header>
 
   <div class="note">
-    <p><strong>Status: 0.1.0, not yet proven end to end on real hardware.</strong>
-    Every module has been exercised on its own; the full ten-step sequence has
-    only ever run under <code>--dry-run</code>. No machine has been installed by
-    this script from an empty disk to a first boot. Read the plan before you
-    point it at anything you would miss.</p>
+    <p><strong>Status: 0.1.0. One machine has been installed by this script and
+    booted.</strong> A disk image went from an empty GPT to a login prompt —
+    unencrypted, GRUB on UEFI, the distribution kernel — and was then started
+    under QEMU with OVMF firmware, where the account the installer created logged
+    in and escalated with <code>sudo</code>.</p>
+    <p>What that does not cover: nothing encrypted has been carried through to a
+    machine that asks for a passphrase at power-on, and neither
+    <code>efistub</code> nor <code>systemd-boot</code> has been booted. Read the
+    plan before you point version 0.1.0 at a disk you would miss.</p>
   </div>
 
   <h2>What it is</h2>
@@ -133,6 +141,23 @@
 
   <pre><span class="c"># the plan, on this machine, changing nothing — no root needed</span>
 ./gentoo-install.sh --dry-run</pre>
+
+  <h2>The ten steps</h2>
+  <p>Each one runs alone, in a range, or resumed after an interruption. The number
+  is the API: <code>--steps 20,40-60</code> means what it says, and the numbering
+  does not shift when a step is added between two others.</p>
+  <ol class="steps">
+    <li><b>10</b> <span>pre-flight: privileges, tools, network, disk inventory</span></li>
+    <li><b>20</b> <span>partition and format the target disks — the destructive one</span></li>
+    <li><b>30</b> <span>LUKS containers and keyfiles</span></li>
+    <li><b>40</b> <span>fetch, verify and unpack the stage3 tarball</span></li>
+    <li><b>50</b> <span>mount the pseudo-filesystems and enter the chroot</span></li>
+    <li><b>60</b> <span>portage: make.conf, repositories, profile, USE flags</span></li>
+    <li><b>70</b> <span>kernel sources, configuration and build</span></li>
+    <li><b>80</b> <span>bootloader install and entries</span></li>
+    <li><b>90</b> <span>system: fstab, locale, timezone, network, users, packages</span></li>
+    <li><b>95</b> <span>finalize: verify, unmount, report what to do next</span></li>
+  </ol>
 
   <h2>The choices</h2>
   <div class="choices">
