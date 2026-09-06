@@ -241,3 +241,36 @@ _plan() {
   [ "$(wc -l <"${dir}/calls")" -le 16 ]
   [ "$(wc -l <"${dir}/calls")" -gt 1 ]
 }
+
+@test "a fallback belonging to another loader is not called this image" {
+  # An ESP that carried GRUB keeps GRUB's own EFI/BOOT/BOOTX64.EFI, and with
+  # boot_removable = no the UKI variant writes nothing there. The check found
+  # a file with the right name, called it "the unified kernel image at the
+  # fallback path", and a firmware with nothing in NVRAM would have started
+  # the other loader looking for a grub.cfg this install never wrote.
+  local body
+  body="$(sed -n '/^_fin_check_bootentry/,/^}/p' "${GI_ROOT}/steps/95_finalize.sh")"
+  [[ "$body" == *"files_identical \"\$primary\" \"\$fallback\""* ]]
+  [[ "$body" == *"not this image"* ]]
+}
+
+@test "files_identical tells this image from another loader's" {
+  local dir
+  dir="$(gi_tmp)"
+  printf 'MZ this install\n' >"${dir}/uki.efi"
+  printf 'MZ someone else\n' >"${dir}/other.efi"
+  gi_bash 'files_identical "$1/uki.efi" "$1/other.efi"' "$dir"
+  [ "$status" -ne 0 ]
+  cp "${dir}/uki.efi" "${dir}/copy.efi"
+  gi_bash 'files_identical "$1/uki.efi" "$1/copy.efi"' "$dir"
+  [ "$status" -eq 0 ]
+}
+
+@test "the UKI fallback copy is read back, not trusted" {
+  # It is the file the firmware starts when NVRAM says nothing, and cp onto a
+  # full FAT partition fails in ways that leave something behind.
+  local body
+  body="$(sed -n '/^boot_uki_write_fallback/,/^}/p' "${GI_ROOT}/variants/boot/uki.sh")"
+  [[ "$body" == *"files_identical"* ]]
+  [[ "$body" == *"is not the image that was built"* ]]
+}

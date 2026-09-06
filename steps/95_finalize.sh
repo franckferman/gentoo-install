@@ -772,6 +772,20 @@ _fin_check_bootentry() {
         _fin_fix "./gentoo-install.sh --steps 80 --boot-removable yes"
         return 0
       fi
+      # The same image, and not merely a file with the right name. An ESP that
+      # carried GRUB keeps GRUB's own EFI/BOOT/BOOTX64.EFI, and with
+      # boot_removable = no this variant writes nothing there — so the check
+      # found a fallback, called it "the unified kernel image at the fallback
+      # path", and a firmware with nothing in NVRAM would have started the
+      # other loader looking for a grub.cfg this install never wrote.
+      if ! files_identical "$primary" "$fallback"; then
+        _fin_verdict WARN bootentry "Boot entry" "the file at the fallback path is not this image"
+        _fin_note "${fallback#"$esp"} is not ${primary#"$esp"}. A firmware with"
+        _fin_note "nothing in NVRAM starts the one at the fallback path, and that"
+        _fin_note "one belongs to whatever was on this disk before."
+        _fin_fix "./gentoo-install.sh --steps 80 --boot-removable yes"
+        return 0
+      fi
       _fin_verdict PASS bootentry "Boot entry" "unified kernel image at the fallback path"
       _fin_note "${primary#"$esp"} — kernel, initramfs and command line in one"
       _fin_note "binary, started with no NVRAM entry and no loader in between."

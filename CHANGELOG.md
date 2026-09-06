@@ -84,6 +84,19 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **The file at the fallback path has to be *this* image, not a file with the
+  right name.** Step 95 checked that `EFI/BOOT/BOOTX64.EFI` existed and called
+  that "unified kernel image at the fallback path". An ESP that carried GRUB
+  keeps GRUB's own copy there, and with `boot_removable = no` the UKI variant
+  writes nothing to it — so the verdict passed while a firmware with nothing in
+  NVRAM would have started the other loader, looking for a `grub.cfg` this
+  install never wrote. The two files are compared now, with the `files_identical`
+  helper that exists because the minimal ISO has no `cmp`.
+
+- **The UKI fallback copy is read back.** `cp` onto a full FAT partition fails
+  in ways that leave something behind, and this is the one file the firmware
+  starts when NVRAM says nothing.
+
 - **An EFI binary signed in place carries one signature, not one per run.**
   `sbsign` appends rather than replaces, and `boot_install_efi` signs the
   kernel in place whenever the ESP is mounted at `/boot` — this installer's own

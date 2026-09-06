@@ -177,6 +177,17 @@ boot_uki_write_fallback() {
     err "could not copy ${src} to ${dst}"
     return 1
   }
+
+  # Read back rather than trusted. This is the file the firmware starts, cp
+  # onto a full FAT partition fails in ways that leave something behind, and a
+  # half-written image is refused by the firmware with nothing worth reading.
+  if [[ "$DRY_RUN" != "yes" ]] && ! files_identical "$src" "$dst"; then
+    err "${dst} is not the image that was built"
+    err "       it is the file the firmware starts when NVRAM says nothing,"
+    err "       so a copy that did not land is the whole boot path gone"
+    err "       df -h ${root}${esp_mount}   says whether the ESP is full"
+    return 1
+  fi
   ok "fallback: ${dst} — started by a firmware with nothing in NVRAM"
 }
 
