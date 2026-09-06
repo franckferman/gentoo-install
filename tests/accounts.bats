@@ -387,3 +387,56 @@ gi_root_lock() {
     _sys_locales "$1"' "$dir"
   grep -q 'en_US.UTF-8 UTF-8' "${dir}/etc/locale.gen"
 }
+
+@test "the DNS domain reaches /etc/hosts" {
+  # domain was read through a candidate list in which no name was declared, so
+  # --domain came back "Unknown option" and the lookup always answered empty.
+  local dir
+  dir="$(gi_tmp)/dom"
+  mkdir -p "${dir}/etc"
+  gi_bash 'config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no; STATE_FILE=""; NON_INTERACTIVE=yes
+    CFG[hostname]=gitest; CFG[domain]=example.lan
+    _sys_in_chroot() { return 0; }
+    _sys_hostname "$1"' "$dir"
+  [ "$status" -eq 0 ]
+  grep -q 'gitest.example.lan' "${dir}/etc/hosts"
+}
+
+@test "an authorized key can be supplied, so sshd can stop taking passwords" {
+  # The same shape, and it cost more: with ssh_key unreachable, the branch
+  # that turns password authentication off could never be taken, and the
+  # warning that fires instead named `ssh_key = /path/to/id_ed25519.pub` as
+  # the remedy — a setting nothing declared.
+  local dir
+  dir="$(gi_tmp)/sshkey"
+  mkdir -p "${dir}/home/alice" "${dir}/etc/ssh"
+  gi_bash 'config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no; STATE_FILE=""; NON_INTERACTIVE=yes
+    CFG[ssh]=yes; CFG[user]=alice
+    CFG[ssh_key]="ssh-ed25519 AAAAC3Nz test@example"
+    _sys_in_chroot() { return 0; }
+    run_cmd() { "$@"; }
+    chroot() { return 0; }
+    _sys_sshd "$1"' "$dir"
+  [ "$status" -eq 0 ]
+  grep -q 'ssh-ed25519 AAAAC3Nz' "${dir}/home/alice/.ssh/authorized_keys"
+  [[ "$stderr" != *"sshd will accept passwords"* ]]
+}
+
+@test "more than one locale can be asked for, in any script" {
+  local dir
+  dir="$(gi_tmp)/multiloc"
+  mkdir -p "${dir}/lib64" "${dir}/etc/env.d"
+  : >"${dir}/lib64/libc.so.6"
+  gi_bash 'config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no; STATE_FILE=""; NON_INTERACTIVE=yes
+    CFG[locale]="zh_CN.UTF-8"
+    CFG[locales]="fr_FR.UTF-8, he_IL.UTF-8, ja_JP.EUC-JP"
+    _sys_in_chroot() { return 0; }
+    _sys_locales "$1"' "$dir"
+  [ "$status" -eq 0 ]
+  grep -q '^zh_CN.UTF-8 UTF-8$' "${dir}/etc/locale.gen"
+  grep -q '^he_IL.UTF-8 UTF-8$' "${dir}/etc/locale.gen"
+  grep -q '^ja_JP.EUC-JP EUC-JP$' "${dir}/etc/locale.gen"
+}

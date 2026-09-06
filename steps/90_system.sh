@@ -204,7 +204,7 @@ _sys_fstab_render() {
     return 1
   fi
 
-  disk_base="$(_sys_cfg "" disk target_disk device)"
+  disk_base="$(_sys_cfg "" disk)"
   disk_base="${disk_base##*/}"
 
   {
@@ -474,7 +474,7 @@ _sys_fstab() {
 # --------------------------------------------------------------------------- #
 _sys_timezone() {
   local root="$1" tz
-  tz="$(_sys_cfg "UTC" timezone tz)"
+  tz="$(_sys_cfg "UTC" timezone)"
 
   if [[ ! -e "${root}/usr/share/zoneinfo/${tz}" && "$DRY_RUN" != "yes" ]]; then
     err "Unknown timezone: ${tz}"
@@ -503,7 +503,12 @@ _sys_locale_lines() {
   printf 'C.UTF-8 UTF-8\n'
   printf '%s %s\n' "$primary" "${primary##*.}"
   if [[ -n "$extra" ]]; then
-    while IFS= read -r entry; do
+    # `|| [[ -n "$entry" ]]`: tr leaves no newline after the last field, so a
+    # bare `read` reports EOF for it and the last locale of the list is
+    # dropped. The same guard is written twice elsewhere in this repository,
+    # with the same comment; it was missed here, in the one list nothing could
+    # reach, because `locales` was declared by nothing until today.
+    while IFS= read -r entry || [[ -n "$entry" ]]; do
       entry="${entry#"${entry%%[![:space:]]*}"}"
       entry="${entry%"${entry##*[![:space:]]}"}"
       [[ -n "$entry" ]] || continue
@@ -535,7 +540,7 @@ _sys_target_libc() {
 
 _sys_locales() {
   local root="$1" locale eselect_name
-  locale="$(_sys_cfg "en_US.UTF-8" locale lang)"
+  locale="$(_sys_cfg "en_US.UTF-8" locale)"
 
   # musl has no locale system at all. There is no locale-gen, there never will
   # be one, and /etc/locale.gen is a file nothing on such a system reads.
@@ -605,7 +610,7 @@ EOF
 # --------------------------------------------------------------------------- #
 _sys_keymap() {
   local root="$1" keymap init found
-  keymap="$(_sys_cfg "us" keymap keyboard)"
+  keymap="$(_sys_cfg "us" keymap)"
   init="$(_sys_init)"
 
   if [[ -d "${root}/usr/share/keymaps" ]]; then
@@ -636,8 +641,8 @@ EOF
 # --------------------------------------------------------------------------- #
 _sys_hostname() {
   local root="$1" host domain fqdn init
-  host="$(_sys_cfg "gentoo" hostname host)"
-  domain="$(_sys_cfg "" domain domainname)"
+  host="$(_sys_cfg "gentoo" hostname)"
+  domain="$(_sys_cfg "" domain)"
   init="$(_sys_init)"
 
   if [[ ! "$host" =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$ ]]; then
@@ -929,14 +934,14 @@ _sys_accounts_records() {
   local spec file legacy line
   spec="$(_sys_cfg "" accounts)"
   file="$(_sys_cfg "" accounts_file)"
-  legacy="$(_sys_cfg "" user username)"
+  legacy="$(_sys_cfg "" user)"
 
   if [[ -z "$spec" && -z "$file" ]]; then
     [[ -n "$legacy" ]] || return 0
     printf '%s:%s:%s:%s\n' "$legacy" \
       "$(_sys_cfg "" user_groups)" \
-      "$(_sys_cfg "" user_shell shell)" \
-      "$(_sys_cfg "" privilege privilege_tool sudo_tool)"
+      "$(_sys_cfg "" user_shell)" \
+      "$(_sys_cfg "" privilege)"
     return 0
   fi
 
@@ -978,8 +983,8 @@ _sys_accounts_parse() {
   local -a keep=()
 
   def_groups="$(_sys_cfg "wheel,audio,video,usb,portage" user_groups)"
-  def_shell="$(_sys_cfg "/bin/bash" user_shell shell)"
-  def_priv="$(_sys_cfg "sudo" privilege privilege_tool sudo_tool)"
+  def_shell="$(_sys_cfg "/bin/bash" user_shell)"
+  def_priv="$(_sys_cfg "sudo" privilege)"
 
   _SYS_ACC_NAME=()
   _SYS_ACC_GROUPS=()
@@ -1614,9 +1619,9 @@ _sys_network() {
   init="$(_sys_init)"
 
   if [[ "$init" == "systemd" ]]; then
-    want="$(_sys_cfg "systemd-networkd" network network_service)"
+    want="$(_sys_cfg "systemd-networkd" network)"
   else
-    want="$(_sys_cfg "dhcpcd" network network_service)"
+    want="$(_sys_cfg "dhcpcd" network)"
   fi
 
   case "$want" in
@@ -1706,8 +1711,8 @@ _sys_sshd() {
     return 0
   fi
 
-  key="$(_sys_cfg "" ssh_key ssh_authorized_key authorized_key)"
-  user="$(_sys_cfg "" user username)"
+  key="$(_sys_cfg "" ssh_key)"
+  user="$(_sys_cfg "" user)"
 
   if [[ -n "$key" && -n "$user" ]]; then
     home="${root}/home/${user}"

@@ -321,3 +321,20 @@ load helper
   [[ "$stderr" == *"Invalid PCR list: bogus"* ]]
   [[ "$stderr" != *"step 20"* ]]
 }
+
+@test "the settings step 90 reads can all be spelled on the command line" {
+  # locales, domain and ssh_key were read through candidate lists in which no
+  # name was declared: every one of them came back "Unknown option", so a
+  # system in more than one language, a DNS domain, and an authorized key were
+  # all unreachable. The ssh one cost the most — the branch that turns
+  # password authentication off could never be taken, and the warning that
+  # fires instead named `ssh_key = ...` as the remedy.
+  local flag
+  for flag in locales domain ssh-key locale keymap timezone; do
+    run --separate-stderr "$GI_ENTRY" --dry-run "--${flag}" x --steps 95
+    [[ "$stderr" != *"Unknown option: --${flag}"* ]] || {
+      printf -- '--%s is not a flag\n' "$flag" >&2
+      return 1
+    }
+  done
+}

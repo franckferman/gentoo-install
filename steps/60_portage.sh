@@ -258,7 +258,7 @@ portage_job_record() {
 portage_makeopts() {
   # The value make.conf gets. An explicit setting is never second-guessed.
   local explicit record cpus total by_mem jobs capped
-  explicit="$(_portage_cfg "" portage_makeopts makeopts)"
+  explicit="$(_portage_cfg "" portage_makeopts)"
   if [[ -n "$explicit" ]]; then
     printf '%s\n' "$explicit"
     return 0
@@ -274,7 +274,7 @@ show_portage_makeopts() {
   # is the point — an operator who disagrees with -j4 on a 32-core machine can
   # only argue with a number they can see.
   local explicit record cpus total by_mem jobs capped
-  explicit="$(_portage_cfg "" portage_makeopts makeopts)"
+  explicit="$(_portage_cfg "" portage_makeopts)"
   if [[ -n "$explicit" ]]; then
     log "MAKEOPTS: \"${explicit}\" (set explicitly, not computed)"
     return 0
@@ -359,7 +359,7 @@ portage_sync_tree() {
   # hour ago, at the cost of a port (873) that firewalls routinely drop.
   # Args: $1 = root, $2 = repo path inside the target.
   local root="$1" repo="$2" method max_age age
-  method="$(_portage_cfg "webrsync" portage_sync sync)"
+  method="$(_portage_cfg "webrsync" portage_sync)"
   portage_validate_sync "$method" "--portage-sync"
 
   if [[ "$method" == "none" ]]; then
@@ -481,7 +481,7 @@ portage_select_profile() {
   flavour="$(_portage_flavour)"
   init="$(_portage_init)"
   arch="$(_portage_arch)"
-  explicit="$(_portage_cfg "" portage_profile profile_name)"
+  explicit="$(_portage_cfg "" portage_profile)"
 
   if [[ -n "$explicit" ]]; then
     candidates=("$explicit")
@@ -606,7 +606,7 @@ portage_video_cards() {
   # When nothing matches the variable is left out of make.conf entirely: the
   # profile's own default is a better answer than a guessed one.
   local explicit file display match cards
-  explicit="$(_portage_cfg "" portage_video_cards video_cards)"
+  explicit="$(_portage_cfg "" portage_video_cards)"
   if [[ -n "$explicit" ]]; then
     printf '%s\n' "$explicit"
     return 0
@@ -633,7 +633,7 @@ portage_grub_platforms() {
   # sys-boot/grub builds one platform per GRUB_PLATFORMS entry, and getting it
   # wrong is found out at grub-install time, after the compile.
   local explicit
-  explicit="$(_portage_cfg "" portage_grub_platforms grub_platforms)"
+  explicit="$(_portage_cfg "" portage_grub_platforms)"
   if [[ -n "$explicit" ]]; then
     printf '%s\n' "$explicit"
     return 0
@@ -652,15 +652,15 @@ portage_make_conf_body() {
   local flags makeopts use profile_use extra license tmpdir opts cards platforms
   local record cpus total by_mem jobs capped
 
-  flags="$(_portage_cfg "-O2 -pipe" portage_common_flags common_flags)"
+  flags="$(_portage_cfg "-O2 -pipe" portage_common_flags)"
   makeopts="$(portage_makeopts)"
-  license="$(_portage_cfg "-* @FREE" portage_accept_license accept_license)"
+  license="$(_portage_cfg "-* @FREE" portage_accept_license)"
   tmpdir="$(_portage_cfg "/var/tmp" portage_tmpdir)"
-  opts="$(_portage_cfg "" portage_emerge_opts emerge_default_opts)"
+  opts="$(_portage_cfg "" portage_emerge_opts)"
   platforms="$(portage_grub_platforms)"
 
   profile_use="$(portage_profile_use)"
-  extra="$(_portage_cfg "" portage_use use)"
+  extra="$(_portage_cfg "" portage_use)"
   use="${profile_use}${profile_use:+ }${extra}"
   use="${use%"${use##*[![:space:]]}"}"
 
@@ -999,7 +999,7 @@ portage_selected_set() {
   # operator actually asked for it, since both carry a default of their own and
   # a plain run must not quietly install a desktop.
   local want candidate
-  want="$(_portage_cfg "" portage_packages packages)"
+  want="$(_portage_cfg "" portage_packages)"
   if [[ -n "$want" ]]; then
     printf '%s\n' "$want"
     return 0
@@ -1224,7 +1224,7 @@ step_60_portage() {
   _portage_record makeopts "$PORTAGE_MAKEOPTS"
   _portage_record set "$set_name"
   _portage_record packages "$count"
-  _portage_record sync "$(_portage_cfg "webrsync" portage_sync sync)"
+  _portage_record sync "$(_portage_cfg "webrsync" portage_sync)"
 
   show_portage_summary "$root" "$set_name" "$count"
   return "$EXIT_SUCCESS"

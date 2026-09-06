@@ -46,6 +46,32 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **A system can be installed in more than one language, and given a DNS
+  domain and an SSH key.** All three were read by step 90 through a candidate
+  list in which no name was declared, so `--locales`, `--domain` and
+  `--ssh-key` all came back "Unknown option" and the lookups always answered
+  empty. The ssh one cost the most: with `ssh_key` unreachable, the branch that
+  turns password authentication off could never be taken, and the warning that
+  fires instead named `ssh_key = /path/to/id_ed25519.pub` as the remedy — a
+  setting nothing declared. Same shape as `secureboot_keyfile`, `user_shell`
+  and `user_groups` before them.
+
+- **The last locale of a list is no longer dropped.** `tr` leaves no newline
+  after the final field and a bare `read` reports EOF for it, so
+  `locales = "fr_FR.UTF-8,ja_JP.EUC-JP"` generated the first and silently lost
+  the second. The guard against this is written twice elsewhere in the
+  repository with the same comment; it was missed in the one list nothing
+  could reach.
+
+- **Twenty-two alias spellings that no configuration file could use are gone.**
+  `_sys_cfg` and `_portage_cfg` take a fallback and then every name a step is
+  willing to answer to — `tz`, `host`, `use`, `makeopts`, `sudo_tool`,
+  `video_cards`, `device` and fifteen more. None was declared, so none could
+  ever arrive; they were lookups that could only ever miss. One name for one
+  thing, as with `disk_root`, `chroot_dir` and `target_root` before them. The
+  hygiene test that keeps every read key declared now scans these lists too,
+  which is how they were found.
+
 - **A musl target is no longer given locale work it cannot do.** musl has no
   locale system: there is no `locale-gen`, there never will be one, and
   `/etc/locale.gen` is a file nothing on such a system reads. Step 90 wrote it

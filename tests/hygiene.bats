@@ -235,6 +235,20 @@ GI_INTERNAL_TOKENS='trinity|cagip|ca-gip|matric|gundabad|thrain|keepass|gps_'
     | grep -oE '\$\((cfg|target_fact|_fin_fact) [a-z_]+|CFG\[[a-z_]+\]' \
     | sed -E 's/.*\((cfg|target_fact|_fin_fact) //; s/CFG\[//; s/\]//' \
     | sort -u >"$refd"
+
+  # And the candidate lists. _sys_cfg and _portage_cfg take a fallback and then
+  # every spelling a step is willing to answer to, which is a second way to
+  # read a setting and was not scanned: `locales` — the plural, the whole point
+  # of a system in more than one language — was read by step 90 and declared by
+  # nothing, so `--locales` came back "Unknown option" and a machine could only
+  # ever be given one. `lang` and `keyboard` sat in the same lists, dead.
+  grep -rhvE '^[[:space:]]*#' \
+    "${GI_ROOT}/lib" "${GI_ROOT}/steps" "${GI_ROOT}/variants" "${GI_ENTRY}" \
+    | grep -ohE '_(sys|portage)_cfg "[^"]*"( +[a-z_]+)+' \
+    | sed -E 's/_(sys|portage)_cfg "[^"]*"//' \
+    | tr ' ' '\n' | grep -E '^[a-z_]+$' \
+    | sort -u >>"$refd"
+  sort -u -o "$refd" "$refd"
   [ -s "$refd" ]
 
   missing="$(comm -23 "$refd" "$declared")"

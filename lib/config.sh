@@ -327,6 +327,16 @@ config_init_defaults() {
   set_default hostname ""
   set_default timezone ""
   set_default locale ""
+  # The plural is what a system in more than one language needs, and it was
+  # read by _sys_locale_lines and declared by nothing: `--locales` came back
+  # "Unknown option", so a machine could only ever be given one locale.
+  set_default locales ""
+  # Both of these were read by step 90 through a candidate list in which no
+  # name was declared, so the whole feature was unreachable: `--domain` and
+  # `--ssh-key` came back "Unknown option" and the lookups always answered
+  # empty. Same shape as secureboot_keyfile, user_shell and user_groups.
+  set_default domain ""
+  set_default ssh_key ""
   set_default keymap ""
 
   # Accounts. `accounts` is the declarative form and it takes precedence; the
