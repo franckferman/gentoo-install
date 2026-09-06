@@ -33,3 +33,33 @@ load helper
   [ "$status" -eq 0 ]
   [[ "$output" == *"--pbkdf-memory 64"* ]]
 }
+
+@test "the crypt choice reads the same in both vocabularies" {
+  # Two spellings name the same choice: the setting and the journal say
+  # luks-passphrase, because step 30's catalogue is the directory
+  # variants/crypt; the kernel command line, the dracut module list and the
+  # package list say passphrase. Step 70 compared the long one against the short
+  # one and fell to its default arm, so "Unknown crypt variant: luks-passphrase"
+  # stopped every encrypted install before an initramfs could exist. Step 95 had
+  # been normalising all along, in a copy of its own — which is why nothing
+  # noticed.
+  local pair
+  for pair in "luks-passphrase:passphrase" "luks-tpm:tpm" \
+    "luks-keyfile-gpg:keyfile" "none:none" ":none" \
+    "passphrase:passphrase" "tpm:tpm" "keyfile:keyfile"; do
+    run --separate-stderr bash -c 'source "$GI_ENTRY"; crypt_family "$1"' bash "${pair%%:*}"
+    [ "$status" -eq 0 ]
+    [ "$output" = "${pair##*:}" ] || {
+      printf 'crypt_family %s gave %s, expected %s\n' "${pair%%:*}" "$output" "${pair##*:}" >&2
+      return 1
+    }
+  done
+}
+
+@test "step 70 asks the normaliser, not the raw setting" {
+  # The regression this file exists to prevent: target_crypt() must hand the
+  # short spelling to everything downstream of it.
+  gi_bash 'config_init_defaults; CFG[crypt]=luks-tpm; set_explicit crypt luks-tpm; target_crypt'
+  [ "$status" -eq 0 ]
+  [ "$output" = "tpm" ]
+}

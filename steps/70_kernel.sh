@@ -66,7 +66,10 @@ target_root() {
   printf '%s\n' "${root%/}"
 }
 
-target_crypt() { target_fact crypt crypt.variant "none"; }
+target_crypt() {
+  # Normalised, because everything below compares against the short spelling.
+  crypt_family "$(target_fact crypt crypt.variant "none")"
+}
 target_layout() { target_fact disk_layout disk.layout "minimal"; }
 
 target_topology() {

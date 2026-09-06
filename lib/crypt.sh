@@ -892,6 +892,28 @@ crypt_require_variant_cmds() {
 # --------------------------------------------------------------------------- #
 #  Target device                                                              #
 # --------------------------------------------------------------------------- #
+crypt_family() {
+  # The encryption choice in one vocabulary: none, passphrase, tpm or keyfile.
+  #
+  # Two spellings exist because two things name the same choice. Step 30's
+  # catalogue is the directory variants/crypt, so the setting and the journal
+  # read luks-passphrase; the kernel command line, the dracut module list and
+  # the package list all speak of passphrase. Nothing wrong with either — but
+  # step 70 compared the long spelling against the short one and fell to its
+  # default arm, so "Unknown crypt variant: luks-passphrase" stopped every
+  # encrypted install before an initramfs could be built. Step 95 had been
+  # normalising all along, in a copy of its own; this is that copy, moved to
+  # where both can reach it.
+  # Args: $1 = any spelling. A returned value, so stdout.
+  case "${1:-}" in
+    "" | none | no) printf 'none\n' ;;
+    luks-passphrase | passphrase) printf 'passphrase\n' ;;
+    luks-tpm | tpm) printf 'tpm\n' ;;
+    luks-keyfile-gpg | keyfile) printf 'keyfile\n' ;;
+    *) printf '%s\n' "$1" ;;
+  esac
+}
+
 crypt_resolve_device() {
   # The device to encrypt, from the setting or from what step 20 recorded.
   # A returned value, so stdout.

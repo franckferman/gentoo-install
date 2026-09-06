@@ -230,15 +230,7 @@ _fin_crypt() {
   # command-line composer spells the same choice tpm. Step 95 reads a journal
   # that may carry either, and normalising here is cheaper than a check that
   # silently believes an encrypted machine needs no crypt module.
-  local value
-  value="$(_fin_fact crypt crypt.variant "none")"
-  case "$value" in
-    "" | none | no) printf 'none\n' ;;
-    luks-passphrase | passphrase) printf 'passphrase\n' ;;
-    luks-tpm | tpm) printf 'tpm\n' ;;
-    luks-keyfile-gpg | keyfile) printf 'keyfile\n' ;;
-    *) printf '%s\n' "$value" ;;
-  esac
+  crypt_family "$(_fin_fact crypt crypt.variant "none")"
 }
 
 _fin_uses_lvm() {
