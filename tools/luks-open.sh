@@ -612,8 +612,58 @@ mount_if_needed() {
   }
 }
 
+mount_from_fstab() {
+  # Mount what the installed system says it mounts, after its root is up.
+  #
+  # A rescue tool should not carry a list of volume names: the machine in front
+  # of it already has one, in its own /etc/fstab, and that list is right for the
+  # layout it was actually installed with. Anything the fstab names that is not
+  # there is skipped — a rescue is not the moment to refuse over an absent
+  # /opt.
+  # Args: $1 = target root.
+  local target="$1" fstab="$1/etc/fstab" src mnt type rest resolved
+  [[ -r "$fstab" ]] || {
+    warn "  no /etc/fstab in the target, only the root filesystem is mounted"
+    return 0
+  }
+  # Sorted by mountpoint so that /var comes before /var/log, and /boot before
+  # /boot/efi, whatever order the file happens to be in.
+  while read -r src mnt type rest; do
+    case "$src" in ''|'#'*) continue ;; esac
+    case "$type" in swap|proc|sysfs|devtmpfs|tmpfs|devpts) continue ;; esac
+    [[ "$mnt" == /* && "$mnt" != "/" ]] || continue
+    resolved="$src"
+    case "$src" in
+      UUID=*) resolved="$(blkid -U "${src#UUID=}" 2>/dev/null || true)" ;;
+      LABEL=*) resolved="$(blkid -L "${src#LABEL=}" 2>/dev/null || true)" ;;
+    esac
+    if [[ -z "$resolved" || ! -b "$resolved" ]]; then
+      skip "  ${mnt}: ${src} is not here"
+      continue
+    fi
+    mount_if_needed "$resolved" "${target}${mnt}" || true
+  done < <(grep -vE '^[[:space:]]*(#|$)' "$fstab" | sort -k2,2)
+}
+
 mount_tree() {
-  local dev="$1"
+  local dev="$1" mapper fstype
+  mapper="/dev/mapper/${OPENED_CONTAINER:-$MAPPER_NAME}"
+
+  # What is actually inside the container decides, rather than an assumption.
+  # A container can hold a filesystem directly — which is what the installer's
+  # minimal layout produces, and it is the default — or a physical volume with
+  # a group on it. Assuming the second refused to mount every plain install:
+  # "Volume group vg1 not found inside the container", on a machine whose root
+  # was sitting right there on the mapper.
+  fstype="$(blkid -o value -s TYPE "$mapper" 2>/dev/null || true)"
+  if [[ -n "$fstype" && "$fstype" != "LVM2_member" ]]; then
+    log "No LVM inside the container: the root filesystem is ${fstype} on ${mapper}"
+    mkdir -p "$TARGET"
+    mount_if_needed "$mapper" "$TARGET" || return 1
+    mount_from_fstab "$TARGET"
+    ok "Tree mounted on $TARGET"
+    return 0
+  fi
 
   log "Activating the volume group $VG_NAME"
   vgchange -ay "$VG_NAME" >/dev/null 2>&1 || true
