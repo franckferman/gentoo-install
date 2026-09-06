@@ -419,3 +419,38 @@ gi_tools() {
   [ "$status" -ne 0 ]
   [ -z "$output" ]
 }
+
+@test "the diagnostic looks for the ESP where this installer mounts it" {
+  # luks-check.sh tested /boot/efi, hardcoded — the layout of the machine this
+  # tooling grew up on. gentoo-install mounts the ESP at /boot, so on a machine
+  # it installed the tool said "the ESP is not mounted, cannot look for the key"
+  # about a filesystem that had been mounted all along, one directory away.
+  local root
+  root="$(gi_tmp)/lc"
+  mkdir -p "${root}/var/lib/gentoo-install"
+  printf 'disk.esp_mount=/boot\ncrypt.keyfile=/efi/luks-key.gpg\n' \
+    >"${root}/var/lib/gentoo-install/state"
+
+  run bash -c '
+    ROOT_PREFIX="$2"
+    eval "$(sed -n "/^journal_var()/,/^}/p"      "$1/tools/luks-check.sh")"
+    eval "$(sed -n "/^esp_mount_point()/,/^}/p"  "$1/tools/luks-check.sh")"
+    eval "$(sed -n "/^journal_key_path()/,/^}/p" "$1/tools/luks-check.sh")"
+    printf "%s %s\n" "$(esp_mount_point)" "$(journal_key_path)"
+  ' bash "$GI_ROOT" "$root"
+  [ "$status" -eq 0 ]
+  [ "$output" = "/boot /boot/efi/luks-key.gpg" ]
+}
+
+@test "with no journal it keeps the conventional /boot/efi" {
+  # The machine whose /var will not mount is the one these tools exist for, and
+  # the old default is still the right guess there.
+  run bash -c '
+    ROOT_PREFIX="$2/nothing-here"
+    eval "$(sed -n "/^journal_var()/,/^}/p"     "$1/tools/luks-check.sh")"
+    eval "$(sed -n "/^esp_mount_point()/,/^}/p" "$1/tools/luks-check.sh")"
+    esp_mount_point
+  ' bash "$GI_ROOT" "$(gi_tmp)"
+  [ "$status" -eq 0 ]
+  [ "$output" = "/boot/efi" ]
+}

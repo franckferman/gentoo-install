@@ -12,6 +12,15 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **`luks-check.sh` looks for the ESP where this installer mounts it.** It tested
+  `/boot/efi`, hardcoded — the layout of the machine this tooling grew up on —
+  while gentoo-install's own layouts mount the ESP at `/boot`. On a machine it
+  had installed, the first tool an operator reaches for said "the ESP is not
+  mounted, cannot look for the key" about a filesystem that was mounted all
+  along, one directory away. The mountpoint and the key's path both come from
+  the journal now, with the old convention kept for the machine whose `/var`
+  will not mount.
+
 - **Nine tools ask the install journal for the container before searching for
   it.** The journal is a fact about the machine in front of them; the volume
   group enumeration underneath is a search. It is checked and not trusted — a

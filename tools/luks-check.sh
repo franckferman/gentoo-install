@@ -412,11 +412,42 @@ resolve_device() {
 # Key file
 ################################################################################
 
-efi_is_mounted() { mountpoint -q "${ROOT_PREFIX}/boot/efi" 2>/dev/null; }
+journal_var() {
+  # One value from the installer's state journal, or nothing. Args: $1 = key.
+  local key="$1" file="${ROOT_PREFIX}/var/lib/gentoo-install/state"
+  [[ -r "$file" ]] || return 0
+  sed -n "s/^${key}=//p" "$file" | tail -n 1
+}
+
+esp_mount_point() {
+  # Where the ESP is, asked of the journal before being assumed.
+  #
+  # This was /boot/efi, hardcoded — the layout of the machine this tooling grew
+  # up on. gentoo-install's own layouts mount the ESP at /boot, so on a machine
+  # it installed this said "the ESP is not mounted, cannot look for the key"
+  # about a filesystem that was mounted all along, one directory away.
+  local esp
+  esp="$(journal_var disk.esp_mount)"
+  [[ -n "$esp" ]] || esp="/boot/efi"
+  printf '%s\n' "${esp%/}"
+}
+
+journal_key_path() {
+  # The key file as the installed system sees it: the path the initramfs is
+  # given is relative to the root of the filesystem that carries it, and the
+  # ESP's mountpoint is where that filesystem sits. Neither entry is enough on
+  # its own. A returned value, so stdout; empty when the journal says nothing.
+  local rel
+  rel="$(journal_var crypt.keyfile)"
+  [[ -n "$rel" ]] || return 0
+  printf '%s/%s\n' "$(esp_mount_point)" "${rel#/}"
+}
+
+efi_is_mounted() { mountpoint -q "${ROOT_PREFIX}$(esp_mount_point)" 2>/dev/null; }
 
 resolve_key() {
   # Only reports a path, never reads the key itself
-  local candidate
+  local candidate recorded
   if [[ -n "$KEY_PATH" ]]; then
     [[ -f "$KEY_PATH" ]] || {
       err "Key not found: $KEY_PATH"
@@ -425,6 +456,14 @@ resolve_key() {
     echo "$KEY_PATH"
     return 0
   fi
+
+  # What the installer recorded, before the two conventional names.
+  recorded="$(journal_key_path)"
+  if [[ -n "$recorded" && -f "${ROOT_PREFIX}${recorded}" ]]; then
+    echo "${ROOT_PREFIX}${recorded}"
+    return 0
+  fi
+
   for candidate in "${KEY_CANDIDATES[@]}"; do
     [[ -f "${ROOT_PREFIX}${candidate}" ]] && {
       echo "${ROOT_PREFIX}${candidate}"
@@ -625,7 +664,7 @@ report_key() {
   echo "" >&2
 
   if ! efi_is_mounted && [[ -z "$KEY_PATH" ]]; then
-    warn "  ${ROOT_PREFIX}/boot/efi is not mounted, cannot look for the key"
+    warn "  ${ROOT_PREFIX}$(esp_mount_point) is not mounted, cannot look for the key"
     warn "  From a LiveCD, point at the mounted tree: --root /mnt/gentoo"
     warn "  Or name the file directly: --key FILE"
     return 1
@@ -807,7 +846,7 @@ test_key() {
   local dev="$1" key
 
   if ! key="$(resolve_key)"; then
-    err "No key file found. Mount /boot/efi, or pass --key FILE"
+    err "No key file found. Mount $(esp_mount_point), or pass --key FILE"
     return 1
   fi
   log "Key file: $key"
