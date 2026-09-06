@@ -740,12 +740,22 @@ crypt_gpg_unwrap() {
     export GPG_TTY
   fi
 
+  local diag
+  diag="$(crypt_secret_file gpgdiag 2>/dev/null || printf '')"
   gpg --quiet --batch --pinentry-mode loopback --passphrase-fd 3 \
-    --decrypt "$wrapped" 3<<<"$passphrase" >"$out" 2>/dev/null || rc=$?
+    --decrypt "$wrapped" 3<<<"$passphrase" >"$out" 2>"${diag:-/dev/null}" || rc=$?
 
   if ((rc != 0)); then
     err "GPG could not decrypt ${wrapped}"
     err "       wrong passphrase, or the file is damaged"
+    # What gpg said, rather than a guess about it. Swallowing this cost an hour
+    # once: the message named neither the passphrase nor the file, and the same
+    # command run by hand succeeded.
+    if [[ -n "$diag" && -s "$diag" ]]; then
+      while IFS= read -r line; do
+        err "       gpg: ${line}"
+      done <"$diag"
+    fi
     return 1
   fi
   if [[ ! -s "$out" ]]; then

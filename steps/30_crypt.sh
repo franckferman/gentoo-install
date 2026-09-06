@@ -121,9 +121,26 @@ step_30_crypt() {
     return "$EXIT_FAILURE"
   fi
 
+  # The filesystems come next, inside the container that now exists. Before the
+  # resequencing this ran last, which was wrong for any variant with a file to
+  # put on the target: luks-keyfile-gpg installed its wrapped key and mkfs.vfat
+  # formatted the partition under it three seconds later.
+  _step30_finish_provisioning || return "$EXIT_FAILURE"
+
+  # A variant with something to deploy into the mounted tree does it here, and
+  # only variants that have something define the hook.
+  if declare -F crypt_variant_deploy >/dev/null 2>&1; then
+    if ! crypt_variant_deploy; then
+      err "step 30: ${variant} was applied but its files could not be deployed"
+      err "       the container exists; nothing would open it at boot"
+      return "$EXIT_FAILURE"
+    fi
+  fi
+
   # verify() is the part no flag lifts. --force lifts confirmations, it does
   # not lift proofs: a machine is not finished until a way back into it has
-  # been exercised, here, now.
+  # been exercised, here, now. It runs last because what it proves — for the
+  # keyfile variant, the file as deployed — has to be in place first.
   if ! crypt_variant_verify; then
     err "step 30: ${variant} was applied but could not be proved"
     err "       do not reboot into this container yet"
@@ -134,8 +151,6 @@ step_30_crypt() {
 
   # shellcheck disable=SC2086  # the record is a deliberate word list
   crypt_state_record "$variant" "${CRYPT_DEVICE:-}" ${CRYPT_RECORD}
-
-  _step30_finish_provisioning || return "$EXIT_FAILURE"
   return "$EXIT_SUCCESS"
 }
 

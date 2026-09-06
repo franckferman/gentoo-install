@@ -23,6 +23,7 @@
 set -euo pipefail
 
 _KG_KEY_RAW=""      # the LUKS key, unwrapped, on the tmpfs
+_KG_MASTER_PASS=""  # kept from apply() for the deploy step that follows it
 _KG_KEY_FROM_ESP="" # the same key, unwrapped again from the deployed file
 _KG_KEY_RECOVERY="" # the recovery passphrase
 _KG_WRAPPED=""      # the envelope, before it is installed
@@ -215,7 +216,33 @@ crypt_variant_apply() {
     return 1
   fi
 
-  _kg_install_key "$_KG_WRAPPED" "$(_kg_key_host_path)" && installed_ok="yes"
+  # The key file is not written here. Its destination is on the target's own ESP,
+  # which does not exist yet: step 20 hands over after partitioning when a
+  # container is expected, and the filesystems are made by step 30 once the
+  # container is open. Writing it now put it on a partition that mkfs.vfat
+  # formatted three seconds later. crypt_variant_deploy() runs after that.
+  _KG_MASTER_PASS="$master_pass"
+
+  # shellcheck disable=SC2034  # read by steps/30_crypt.sh after apply()
+  CRYPT_RECORD="$record"
+}
+
+crypt_variant_deploy() {
+  # Called once the target tree is mounted. Everything this variant puts on the
+  # installed machine happens here, and nowhere earlier.
+  local key installed_ok="no"
+  key="$(_kg_key_host_path)"
+
+  if [[ "$_KG_PROVISIONED" == "yes" ]]; then
+    skip "the container was left as it was; its key file is not rewritten"
+    return 0
+  fi
+  if [[ "$DRY_RUN" == "yes" ]]; then
+    log "dry-run: would install the wrapped key file at $(_kg_key_path)"
+    return 0
+  fi
+
+  _kg_install_key "$_KG_WRAPPED" "$key" && installed_ok="yes"
   if [[ "$installed_ok" != "yes" ]]; then
     err "the container exists but its key file is not on ${CFG[crypt_key_dir]}"
     err "       nothing would open it at boot; install it by hand before"
@@ -225,14 +252,9 @@ crypt_variant_apply() {
 
   # The proof that matters is about the deployed file, not the one on the
   # tmpfs: they are meant to be the same bytes, and "meant to" is not a check.
-  if [[ "$DRY_RUN" != "yes" ]]; then
-    _KG_KEY_FROM_ESP="$(crypt_secret_file esprawkey)" || return 1
-    crypt_gpg_unwrap "$(_kg_key_host_path)" "$_KG_KEY_FROM_ESP" "$master_pass" || return 1
-  fi
-
-  # shellcheck disable=SC2034  # read by steps/30_crypt.sh after apply()
-
-  CRYPT_RECORD="$record"
+  _KG_KEY_FROM_ESP="$(crypt_secret_file esprawkey)" || return 1
+  crypt_gpg_unwrap "$key" "$_KG_KEY_FROM_ESP" "$_KG_MASTER_PASS" || return 1
+  return 0
 }
 
 _kg_install_key() {
