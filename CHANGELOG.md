@@ -12,6 +12,27 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **No tool writes its error log through a symlink any local user can plant.**
+  All nine kept stderr in a fixed name under `/tmp`, cleared it with
+  `: >"$ERR_LOG"` and chmod'd it — as root, on a path in a world-writable
+  directory. A symlink left there beforehand made that arbitrary file
+  truncation and an arbitrary mode change: the same shape as the incident
+  `tests/mode_guard.bats` exists for, in the ten scripts that tell the
+  operator to run them under `sudo`. Proved and then re-run against the fix:
+  the planted target keeps its 32 bytes and its mode. `init_err_log` unlinks
+  whatever is at the path — `rm` never follows a symlink — and creates the
+  file with `O_EXCL`, falling back to an unpredictable name if the race is
+  lost rather than writing through what was put back.
+
+- **`tpm-pcr.sh snapshot --dir` no longer demands root.** The subcommand asked
+  for it unconditionally, while `do_snapshot` four lines further down answers
+  the unprivileged case itself — "Not writable: ... Point `--dir` at a
+  directory this account can write" — a sentence the root check made
+  unreachable, advertising a flag it prevented anyone from using. Root is
+  still required for `/var/lib/gentoo-install`. A snapshot taken from an
+  ordinary shell now says which fields it could not read: the registers are
+  world-readable, the DMI serial and the event log are not.
+
 - **`luks-addkey.sh` refuses every clevis-owned keyslot, not the first one.**
   clevis is built to hold several pins at once — a tpm2 pin for the machine
   that unlocks itself, a tang pin for the one that asks the network — and the

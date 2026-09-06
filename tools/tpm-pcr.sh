@@ -52,7 +52,29 @@ EMPTY_PCR="3D458CFE55CC03EA1F443F1562BEEC8DF51C75E14A9FCF9A7234A13F198E7969"
 # every reader needs it, and a subshell would work it out twenty-four times.
 PCR_SOURCE="none"
 
-ERR_LOG="/tmp/gentoo-install-tpm-pcr.log"
+ERR_LOG="${TMPDIR:-/tmp}/gentoo-install-tpm-pcr.log"
+
+init_err_log() {
+  # A fixed name in a world-writable directory is a file any local user can
+  # replace with a symlink before this runs, and these tools are run as root:
+  # the `: >"$ERR_LOG"` further down then truncates whatever it points at, and
+  # the chmod beside it changes that file's mode. The installer learned this
+  # one the hard way — `--log-file /dev/null` under sudo reached
+  # `chmod 0600 /dev/null` and left the machine without a working shell — and
+  # the tools never did.
+  #
+  # rm unlinks the symlink itself and never follows it. The create that
+  # follows is O_EXCL, so if the name is taken again in between it fails
+  # rather than writing through what was put back, and an unpredictable name
+  # is used instead. Never test-then-open: the test and the open are two
+  # moments, and whoever planted the symlink owns the time between them.
+  rm -f -- "$ERR_LOG" 2>/dev/null || true
+  (
+    set -C
+    : >"$ERR_LOG"
+  ) 2>/dev/null || ERR_LOG="$(umask 077 && mktemp -t gentoo-install-tpm-pcr.XXXXXX)"
+  chmod 600 "$ERR_LOG" 2>/dev/null || true
+}
 
 QUIET="${GI_QUIET:-false}"
 
@@ -927,6 +949,18 @@ do_snapshot() {
     chmod 600 "$file" 2>/dev/null || true
   fi
 
+  # Said now, not discovered at compare time. The registers are world-readable
+  # and the identifying fields around them are not: the DMI serial is root
+  # only, and so is the event log. A record taken from an ordinary shell is
+  # still worth having — the PCR values are the part compare reads — but it
+  # names the machine "unknown", and a later comparison against a root-taken
+  # one shows that as a change.
+  if [[ $EUID -ne 0 ]]; then
+    warn "Taken without root: machine and eventlog read as unknown"
+    warn "  The registers themselves are complete. Take it under sudo if this"
+    warn "  record is going to be compared against one that was."
+  fi
+
   if verbose_enough; then
     echo ""
     printf '%s\n' "${C_G}==================================================${C_0}"
@@ -1298,19 +1332,27 @@ do_policy() {
   echo ""
 }
 
-# check_root guards snapshot alone. The registers are world-readable in sysfs,
-# and a diagnostic that demands root is a diagnostic nobody runs from the shell
-# they already have. snapshot writes under /var/lib/gentoo-install, which does
-# need it.
+# check_root guards snapshot alone, and only when it writes where the default
+# says. The registers are world-readable in sysfs, and a diagnostic that
+# demands root is a diagnostic nobody runs from the shell they already have.
+# /var/lib/gentoo-install does need it; a directory the operator named does
+# not, and that is the whole point of --dir.
 main() {
   parse_arguments "$@"
+  init_err_log
 
   case "$SUBCOMMAND" in
     show | values)
       do_show
       ;;
     snapshot)
-      check_root
+      # Root for the system directory, and only for it. do_snapshot already
+      # answers the other case — "Not writable: ... Point --dir at a directory
+      # this account can write" — and check_root killed the run before that
+      # sentence could ever be printed, so the flag it advertises could not be
+      # used. Taking a snapshot before a firmware update, into one's own home,
+      # needs no privilege: the registers are world-readable in sysfs.
+      [[ "$SNAP_DIR_GIVEN" == "true" ]] || check_root
       do_snapshot
       ;;
     list)

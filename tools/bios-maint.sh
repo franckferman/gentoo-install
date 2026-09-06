@@ -45,7 +45,7 @@ STATE_FILE="/var/lib/gentoo-install/bios-maint.state"
 PCR_TAG="before-flash"
 PCR_TAG_AFTER="after-flash"
 
-ERR_LOG="/tmp/gentoo-install-bios-maint.log"
+ERR_LOG="${TMPDIR:-/tmp}/gentoo-install-bios-maint.log"
 
 # Where this script sits, so its siblings are called without guessing a path.
 # The siblings it orchestrates are luks-check.sh, luks-addkey.sh,
@@ -448,7 +448,23 @@ confirm() {
 ################################################################################
 
 init_err_log() {
-  : >"$ERR_LOG"
+  # A fixed name in a world-writable directory is a file any local user can
+  # replace with a symlink before this runs, and these tools are run as root:
+  # `: >"$ERR_LOG"` then truncates whatever it points at, and the chmod beside
+  # it changes that file's mode. The installer learned this one the hard way —
+  # `--log-file /dev/null` under sudo reached `chmod 0600 /dev/null` and left
+  # the machine without a working shell — and the tools never did.
+  #
+  # rm unlinks the symlink itself and never follows it. The create that
+  # follows is O_EXCL, so if the name is taken again in between it fails
+  # rather than writing through what was put back, and an unpredictable name
+  # is used instead. Never test-then-open: the test and the open are two
+  # moments, and whoever planted the symlink owns the time between them.
+  rm -f -- "$ERR_LOG" 2>/dev/null || true
+  (
+    set -C
+    : >"$ERR_LOG"
+  ) 2>/dev/null || ERR_LOG="$(umask 077 && mktemp -t gentoo-install-bios-maint.XXXXXX)"
   chmod 600 "$ERR_LOG" 2>/dev/null || true
 }
 

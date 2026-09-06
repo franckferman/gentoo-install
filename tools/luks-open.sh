@@ -32,7 +32,29 @@ PASSPHRASE_STDIN="false"
 MAX_TRIES=3
 
 EFI_PROBE="/tmp/gentoo-install-rescue-efi"
-ERR_LOG="/tmp/gentoo-install-luks-open.log"
+ERR_LOG="${TMPDIR:-/tmp}/gentoo-install-luks-open.log"
+
+init_err_log() {
+  # A fixed name in a world-writable directory is a file any local user can
+  # replace with a symlink before this runs, and these tools are run as root:
+  # the `: >"$ERR_LOG"` further down then truncates whatever it points at, and
+  # the chmod beside it changes that file's mode. The installer learned this
+  # one the hard way — `--log-file /dev/null` under sudo reached
+  # `chmod 0600 /dev/null` and left the machine without a working shell — and
+  # the tools never did.
+  #
+  # rm unlinks the symlink itself and never follows it. The create that
+  # follows is O_EXCL, so if the name is taken again in between it fails
+  # rather than writing through what was put back, and an unpredictable name
+  # is used instead. Never test-then-open: the test and the open are two
+  # moments, and whoever planted the symlink owns the time between them.
+  rm -f -- "$ERR_LOG" 2>/dev/null || true
+  (
+    set -C
+    : >"$ERR_LOG"
+  ) 2>/dev/null || ERR_LOG="$(umask 077 && mktemp -t gentoo-install-luks-open.XXXXXX)"
+  chmod 600 "$ERR_LOG" 2>/dev/null || true
+}
 
 # /run is a tmpfs, so this copy never reaches a block of any disk. /tmp is a
 # directory of the root filesystem on a Gentoo OpenRC system, where rm -f frees
@@ -1073,6 +1095,7 @@ do_status() {
 
 main() {
   parse_arguments "$@"
+  init_err_log
   load_ownership
 
   case "$SUBCOMMAND" in

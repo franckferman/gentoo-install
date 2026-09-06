@@ -92,12 +92,15 @@ gi_tools() {
   # leave behind. secure_tmpdir() asks the filesystem which directory is in RAM
   # rather than assuming /tmp is — inside a chroot it usually is not — and a
   # trap removes the file however the tool ends.
-  local tool failures=""
+  local tool failures="" mktemps
   while read -r tool; do
-    grep -q 'mktemp' "$tool" || continue
+    # init_err_log mktemps in every tool and its file holds stderr, not a
+    # secret; counting it would make this test answer about the wrong file.
+    mktemps="$(grep -E 'mktemp' "$tool" | grep -v 'mktemp -t gentoo-install-' || true)"
+    [[ -n "$mktemps" ]] || continue
     grep -q 'secure_tmpdir' "$tool" || {
       # A temporary file that holds no secret needs neither; say which it is.
-      grep -qE 'mktemp [^)]*(pass|key|cred|secret)' "$tool" \
+      printf '%s\n' "$mktemps" | grep -qE '(pass|key|cred|secret)' \
         && failures+="  ${tool##*/}: mktemps a secret outside secure_tmpdir"$'\n'
       continue
     }
@@ -604,4 +607,77 @@ gi_tools() {
   ' bash "$GI_ROOT"
   [ "$status" -eq 0 ]
   [[ "$output" == *"vfat refused"* ]]
+}
+
+@test "no tool writes its error log through a symlink someone left in /tmp" {
+  # Every tool kept its stderr in a fixed name under /tmp, truncated it with
+  # `: >"$ERR_LOG"` and chmod'd it — as root, on the path an unprivileged
+  # local user can replace with a symlink beforehand. That is arbitrary file
+  # truncation, the same shape as the incident tests/mode_guard.bats was
+  # written for, in ten scripts that tell the operator to run them under sudo.
+  local dir tool base victim
+  dir="$(gi_tmp)"
+  for tool in "${GI_ROOT}"/tools/*.sh; do
+    base="$(sed -n 's/^ERR_LOG="[^"]*\/\(gentoo-install-[a-z-]*\)\.log"$/\1/p' "$tool")"
+    [ -n "$base" ] || continue
+
+    victim="${dir}/victim-${base}"
+    printf 'intact\n' >"$victim"
+    chmod 644 "$victim"
+    ln -sfn "$victim" "${dir}/${base}.log"
+
+    run bash -c '
+      eval "$(sed -n "/^init_err_log()/,/^}/p" "$1")"
+      ERR_LOG="$2"
+      init_err_log
+      : >"$ERR_LOG"
+      printf "%s\n" "$ERR_LOG"'  bash "$tool" "${dir}/${base}.log"
+    [ "$status" -eq 0 ]
+
+    [ "$(cat "$victim")" = "intact" ] || {
+      printf '%s truncated the symlink target\n' "${tool##*/}" >&2
+      return 1
+    }
+    [ "$(stat -c '%a' "$victim")" = "644" ] || {
+      printf '%s changed the symlink target mode\n' "${tool##*/}" >&2
+      return 1
+    }
+    [ ! -L "$output" ] || {
+      printf '%s kept writing to a symlink\n' "${tool##*/}" >&2
+      return 1
+    }
+  done
+}
+
+@test "every tool that keeps an error log creates it before using it" {
+  # ERR_LOG is redirected into from helpers the subcommands call; a tool that
+  # declared the path and never called init_err_log would be back to the fixed
+  # name the moment the file did not exist.
+  local tool missing=""
+  for tool in "${GI_ROOT}"/tools/*.sh; do
+    grep -q '^ERR_LOG=' "$tool" || continue
+    grep -q '^  init_err_log$' "$tool" || missing="${missing} ${tool##*/}"
+  done
+  [ -z "$missing" ] || {
+    printf 'no init_err_log call in:%s\n' "$missing" >&2
+    return 1
+  }
+}
+
+@test "a snapshot into a named directory needs no privilege" {
+  # do_snapshot already answered the unprivileged case — "Not writable: ...
+  # Point --dir at a directory this account can write" — and check_root ended
+  # the run before that sentence could be printed, so the flag it advertises
+  # could not be used. Root stays required for the system directory.
+  grep -q '\[\[ "$SNAP_DIR_GIVEN" == "true" \]\] || check_root' \
+    "${GI_ROOT}/tools/tpm-pcr.sh"
+}
+
+@test "an unprivileged snapshot says which fields it could not read" {
+  # The registers are world-readable; the DMI serial and the event log are
+  # not. A record that quietly says machine=unknown reads as a change the
+  # next time it is compared against one taken under sudo.
+  run bash -c 'grep -A 3 "Taken without root" "$1/tools/tpm-pcr.sh"' bash "$GI_ROOT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"registers themselves are complete"* ]]
 }
