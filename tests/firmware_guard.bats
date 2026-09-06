@@ -119,3 +119,29 @@ load helper
   [ "$status" -eq 0 ]
   [[ "$output" != *"RAN reboot"* ]]
 }
+
+# --------------------------------------------------------------------------- #
+#  The encryption ordering                                                    #
+# --------------------------------------------------------------------------- #
+@test "step 20 refuses to format a partition a container is still to be made on" {
+  # The disk layer builds on an open container — disk_pv_device() says so — but
+  # the registry runs 20 before 30, and nothing opens one in between. So an
+  # encrypted run formatted the partition, and step 30 would have written a LUKS
+  # header over the filesystem it had just made. Worse, when step 30 failed the
+  # run carried on and installed an unencrypted system onto a disk whose
+  # operator had asked for encryption. Stopping is the honest answer until the
+  # sequence exists.
+  gi_bash 'config_init_defaults
+           CFG[crypt]=luks-passphrase
+           CFG[crypt_name]=nosuchmapper-for-a-test
+           _step20_crypt_order_ok "$(printf "meta\tlvm\tno\t0\t-\t-\n")"'
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"no container is open yet"* ]]
+}
+
+@test "step 20 formats freely when nothing asked for encryption" {
+  gi_bash 'config_init_defaults
+           CFG[crypt]=none
+           _step20_crypt_order_ok "$(printf "meta\tlvm\tno\t0\t-\t-\n")"'
+  [ "$status" -eq 0 ]
+}

@@ -260,7 +260,7 @@ GI_INTERNAL_TOKENS='trinity|cagip|ca-gip|matric|gundabad|thrain|keepass|gps_'
   : >"$allowed"
 
   {
-    grep -rhoE 'state_set +["'"'"']?[a-z_]+\.[a-z_]+' \
+    grep -rhoE 'state_set +["'"'"'\047]?[a-z_]+\.[a-z_]+' \
       "${GI_ROOT}/lib" "${GI_ROOT}/steps" "${GI_ROOT}/variants" \
       | sed -E 's/state_set +["'"'"']?//'
     grep -rhoE '_sys_record +[a-z_]+' "${GI_ROOT}/steps" | sed -E 's/_sys_record +/system./'
@@ -270,7 +270,7 @@ GI_INTERNAL_TOKENS='trinity|cagip|ca-gip|matric|gundabad|thrain|keepass|gps_'
 
   grep -rhvE '^[[:space:]]*#' \
     "${GI_ROOT}/lib" "${GI_ROOT}/steps" "${GI_ROOT}/variants" \
-    | grep -oE 'state_get +"?[a-z_]+\.[a-z_]+|(target_fact|_fin_fact) +[a-z_"]+ +[a-z_]+\.[a-z_]+' \
+    | grep -oE 'state_get +['"'"'"]?[a-z_]+\.[a-z_]+|(target_fact|_fin_fact) +['"'"'"a-z_]+ +[a-z_]+\.[a-z_]+' \
     | grep -oE '[a-z_]+\.[a-z_]+' | sort -u >"$read_keys"
   [ -s "$read_keys" ]
 

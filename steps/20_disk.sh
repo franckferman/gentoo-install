@@ -63,6 +63,59 @@ _step20_uuid() {
   blkid -s UUID -o value -- "$dev" 2>/dev/null || true
 }
 
+_step20_record_crypt_device() {
+  # The partition a LUKS container belongs on: the physical volume under LVM,
+  # otherwise the partition holding /. Journalled as soon as the partitions
+  # exist, and before anything is formatted, because the message that stops an
+  # encrypted run names it.
+  #
+  # Step 30 reads it as disk.crypt_device and refused with "No device to
+  # encrypt" until this existed — which is how the encrypted path turned out
+  # never to have run end to end.
+  # Args: $1 = plan text.
+  local plan="$1" dev=""
+  if [[ "$(disk_plan_meta "$plan" lvm)" == "yes" ]]; then
+    dev="$(disk_plan_rows "$plan" part | awk -F'\t' '$5 == "lvm" { print $6; exit }')"
+  else
+    dev="$(disk_plan_device_for "$plan" /)"
+  fi
+  if [[ -n "$dev" ]]; then
+    state_set disk.crypt_device "$dev"
+  fi
+}
+
+_step20_crypt_order_ok() {
+  # True when this step may go on to create filesystems.
+  #
+  # The disk layer notices an open container and builds on it — disk_pv_device()
+  # says so — but nothing creates one before this point, and the step registry
+  # runs 20 before 30. So an encrypted install needs the container opened
+  # between partitioning and formatting, and that sequence does not exist yet.
+  # Until it does, refusing is the honest answer: a run that asked for
+  # encryption and silently produced a plain disk is the one failure this
+  # project must never ship.
+  # Args: $1 = plan text. Returns 1 to stop the step.
+  local plan="$1" want mapper
+  want="${CFG[crypt]:-none}"
+  [[ "$want" != "none" ]] || return 0
+
+  mapper="/dev/mapper/${CFG[crypt_name]:-${CFG[disk_crypt_name]:-gentoo}}"
+  if [[ -b "$mapper" ]]; then
+    log "container ${mapper} is open; filesystems go inside it"
+    return 0
+  fi
+
+  err "crypt = ${want}, and no container is open yet"
+  err "       step 20 would now format $(disk_plan_device_for "$plan" /) directly, and step 30"
+  err "       would put a LUKS header over the filesystem it had just made"
+  err "       the partitions and the journal are written, so nothing is lost:"
+  err "         cryptsetup luksFormat $(state_get disk.crypt_device 2>/dev/null || printf '<container>')"
+  err "         cryptsetup open <container> ${CFG[crypt_name]:-gentoo}"
+  err "         ./gentoo-install.sh --steps 20 --restart   # filesystems, on the mapper"
+  err "       or install without encryption:  --crypt none"
+  return 1
+}
+
 _step20_record() {
   # What steps 30, 50, 80 and 90 need, and nothing they do not. The journal
   # records what was done, never with what: no passphrase, no key.
@@ -98,6 +151,9 @@ _step20_record() {
   [[ -z "$uuid" ]] || state_set disk.root_uuid "$uuid"
   uuid="$(_step20_uuid "$esp")"
   [[ -z "$uuid" ]] || state_set disk.esp_uuid "$uuid"
+
+  # Again here, so that the already-provisioned path journals it too.
+  _step20_record_crypt_device "$plan"
 
   # A /boot of its own, when the layout gives it one. The GRUB variant asks for
   # this before deciding whether it needs cryptodisk: with /boot outside the
@@ -192,9 +248,19 @@ step_20_disk() {
   disk_release "$name" || return "$EXIT_FAILURE"
   disk_wipe "$name" || return "$EXIT_FAILURE"
   disk_partition "$name" "$plan" || return "$EXIT_FAILURE"
+  _step20_record_crypt_device "$plan"
 
   if [[ "$(disk_plan_meta "$plan" lvm)" == "yes" ]]; then
     disk_create_volumes "$plan" || return "$EXIT_FAILURE"
+  fi
+
+  # A filesystem must not go where a LUKS container is about to go. Step 30 owns
+  # the container and runs after this step, so formatting here would make an
+  # ext4 that step 30 then overwrites with a LUKS header — and, when step 30
+  # fails for any reason, would leave an unencrypted machine on a run that asked
+  # for encryption. That is worse than stopping, so this stops.
+  if ! _step20_crypt_order_ok "$plan"; then
+    return "$EXIT_FAILURE"
   fi
 
   disk_format "$plan" || return "$EXIT_FAILURE"
