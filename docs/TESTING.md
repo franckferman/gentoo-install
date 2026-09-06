@@ -216,7 +216,28 @@ Same encryption, three boot paths. This is where the matrix earns its keep.
 |---|---|---|
 | 3a | `grub` | already covered by Run 2 |
 | 3b | `efistub` | `efibootmgr -v` in the installed system names the kernel and carries the command line |
-| 3c | `systemd-boot` | needs `--init systemd`; `bootctl list` shows the entry |
+| 3c | `systemd-boot` | `bootctl list` shows the entry. Does **not** need `--init systemd`: bootctl comes from `sys-apps/systemd-utils` |
+| 3d | `uki` | one signed binary at `\EFI\BOOT\BOOTX64.EFI`, started with no entry at all |
+
+**`systemd-boot` and `uki` pass.** Both were booted on an encrypted disk, through
+to the passphrase prompt.
+
+**`efistub` cannot be proved from a machine that is not the target**, and it is
+worth saying why rather than leaving it open. An efistub install has no
+configuration file: the NVRAM entry *is* the configuration — it carries the
+kernel command line and the `initrd=`. So it needs an entry to be written, and
+this installer refuses to write one unless it is running from a live medium or
+reinstalling the very disk it booted from (`lib/disk.sh`,
+`disk_may_write_firmware_state`). Testing it therefore takes one of:
+
+- a run from a live medium, where writing the entry is legitimate; or
+- `boot_removable = yes` **and** a kernel with its command line compiled in
+  (`kernel_embed_cmdline`), since the fallback path is launched with no load
+  options — which means building a kernel rather than using the distribution's.
+
+The `uki` bootloader exists partly because of this. It carries the command line
+and the initramfs inside the binary, so it needs neither an entry nor a rebuilt
+kernel, and it is the variant to reach for when the NVRAM cannot be trusted.
 
 Reset between runs by recreating the disk and the firmware variables — a stale
 boot entry in `vars.fd` will make a broken run look like a working one:
