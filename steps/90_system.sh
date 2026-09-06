@@ -84,7 +84,7 @@ _sys_root() {
   # Where the target system is mounted. GI_ROOT exists so that this step can be
   # exercised against a throwaway tree without a flag that only tests would use.
   local root
-  root="$(_sys_cfg "${GI_ROOT:-/mnt/gentoo}" root chroot_dir target_root)"
+  root="$(_sys_cfg "${GI_ROOT:-/mnt/gentoo}" root)"
   root="${root%/}"
   printf '%s\n' "${root:-/}"
 }

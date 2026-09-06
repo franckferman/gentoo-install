@@ -12,6 +12,17 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **Two more names for the target root, removed.** `disk_root` went last
+  cycle; `chroot_dir` and `target_root` were declared beside it and did the
+  same job worse. Measured across the seven resolvers rather than read:
+  `--root` moved all seven, `--chroot-dir` moved exactly one — the chroot,
+  away from the disk the run had just mounted and the stage it had just
+  unpacked — and `--target-root` moved none while being accepted without a
+  word. A flag that is taken and ignored is worse than one that does not
+  exist, so both are now refused by name. The tests that were pointing step 90
+  at a throwaway tree through `chroot_dir` use `root`, which is what the step
+  already documented for the purpose.
+
 - **One name for the directory the whole run builds in.** Step 20 mounted the
   target on `disk_root`; steps 40 to 95 read `root`. Both defaulted to
   `/mnt/gentoo`, so the split showed only once one of them was set: `--root

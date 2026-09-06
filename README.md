@@ -743,10 +743,20 @@ The directory the stage3 is unpacked into and the system is built under is the
 and on the command line (`--root /mnt/gentoo`), like every other declared
 setting. It is not `--target`, `--prefix` or `--destdir`; those do not exist.
 
-There is one such setting and not two. Step 20 mounts the tree it has just made
-on the same path steps 40 to 95 build in, because an install split between two
-directories is an install where the stage3 lands on the disk of the machine
-running the installer while the target sits mounted and empty.
+There is one such setting, and there were four. Step 20 mounts the tree it has
+just made on the same path steps 40 to 95 build in, because an install split
+between two directories is an install where the stage3 lands on the disk of the
+machine running the installer while the target sits mounted and empty. The
+other three names — `disk_root`, `chroot_dir`, `target_root` — are gone, and
+naming one now says so:
+
+```console
+$ ./gentoo-install.sh --target-root /mnt/x
+[x] Unknown option: --target-root
+[x]        --help lists them all
+```
+
+It used to be accepted, and moved nothing.
 
 ### Meta-profiles
 

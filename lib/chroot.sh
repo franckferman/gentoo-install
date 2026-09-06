@@ -74,18 +74,18 @@ chroot_target() {
     printf '%s\n' "${GI_TARGET%/}"
     return 0
   fi
-  # chroot_dir first, because it exists precisely to point the chroot somewhere
-  # other than where the stage was unpacked; then root, which is what --root
-  # sets and what steps 40 and 60 already use.
+  # root, and nothing else. This read CFG[target] until it was found by running
+  # an install: no such setting is declared, so the lookup was always empty and
+  # every run chrooted into /mnt/gentoo whatever --root said. Step 50 then
+  # failed with "Target root does not exist" while step 60 was working on the
+  # real target three lines further down.
   #
-  # This read CFG[target] until it was found by running an install: no such
-  # setting is declared, so the lookup was always empty and every run chrooted
-  # into /mnt/gentoo whatever --root said. Step 50 then failed with "Target root
-  # does not exist" while step 60 was working on the real target three lines
-  # further down.
+  # A second name, chroot_dir, survived that fix and did the same thing on
+  # purpose: "to point the chroot somewhere other than where the stage was
+  # unpacked". There is no such install. It moved this one lookup and left the
+  # disk, the stage, the kernel and the bootloader where they were.
   if declare -p CFG >/dev/null 2>&1; then
-    local dir="${CFG[chroot_dir]:-}"
-    [[ -n "$dir" ]] || dir="${CFG[root]:-}"
+    local dir="${CFG[root]:-}"
     if [[ -n "$dir" ]]; then
       printf '%s\n' "${dir%/}"
       return 0

@@ -188,3 +188,36 @@ load helper
   [ "$(gi_setting flavour "$output")" = "desktop" ]
   [ "$(gi_setting init "$output")" = "openrc" ]
 }
+
+@test "every step resolves the target root to the same directory" {
+  # Four names have pointed at this one directory: root, disk_root, chroot_dir
+  # and target_root. Measured, not read: --root moved four of the seven
+  # resolvers, --chroot-dir moved exactly one — the chroot, away from the disk
+  # the run had just mounted — and --target-root moved none at all while being
+  # accepted in silence.
+  local snippet='
+    config_init_defaults >/dev/null 2>&1
+    parse_args --dry-run --root /mnt/probe >/dev/null 2>&1
+    # Whatever else is in CFG, root is the answer: a resolver that prefers
+    # another key is the defect, not the spelling of the key.
+    CFG[chroot_dir]=/mnt/other; CFG[target_root]=/mnt/other; CFG[disk_root]=/mnt/other
+    printf "%s\n" "$(disk_mount_root)" "$(stage_root)" "$(chroot_target)" \
+      "$(_portage_root)" "$(target_root)" "$(_sys_root)" "$(_fin_root)"'
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; '"$snippet"
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s\n' "$output" | sort -u)" = "/mnt/probe" ]
+  [ "$(printf '%s\n' "$output" | wc -l)" -eq 7 ]
+}
+
+@test "no second name for the target root is accepted" {
+  # Silence is the worst answer to --target-root: the run installs into
+  # /mnt/gentoo and never says the flag did nothing.
+  local flag
+  for flag in --chroot-dir --target-root --disk-root; do
+    run --separate-stderr "$GI_ENTRY" --dry-run "$flag" /mnt/probe --steps 95
+    [[ "$stderr" == *"Unknown option: ${flag}"* ]] || {
+      printf '%s was accepted\n' "$flag" >&2
+      return 1
+    }
+  done
+}

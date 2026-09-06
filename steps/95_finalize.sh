@@ -204,13 +204,14 @@ _fin_root() {
   # default. The journal matters here more than anywhere else — after a
   # --resume the whole install happened in another process, and CFG knows
   # nothing about it. A returned value, so stdout.
+  #
+  # The two later lines used to name a setting each, chroot_dir and
+  # target_root. Both were other spellings of root, and reaching them meant
+  # root was unset, which it never is.
   local root
   root="$(_fin_fact root chroot.target "")"
   if [[ -z "$root" ]]; then
-    root="$(_fin_fact chroot_dir disk.mountpoint "")"
-  fi
-  if [[ -z "$root" ]]; then
-    root="$(_fin_fact target_root chroot.target "${GI_ROOT:-/mnt/gentoo}")"
+    root="$(_fin_fact "" disk.mountpoint "${GI_ROOT:-/mnt/gentoo}")"
   fi
   printf '%s\n' "${root%/}"
 }

@@ -151,12 +151,14 @@ _portage_data_dir() {
 }
 
 _portage_root() {
-  # Where the target is mounted. chroot_target() already honours GI_TARGET and
-  # CFG[target]; the extra keys are the names steps 40 and 90 use for the same
-  # directory, and a step that dies because a sibling spelled it differently is
-  # worse than one that looks in all four places.
+  # Where the target is mounted. chroot_target() already honours GI_TARGET;
+  # this looks at the setting first so that an explicit --root outranks it.
+  # It used to look at three names for the same directory, on the theory that
+  # a step dying because a sibling spelled it differently is worse than one
+  # that looks everywhere. It is not: two of the three were never set by
+  # anything, and the one an operator could set moved some steps and not others.
   local root
-  root="$(_portage_cfg "" root chroot_dir target_root)"
+  root="$(_portage_cfg "" root)"
   if [[ -z "$root" ]]; then
     root="$(chroot_target)"
   fi

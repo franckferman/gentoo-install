@@ -42,7 +42,7 @@ gi_parse() {
   # line per account. Args: $1 = tree, $2 = accounts, $3 = groups (optional).
   gi_bash '
     config_init_defaults
-    CFG[chroot_dir]="$1"
+    CFG[root]="$1"
     CFG[accounts]="$2"
     CFG[groups]="${3:-}"
     _sys_accounts_load "$1" || exit 1
@@ -81,7 +81,7 @@ gi_parse() {
   tree="$(gi_target_tree)"
   gi_bash '
     config_init_defaults
-    CFG[chroot_dir]="$1"
+    CFG[root]="$1"
     CFG[user_groups]="users"
     CFG[user_shell]="/bin/sh"
     CFG[privilege]="doas"
@@ -191,7 +191,7 @@ gi_parse() {
   tree="$(gi_target_tree)"
   gi_bash '
     config_init_defaults
-    CFG[chroot_dir]="$1"
+    CFG[root]="$1"
     CFG[accounts]="alice:wheel:/bin/bash:sudo"
     CFG[user]="frank"
     _sys_accounts_load "$1" || exit 1
@@ -208,7 +208,7 @@ gi_parse() {
   tree="$(gi_target_tree)"
   gi_bash '
     config_init_defaults
-    CFG[chroot_dir]="$1"
+    CFG[root]="$1"
     CFG[user]="frank"
     CFG[user_groups]="wheel,audio"
     CFG[user_shell]="/bin/sh"
@@ -229,13 +229,13 @@ gi_root_lock() {
   # Args: $1 = tree, $2 = accounts, $3.. = extra "key=value" settings.
   gi_bash '
     config_init_defaults
-    CFG[chroot_dir]="$1"
+    CFG[root]="$1"
     CFG[accounts]="$2"
     CFG[root_lock]="yes"
     shift 2
     for kv in "$@"; do CFG["${kv%%=*}"]="${kv#*=}"; done
     config_export_runtime
-    _sys_root_lock "$(cfg chroot_dir)"
+    _sys_root_lock "$(cfg root)"
   ' "$@"
 }
 
@@ -300,7 +300,7 @@ gi_root_lock() {
   tree="$(gi_target_tree)"
   gi_bash '
     config_init_defaults
-    CFG[chroot_dir]="$1"
+    CFG[root]="$1"
     CFG[accounts]="dave:users:/bin/sh:none"
     _sys_root_lock "$1"
   ' "$tree"

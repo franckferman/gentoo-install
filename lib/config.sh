@@ -297,8 +297,6 @@ config_init_defaults() {
   set_default root_uuid ""
   set_default boot_device ""
   set_default boot_disk ""
-  set_default chroot_dir ""
-  set_default target_root ""
   set_default firmware ""
   # Encryption
   set_default crypt_keyfile ""
