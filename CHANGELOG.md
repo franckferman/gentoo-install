@@ -12,6 +12,36 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **Nine of the ten tools looked for a volume group named `vg1`.** That is the
+  group the machine this tooling grew up on happened to have; `gentoo-install`
+  creates `vg0`. So every "detected from the volume group" path found nothing on
+  the machines this project installs, and `luks-open.sh close` was worse — it
+  deactivated no group, could not close the container it had opened, and
+  reported an item still held. None of them names a group now: they ask LVM
+  which group sits inside the container, and say so when more than one does.
+- **`luks-open.sh` mounted a list of volume names instead of the machine's own
+  layout.** `root`, `home`, `apps`, `usr`, `var`, `portage`, `log`, `opt`, and
+  the ESP at `/boot/efi` — again the layout of one machine. A system installed
+  by this project keeps its ESP at `/boot`, so a rescue mounted it in the wrong
+  place and any volume named otherwise was silently missed. It reads the
+  target's `/etc/fstab` now, in both the LVM and the plain case. When that file
+  names nothing usable — a stage3 ships one whose every line is a comment — it
+  falls back to the volume names and says that is what it is doing.
+- **A GPG-wrapped key file was written where the initramfs would not look.**
+  `crypt_key_dir` is a path in the installed system (`/boot/efi`), while
+  `rd.luks.key=<path>:UUID=<esp>` names a path relative to the root of the ESP.
+  With the default layout the ESP is mounted at `/boot`, so the key landed at
+  `/efi/luks-key.gpg` as the initramfs sees it and the journal recorded the
+  constant `/luks-key.gpg`. The machine still booted, asking for the recovery
+  passphrase, so nothing looked broken — while the one file the variant exists
+  to place was never read. The recorded path is now computed from where the
+  file is actually written, and a `crypt_key_dir` that is not on the ESP is
+  refused rather than written to.
+- **The keyfile variant tested its directory on the wrong filesystem.**
+  `crypt_variant_check` tested `/boot/efi` against the running system rather
+  than against the target, which passes on a machine that has one and refuses
+  on the Gentoo minimal ISO, which does not.
+
 - **The TPM sealing left the live medium.** `crypt = luks-tpm` refused at step
   30 unless the running medium carried clevis, jose and tpm2-tools, and
   `install-amd64-minimal.iso` — the medium the Gentoo handbook tells everyone to

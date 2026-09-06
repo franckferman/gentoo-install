@@ -71,21 +71,46 @@ crypt_variant_requires() {
 }
 
 crypt_variant_check() {
-  local dir="${CFG[crypt_key_dir]%/}" pass_dir
+  local dir="${CFG[crypt_key_dir]%/}" pass_dir host_dir root
 
   crypt_require_device || return 1
 
-  if [[ ! -d "$dir" ]]; then
+  # The directory as this machine sees it, which is not the same string.
+  # crypt_key_dir is a path in the installed system — /boot/efi — and this
+  # tested it against the running filesystem. On the machine this project was
+  # written on that directory exists, so the check passed and nobody noticed;
+  # on the Gentoo minimal ISO there is no /boot/efi, and the variant refused
+  # with "crypt_key_dir does not exist" about a directory it was never going
+  # to write to.
+  root="$(crypt_target_root)"
+  host_dir="${root%/}${dir}"
+
+  if [[ ! -d "$host_dir" ]]; then
     if [[ "$DRY_RUN" == "yes" ]]; then
-      log "dry-run: ${dir} does not exist here; the plan continues anyway"
+      log "dry-run: ${host_dir} does not exist here; the plan continues anyway"
     else
-      err "crypt_key_dir does not exist: ${dir}"
-      err "       it is where the wrapped key file is installed, and it has to"
-      err "       be mounted before this step runs — normally the ESP, which"
-      err "       step 20 formats and mounts"
-      err "       example:  crypt_key_dir = /mnt/gentoo/boot/efi"
+      err "crypt_key_dir does not exist: ${host_dir}"
+      err "       crypt_key_dir is ${dir} in the installed system, which is"
+      err "       ${host_dir} from here"
+      err "       it has to be mounted before this step runs — normally the"
+      err "       ESP, which step 20 formats and mounts"
+      err "       example:  crypt_key_dir = /boot/efi   with --root /mnt/gentoo"
       return 1
     fi
+  fi
+
+  # A key the initramfs cannot reach is a key that will never be read: it opens
+  # the container it is stored in. The ESP is the one filesystem available
+  # before anything is unlocked, and crypt_keyfile_uuid is how an operator
+  # names another one deliberately.
+  if ! crypt_keyfile_reachable; then
+    err "crypt_key_dir is not on the ESP: ${dir}"
+    err "       the initramfs mounts exactly one unencrypted filesystem to find"
+    err "       this file, and it is the one step 20 recorded as the ESP"
+    err "       ($(target_fact esp_mount disk.esp_mount "unknown"))"
+    err "       a key kept anywhere else is unreadable at the moment it matters"
+    err "       crypt_keyfile_uuid = UUID names another device on purpose"
+    return 1
   fi
 
   # A passphrase kept beside the file it opens is not a passphrase. This is a

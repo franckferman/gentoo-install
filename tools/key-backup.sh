@@ -103,7 +103,8 @@ COMMANDS:
 OPTIONS:
     -h, --help          Show this help
     -q, --quiet         Essential output only
-        --device DEV    Container to test against. Detected from vg1 when omitted
+        --device DEV    Container to test against. Detected from the volume
+                        group inside it when omitted
         --key FILE      Source file. Found on the EFI partition when omitted
         --root DIR      Root of the installed system, for a run from a LiveCD
         --out DIR       Where to write the copy (default: the current directory)
@@ -283,16 +284,36 @@ resolve_device() {
     return 0
   fi
 
-  pv="$(vgs --noheadings -o pv_name vg1 2>/dev/null | tr -d ' ' | head -n 1)"
-  if [[ -n "$pv" && "$pv" == /dev/mapper/* ]]; then
+  # Every volume group, not one named in advance: this asked about "vg1", the
+  # group the machine this tooling grew up on happened to have, while
+  # gentoo-install creates vg0. A group whose physical volume is an open LUKS
+  # mapper is a group inside a container, whatever it is called.
+  local group
+  while read -r group; do
+    [[ -n "$group" ]] || continue
+    pv="$(vgs --noheadings -o pv_name "$group" 2>/dev/null | tr -d ' ' | head -n 1)"
+    [[ -n "$pv" && "$pv" == /dev/mapper/* ]] || continue
     name="$(basename "$pv")"
     dev="$(cryptsetup status "$name" 2>/dev/null | awk '/device:/ {print $2}')"
     if [[ -n "$dev" ]] && cryptsetup isLuks "$dev" 2>/dev/null; then
       echo "$dev"
       return 0
     fi
-  fi
+  done < <(vgs --noheadings -o vg_name 2>/dev/null | tr -d ' ')
   return 1
+}
+
+on_encrypted_volume() {
+  # True when this path sits on a logical volume inside a LUKS container —
+  # that is, on the machine being backed up rather than on the medium the
+  # operator arrived with. Args: $1 = source device of the mountpoint.
+  local src="$1" group pv
+  [[ "$src" == /dev/mapper/* || "$src" == /dev/*/* ]] || return 1
+  group="$(lvs --noheadings -o vg_name -- "$src" 2>/dev/null | tr -d '[:space:]')"
+  [[ -n "$group" ]] || return 1
+  pv="$(vgs --noheadings -o pv_name "$group" 2>/dev/null | tr -d ' ' | head -n 1)"
+  [[ -n "$pv" && "$pv" == /dev/mapper/* ]] || return 1
+  cryptsetup status "$(basename "$pv")" >/dev/null 2>&1
 }
 
 key_candidates_searched() {
@@ -409,12 +430,10 @@ warn_if_on_the_machine() {
   fi
 
   src="$(findmnt -no SOURCE --target "$out" 2>/dev/null || true)"
-  case "$src" in
-    /dev/mapper/vg1-* | /dev/vg1/*)
-      warn "$out would land on $src, a volume of the machine itself"
-      warn "  A copy that dies with the disk is not a backup: --out DIR"
-      ;;
-  esac
+  if [[ -n "$src" ]] && on_encrypted_volume "$src"; then
+    warn "$out would land on $src, a volume of the machine itself"
+    warn "  A copy that dies with the disk is not a backup: --out DIR"
+  fi
   return 0
 }
 

@@ -1237,6 +1237,56 @@ crypt_confirm_format() {
   confirm_typed "About to destroy every keyslot on ${dev}." "$dev"
 }
 
+crypt_keyfile_path() {
+  # Where the initramfs must look for the key file: a path on the filesystem
+  # that carries it, not a path in the installed system.
+  #
+  # Those are two different things, and the difference broke the automatic
+  # unlock without breaking the boot, which is why it survived. The variant
+  # writes the key to crypt_key_dir — /boot/efi by default, a path in the
+  # target. Step 70 tells dracut rd.luks.key=<path>:UUID=<esp>, and that <path>
+  # is relative to the root of the ESP. With the default layout the ESP is
+  # mounted at /boot, so a key written to /boot/efi/luks-key.gpg is
+  # /efi/luks-key.gpg as the initramfs sees it — while the journal recorded the
+  # constant /luks-key.gpg. The initramfs found nothing, fell back to asking
+  # for the recovery passphrase, and the machine booted: the one file the
+  # variant exists to place was never read.
+  #
+  # A returned value, so stdout.
+  local dir name esp path
+  dir="${CFG[crypt_key_dir]:-/boot/efi}"
+  name="${CFG[crypt_key_name]:-luks-key.gpg}"
+
+  # An operator who set crypt_keyfile named the path themselves, most likely
+  # alongside crypt_keyfile_uuid for a filesystem this function knows nothing
+  # about. Theirs wins.
+  if [[ -n "${CFG[crypt_keyfile]:-}" ]]; then
+    printf '%s\n' "${CFG[crypt_keyfile]}"
+    return 0
+  fi
+
+  path="${dir%/}/${name}"
+  esp="$(target_fact esp_mount disk.esp_mount "")"
+  if [[ -n "$esp" && "$esp" != "/" ]]; then
+    case "$path" in
+      "${esp%/}"/*) path="${path#"${esp%/}"}" ;;
+    esac
+  fi
+  printf '%s\n' "$path"
+}
+
+crypt_keyfile_reachable() {
+  # True when the key file will sit on the filesystem the initramfs is told to
+  # mount. Anything else — a path on the encrypted root, say — is a key the
+  # initramfs cannot reach, because it has not opened that filesystem yet.
+  local dir esp
+  [[ -z "${CFG[crypt_keyfile_uuid]:-}" ]] || return 0 # another device, their call
+  esp="$(target_fact esp_mount disk.esp_mount "")"
+  [[ -n "$esp" && "$esp" != "/" ]] || return 0 # nothing to compare against
+  dir="${CFG[crypt_key_dir]:-/boot/efi}"
+  [[ "${dir%/}/" == "${esp%/}/"* ]]
+}
+
 crypt_state_record() {
   # The journal says what was done, never with what: no passphrase, no key,
   # no slot secret. state_set refuses such a key outright, and so does this.
@@ -1259,7 +1309,7 @@ crypt_state_record() {
     # an initramfs pointing at the default path rather than the one in use.
     if [[ "$variant" == *keyfile* ]]; then
       local key_uuid="${CFG[crypt_keyfile_uuid]:-}"
-      state_set 'crypt.keyfile' "${CFG[crypt_keyfile]:-/luks-key.gpg}"
+      state_set 'crypt.keyfile' "$(crypt_keyfile_path)"
       if [[ -z "$key_uuid" ]] && declare -F state_get >/dev/null 2>&1; then
         key_uuid="$(state_get disk.esp_uuid 2>/dev/null || true)"
       fi

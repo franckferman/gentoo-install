@@ -147,7 +147,8 @@ COMMANDS:
 OPTIONS:
     -h, --help          Show this help
     -q, --quiet         Essential output only
-        --device DEV    LUKS container. Detected from vg1 when omitted
+        --device DEV    LUKS container. Detected from the volume group
+                        inside it when omitted
         --key FILE      GPG-wrapped key. Default: /boot/efi/luks-key.gpg
         --root DIR      Root of the installed system, for a run from a LiveCD
         --backup-dir DIR
@@ -492,16 +493,46 @@ resolve_device() {
     return 0
   fi
 
-  # vgs, not pvs: pvs takes physical volumes as arguments, not a group name
-  pv="$(vgs --noheadings -o pv_name vg1 2>/dev/null | tr -d ' ' | head -n 1)"
-  if [[ -n "$pv" && "$pv" == /dev/mapper/* ]]; then
+  # Every volume group on this machine, not one named in advance.
+  #
+  # This asked vgs about "vg1", which is the group the machine this tooling
+  # grew up on happened to have. gentoo-install creates vg0, and a layout
+  # without LVM has no group at all, so on the machines this project installs
+  # the answer was always "Cannot tell which container to check" — which is
+  # exactly the moment an operator does not want to be told to work it out.
+  #
+  # A group whose physical volume is an open LUKS mapper is a group inside a
+  # container, whatever it is called. One of those is an answer; several is a
+  # question only the operator can settle.
+  local -a found=()
+  local group
+  while read -r group; do
+    [[ -n "$group" ]] || continue
+    # vgs, not pvs: pvs takes physical volumes as arguments, not a group name
+    pv="$(vgs --noheadings -o pv_name "$group" 2>/dev/null | tr -d ' ' | head -n 1)"
+    [[ -n "$pv" && "$pv" == /dev/mapper/* ]] || continue
     name="$(basename "$pv")"
     dev="$(cryptsetup status "$name" 2>/dev/null | awk '/device:/ {print $2}')"
-    if [[ -n "$dev" ]] && cryptsetup isLuks "$dev" 2>/dev/null; then
-      log "Container from the vg1 volume group: $dev"
-      echo "$dev"
-      return 0
+    if [[ -z "$dev" ]] || ! cryptsetup isLuks "$dev" 2>/dev/null; then
+      continue
     fi
+    found+=("${group}:${dev}")
+  done < <(vgs --noheadings -o vg_name 2>/dev/null | tr -d ' ')
+
+  if ((${#found[@]} == 1)); then
+    group="${found[0]%%:*}"
+    dev="${found[0]#*:}"
+    log "Container from the ${group} volume group: $dev"
+    echo "$dev"
+    return 0
+  fi
+  if ((${#found[@]} > 1)); then
+    err "More than one volume group sits inside a LUKS container:"
+    for group in "${found[@]}"; do
+      err "  ${group%%:*} on ${group#*:}"
+    done
+    err "Name the one you mean with --device"
+    return 1
   fi
 
   err "Cannot tell which container to work on. Name it with --device"

@@ -24,7 +24,7 @@ DEVICE=""            # --device : bypasses detection
 KEY_PATH=""          # --key    : GPG-wrapped key, otherwise taken from the ESP
 TARGET="/mnt/rescue" # --target : where the tree is mounted
 MAPPER_NAME="gentoo" # --name   : device-mapper name, dracut expects 'gentoo'
-VG_NAME="vg1"        # --vg     : volume group inside the container
+VG_NAME=""           # --vg     : volume group; detected from the container
 LUKS_DIRECT="false"  # --luks-pass : the passphrase is a LUKS one, no GPG step
 PASSPHRASE=""        # never exposed on the command line internally
 PASSPHRASE_SOURCE="none"
@@ -51,18 +51,23 @@ OPENED_CONTAINER=""
 OWN_STAMP="/run/gentoo-install-luks-open.own"
 OWN_MAPPER=""
 OWN_TARGET=""
+OWN_VG=""
 
 load_ownership() {
   OWN_MAPPER=""
   OWN_TARGET=""
+  OWN_VG=""
   [[ -s "$OWN_STAMP" ]] || return 0
   OWN_MAPPER="$(sed -n '1p' "$OWN_STAMP" 2>/dev/null)"
   OWN_TARGET="$(sed -n '2p' "$OWN_STAMP" 2>/dev/null)"
+  # Third line, added later: close has to deactivate the group open activated,
+  # and asking LVM again works only while the container is still open.
+  OWN_VG="$(sed -n '3p' "$OWN_STAMP" 2>/dev/null)"
   return 0
 }
 
 save_ownership() {
-  printf '%s\n%s\n' "$OWN_MAPPER" "$OWN_TARGET" >"$OWN_STAMP" 2>/dev/null || true
+  printf '%s\n%s\n%s\n' "$OWN_MAPPER" "$OWN_TARGET" "$OWN_VG" >"$OWN_STAMP" 2>/dev/null || true
   chmod 600 "$OWN_STAMP" 2>/dev/null || true
 }
 
@@ -134,7 +139,8 @@ OPTIONS:
         --device DEV    LUKS container (nvme0n1p2 or /dev/nvme0n1p2)
         --target DIR    Where to mount the tree (default: /mnt/rescue)
         --name NAME     Device-mapper name (default: gentoo)
-        --vg NAME       Volume group inside the container (default: vg1)
+        --vg NAME       Volume group inside the container. Detected from the
+                        container itself when omitted
         --key FILE      GPG-wrapped key. Recovered from the EFI partition when
                         omitted, which is where the installer leaves it
         --luks-pass     The passphrase is a LUKS passphrase, used directly.
@@ -612,6 +618,39 @@ mount_if_needed() {
   }
 }
 
+detect_vg() {
+  # Which volume group lives in this container, asked of LVM rather than
+  # assumed.
+  #
+  # This used to default to vg1, which is the name the machine this tooling
+  # grew up on happened to use. gentoo-install creates vg0. So every rescue of
+  # a machine this project installed ended in "Volume group vg1 not found
+  # inside the container" — and `close` was worse: it deactivated nothing,
+  # failed to close the container it had opened, and reported an item still
+  # held. A rescue tool guessing the name of the thing it is rescuing is a
+  # rescue tool that works on one machine.
+  #
+  # The container is open at this point, so its physical volume names the
+  # group with no guessing at all.
+  # Args: $1 = mapper name. Prints the group, or nothing.
+  local mapper="/dev/mapper/$1" name
+  name="$(pvs --noheadings -o vg_name -- "$mapper" 2>/dev/null | tr -d '[:space:]')"
+  [[ -n "$name" ]] || return 1
+  printf '%s\n' "$name"
+}
+
+require_vg() {
+  # VG_NAME, from the operator, from the record open left, or from LVM.
+  # Args: $1 = mapper name.
+  [[ -z "$VG_NAME" ]] || return 0
+  if [[ -n "${OWN_VG:-}" ]]; then
+    VG_NAME="$OWN_VG"
+    return 0
+  fi
+  VG_NAME="$(detect_vg "$1")" || return 1
+  log "Volume group in the container: $VG_NAME"
+}
+
 mount_from_fstab() {
   # Mount what the installed system says it mounts, after its root is up.
   #
@@ -621,11 +660,13 @@ mount_from_fstab() {
   # there is skipped — a rescue is not the moment to refuse over an absent
   # /opt.
   # Args: $1 = target root.
-  local target="$1" fstab="$1/etc/fstab" src mnt type rest resolved
-  [[ -r "$fstab" ]] || {
-    warn "  no /etc/fstab in the target, only the root filesystem is mounted"
-    return 0
-  }
+  # Returns non-zero when the file named nothing this tool could act on, which
+  # is not the same as "no file": a stage3 ships an /etc/fstab whose every line
+  # is a comment, so testing for the file's existence found one and mounted
+  # nothing — leaving a rescue with / and no /var, and an emerge in that chroot
+  # building against an ebuild repository that was not there.
+  local target="$1" fstab="$1/etc/fstab" src mnt type rest resolved named=0
+  [[ -r "$fstab" ]] || return 1
   # Sorted by mountpoint so that /var comes before /var/log, and /boot before
   # /boot/efi, whatever order the file happens to be in.
   while read -r src mnt type rest; do
@@ -641,8 +682,30 @@ mount_from_fstab() {
       skip "  ${mnt}: ${src} is not here"
       continue
     fi
+    named=$((named + 1))
     mount_if_needed "$resolved" "${target}${mnt}" || true
   done < <(grep -vE '^[[:space:]]*(#|$)' "$fstab" | sort -k2,2)
+  ((named > 0))
+}
+
+mount_by_lv_name() {
+  # The fallback when there is no fstab to read, which is what a rescue meets
+  # when the machine never finished installing — and the case that matters,
+  # because /var carries the ebuild repository and an emerge run without it
+  # quietly builds against nothing.
+  #
+  # The volume names are the only information left. In every layout this
+  # installer writes they are the mountpoint without its slash — home, var,
+  # opt — so that is what is used, and it is announced as the convention it is
+  # rather than presented as knowledge.
+  # Args: $1 = target root.
+  local target="$1" lv
+  while read -r lv; do
+    case "$lv" in root | swap | '') continue ;; esac
+    log "  by name, no fstab: ${lv} -> /${lv}"
+    mkdir -p "${target}/${lv}"
+    mount_if_needed "/dev/$VG_NAME/$lv" "${target}/${lv}" || true
+  done < <(lvs --noheadings -o lv_name "$VG_NAME" 2>/dev/null | tr -d ' ')
 }
 
 mount_tree() {
@@ -660,10 +723,19 @@ mount_tree() {
     log "No LVM inside the container: the root filesystem is ${fstype} on ${mapper}"
     mkdir -p "$TARGET"
     mount_if_needed "$mapper" "$TARGET" || return 1
-    mount_from_fstab "$TARGET"
+    mount_from_fstab "$TARGET" \
+      || warn "  the target's /etc/fstab names nothing; only the root is mounted"
     ok "Tree mounted on $TARGET"
     return 0
   fi
+
+  if ! require_vg "${OPENED_CONTAINER:-$MAPPER_NAME}"; then
+    err "No volume group found inside the container"
+    err "  The container is open at /dev/mapper/${OPENED_CONTAINER:-$MAPPER_NAME}"
+    err "  'pvs' and 'vgs' say what is in it; --vg NAME names one by hand"
+    return 1
+  fi
+  OWN_VG="$VG_NAME"
 
   log "Activating the volume group $VG_NAME"
   vgchange -ay "$VG_NAME" >/dev/null 2>&1 || true
@@ -678,26 +750,36 @@ mount_tree() {
   fi
 
   mkdir -p "$TARGET"
-  mount_if_needed "/dev/$VG_NAME/root" "$TARGET" || return 1
+  if ! mount_if_needed "/dev/$VG_NAME/root" "$TARGET"; then
+    err "No logical volume named 'root' in $VG_NAME"
+    err "  lvs $VG_NAME lists the volumes; the root one has to be mounted"
+    err "  first, because everything else is read from its /etc/fstab"
+    return 1
+  fi
 
-  # Order matters: usr and var before their own submounts, and boot before
-  # boot/efi. Volumes the layout does not carry are skipped in silence.
-  mkdir -p "$TARGET"/{home,boot,boot/efi,usr,var,opt}
-  mount_if_needed "/dev/$VG_NAME/home" "$TARGET/home"
-  mount_if_needed "/dev/$VG_NAME/apps" "$TARGET/apps"
-  mount_if_needed "/dev/$VG_NAME/usr" "$TARGET/usr"
-  mkdir -p "$TARGET/usr/portage"
-  mount_if_needed "/dev/$VG_NAME/var" "$TARGET/var"
-  mkdir -p "$TARGET/var/log"
-  mount_if_needed "/dev/$VG_NAME/portage" "$TARGET/usr/portage"
-  mount_if_needed "/dev/$VG_NAME/log" "$TARGET/var/log"
-  mount_if_needed "/dev/$VG_NAME/opt" "$TARGET/opt"
+  # And from here the machine's own fstab decides, exactly as in the plain
+  # case above. What stood here was a list of volume names — root, home, apps,
+  # usr, var, portage, log, opt — and an ESP mounted at boot/efi, which is the
+  # layout of the machine this tooling grew up on. On a machine installed by
+  # this project the ESP is at /boot, so the rescue mounted it in the wrong
+  # place and any volume named otherwise was silently missed. The fstab in
+  # front of us is right by construction: it is what the machine itself uses.
+  if ! mount_from_fstab "$TARGET"; then
+    warn "  the target's /etc/fstab names nothing: half installed, or /etc is gone"
+    mount_by_lv_name "$TARGET"
+  fi
 
-  local efi
-  if efi="$(efi_partition_of "$dev")"; then
-    mount_if_needed "$efi" "$TARGET/boot/efi"
-  else
-    warn "  no EFI partition found, $TARGET/boot/efi left empty"
+  # Only if its own fstab does not name it. A half-installed system may have
+  # no fstab yet, and its ESP is still where the firmware will look.
+  if ! findmnt -rno FSTYPE --submounts "$TARGET" 2>/dev/null | grep -qx vfat; then
+    local efi
+    if efi="$(efi_partition_of "$dev")"; then
+      warn "  the fstab names no EFI partition; mounting ${efi} at boot/efi"
+      mkdir -p "$TARGET/boot/efi"
+      mount_if_needed "$efi" "$TARGET/boot/efi"
+    else
+      warn "  no EFI partition found and none named in the fstab"
+    fi
   fi
 
   ok "Tree mounted on $TARGET"
@@ -784,10 +866,21 @@ do_open() {
 do_close() {
   local acted=false left=0 mounted="false" own_tree="false" own_mapper="false" source=""
 
+  # Which group, before anything is judged against it. The container is still
+  # open here, so LVM can still be asked; the record open left is used first,
+  # because it names what this script actually activated.
+  if ! require_vg "$MAPPER_NAME"; then
+    if [[ -b "/dev/mapper/$MAPPER_NAME" ]]; then
+      warn "no volume group found in /dev/mapper/$MAPPER_NAME"
+      warn "  a container holding a filesystem directly has none, which is fine"
+    fi
+  fi
+
   # A group that carries the running root is never this tool's to deactivate.
   # vgchange -an there takes down every logical volume that happens to be
   # idle at that instant, on a machine that is working.
-  if [[ "$(findmnt -no SOURCE / 2>/dev/null || true)" == "/dev/mapper/${VG_NAME}-"* ]]; then
+  if [[ -n "$VG_NAME"
+    && "$(findmnt -no SOURCE / 2>/dev/null || true)" == "/dev/mapper/${VG_NAME}-"* ]]; then
     err "$VG_NAME carries the running root: refusing to deactivate it"
     err "  This tool closes a machine opened from a LiveCD, not the one"
     err "  it runs on. Name the right group with --vg"
@@ -809,9 +902,8 @@ do_close() {
   fi
 
   # The record written by open is the only claim of ownership there is. The
-  # defaults of this script, mapper 'gentoo' and group 'vg1', are the names a
-  # machine installed by this project uses, so acting without that record is
-  # acting blind.
+  # mapper name defaults to 'gentoo', which is what a machine installed by this
+  # project uses, so acting without that record is acting blind.
   if [[ "$mounted" == "true" && "$own_tree" != "true" ]]; then
     warn "$TARGET was not mounted by this script"
     warn "  Mounted from: ${source:-unknown}"
@@ -860,7 +952,7 @@ do_close() {
     return 0
   fi
 
-  if vgs "$VG_NAME" >/dev/null 2>&1; then
+  if [[ -n "$VG_NAME" ]] && vgs "$VG_NAME" >/dev/null 2>&1; then
     log "Deactivating $VG_NAME"
     if vgchange -an "$VG_NAME" >/dev/null 2>&1; then
       acted=true
@@ -886,7 +978,7 @@ do_close() {
   rm -f "$RECOVERED_KEY"
 
   # Reporting on the final state, not on what was attempted
-  vgs "$VG_NAME" >/dev/null 2>&1 && {
+  [[ -n "$VG_NAME" ]] && vgs "$VG_NAME" >/dev/null 2>&1 && {
     err "$VG_NAME still active"
     left=$((left + 1))
   }
@@ -939,7 +1031,10 @@ do_status() {
     printf "  %-22s %s\n" "Opened here:" "${C_Y}no, close leaves it alone${C_0}"
   fi
 
-  if vgs "$VG_NAME" >/dev/null 2>&1; then
+  require_vg "$MAPPER_NAME" || true
+  if [[ -z "$VG_NAME" ]]; then
+    printf "  %-22s %s\n" "Volume group:" "${C_Y}none found${C_0}"
+  elif vgs "$VG_NAME" >/dev/null 2>&1; then
     printf "  %-22s %s %s volumes\n" "Volume group ($VG_NAME):" "${C_G}active${C_0}" \
       "$(lvs --noheadings -o lv_name "$VG_NAME" 2>/dev/null | wc -l)"
   else

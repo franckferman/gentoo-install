@@ -147,3 +147,72 @@ gi_tools() {
     return 1
   fi
 }
+
+@test "no tool names a volume group the installer does not create" {
+  # The tools shipped assuming vg1, the group the machine this tooling grew up
+  # on happened to have. gentoo-install creates vg0 (lib/disk.sh: disk_vg), so
+  # every "detected from the volume group" path found nothing on the machines
+  # this project installs, and luks-open.sh's close deactivated nothing and
+  # then could not close the container it had opened.
+  #
+  # The fix is not to write vg0 here instead: it is to ask LVM which group sits
+  # inside the container. So the rule is that no executable line names a group
+  # at all. Comments explaining the history are exactly where the name belongs.
+  local tool line offenders=""
+  while read -r tool; do
+    while IFS= read -r line; do
+      offenders+="  ${tool##*/}: ${line}"$'\n'
+    done < <(grep -nE '(^|[^#])[^#]*\bvg[0-9]+\b' "$tool" \
+      | grep -vE '^[0-9]+: *#' || true)
+  done < <(gi_tools)
+  if [[ -n "$offenders" ]]; then
+    printf 'a volume group name is hardcoded in a tool:\n%s\n' "$offenders" >&2
+    return 1
+  fi
+}
+
+@test "an fstab that names nothing usable is reported as naming nothing" {
+  # luks-open.sh mounts what the machine's own fstab names, and falls back to
+  # the volume names only when that gives nothing. It used to test whether the
+  # file existed — and a stage3 ships an /etc/fstab whose every line is a
+  # comment. So a rescue of a half-installed machine mounted / and stopped:
+  # no /var, which is where the ebuild repository lives, and an emerge in that
+  # chroot then built against a repository that was not there.
+  #
+  # The function is lifted out of the tool rather than the tool being run,
+  # because it is the return value that carries the decision.
+  local dir
+  dir="$(gi_tmp)/fstabtest"
+  mkdir -p "$dir/etc"
+
+  run bash -c '
+    warn() { :; }; skip() { :; }; log() { :; }
+    mount_if_needed() { printf "MOUNT %s %s\n" "$1" "$2"; }
+    eval "$(sed -n "/^mount_from_fstab() {/,/^}/p" "$1/tools/luks-open.sh")"
+    mount_from_fstab "$2"
+  ' bash "$GI_ROOT" "$dir"
+  [ "$status" -ne 0 ]
+
+  # Every line a comment, which is what a stage3 leaves behind.
+  printf '# /dev/BOOT   /boot   vfat  defaults  0 2\n# nothing here\n' >"$dir/etc/fstab"
+  run bash -c '
+    warn() { :; }; skip() { :; }; log() { :; }
+    mount_if_needed() { printf "MOUNT %s %s\n" "$1" "$2"; }
+    eval "$(sed -n "/^mount_from_fstab() {/,/^}/p" "$1/tools/luks-open.sh")"
+    mount_from_fstab "$2"
+  ' bash "$GI_ROOT" "$dir"
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+
+  # And an entry naming a device that is not here is not a mount either.
+  printf 'UUID=nope  /var  ext4  defaults  0 2\n' >"$dir/etc/fstab"
+  run bash -c '
+    warn() { :; }; skip() { :; }; log() { :; }
+    blkid() { return 1; }
+    mount_if_needed() { printf "MOUNT %s %s\n" "$1" "$2"; }
+    eval "$(sed -n "/^mount_from_fstab() {/,/^}/p" "$1/tools/luks-open.sh")"
+    mount_from_fstab "$2"
+  ' bash "$GI_ROOT" "$dir"
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+}

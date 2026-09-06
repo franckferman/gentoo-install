@@ -98,7 +98,7 @@ OPTIONS:
     -h, --help          Show this help
     -q, --quiet         Essential output only
         --device DEV    LUKS container (nvme0n1p2 or /dev/nvme0n1p2)
-                        Detected from the vg1 volume group when omitted
+                        Detected from the volume group inside it when omitted
         --key FILE      GPG-wrapped key to test, for 'testkey'
                         Default: /boot/efi/luks-key.gpg, then luks-master-key.gpg
         --key-slot N    Test slot N alone. Without it cryptsetup tries every
@@ -153,7 +153,7 @@ WHEN THE VOLUME KEY IS ALL THAT IS LEFT:
 
 EXAMPLES:
     ./luks-check.sh
-        Full report on the container backing vg1.
+        Full report on the container the volume group sits in.
 
     ./luks-check.sh --device nvme0n1p2
         Same, on a named container.
@@ -304,18 +304,23 @@ open_mapper_of() {
 }
 
 detect_from_vg() {
-  # The route the installer itself takes: the container backing vg1.
-  # vgs, not pvs: pvs takes physical volumes as arguments, not a group name.
-  local pv name dev
-  pv="$(vgs --noheadings -o pv_name vg1 2>/dev/null | tr -d ' ' | head -n 1)"
-  if [[ -n "$pv" && "$pv" == /dev/mapper/* ]]; then
+  # The route the installer itself takes: a volume group living inside a LUKS
+  # container. Every group is asked, not one named in advance — this looked for
+  # "vg1", the group the machine this tooling grew up on happened to have,
+  # while gentoo-install creates vg0.
+  local pv name dev group
+  while read -r group; do
+    [[ -n "$group" ]] || continue
+    # vgs, not pvs: pvs takes physical volumes as arguments, not a group name
+    pv="$(vgs --noheadings -o pv_name "$group" 2>/dev/null | tr -d ' ' | head -n 1)"
+    [[ -n "$pv" && "$pv" == /dev/mapper/* ]] || continue
     name="$(basename "$pv")"
     dev="$(cryptsetup status "$name" 2>/dev/null | awk '/device:/ {print $2}')"
     if [[ -n "$dev" ]] && is_luks "$dev"; then
       echo "$dev"
       return 0
     fi
-  fi
+  done < <(vgs --noheadings -o vg_name 2>/dev/null | tr -d ' ')
   return 1
 }
 
@@ -363,12 +368,12 @@ resolve_device() {
   fi
 
   if dev="$(detect_from_vg)"; then
-    log "Container from the vg1 volume group: $dev"
+    log "Container from a volume group inside it: $dev"
     echo "$dev"
     return 0
   fi
 
-  log "vg1 is not active, scanning internal disks"
+  log "no active volume group inside a container, scanning internal disks"
   if dev="$(detect_any_internal)"; then
     log "Container found: $dev"
     echo "$dev"
