@@ -129,3 +129,21 @@ gi_tools() {
     fi
   done < <(gi_tools)
 }
+
+@test "a tool that takes --root says which paths it really looked at" {
+  # key-backup.sh printed its bare candidates when it found nothing:
+  #   Looked in: /boot/efi/luks-key.gpg
+  # while it had actually searched <root>/boot/efi/luks-key.gpg. From a LiveCD —
+  # the case --root exists for — that reads as though --root had been ignored,
+  # and it sent this session hunting a bug that was not there. An operator
+  # looking for a missing key has to be told where it was really looked for.
+  local dir out
+  dir="$(gi_tmp)/emptyroot"
+  mkdir -p "$dir"
+  out="$(bash "${GI_ROOT}/tools/key-backup.sh" show --root "$dir" 2>&1 || true)"
+  [[ "$out" == *"Looked in:"* ]]
+  if [[ "$out" != *"${dir}/boot/efi"* ]]; then
+    printf 'the message does not name the searched path:\n%s\n' "$out" >&2
+    return 1
+  fi
+}

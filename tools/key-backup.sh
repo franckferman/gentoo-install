@@ -295,6 +295,19 @@ resolve_device() {
   return 1
 }
 
+key_candidates_searched() {
+  # The paths actually looked at, prefix included. Printing the bare candidates
+  # made a run with --root read as though --root had been ignored: the search
+  # used <root>/boot/efi/luks-key.gpg and the message said /boot/efi/luks-key.gpg,
+  # which is the LiveCD's own. An operator debugging a missing key should be told
+  # where it was really looked for.
+  local candidate out=""
+  for candidate in "${KEY_CANDIDATES[@]}"; do
+    out+="${ROOT_PREFIX}${candidate} "
+  done
+  printf '%s\n' "${out% }"
+}
+
 resolve_key() {
   local candidate
   if [[ -n "$KEY_PATH" ]]; then
@@ -468,7 +481,7 @@ do_show() {
   else
     printf "  %-16s %b\n" "Found:" "${C_R}no${C_0}" >&2
     echo "" >&2
-    echo "  Looked in: ${KEY_CANDIDATES[*]}" >&2
+    echo "  Looked in: $(key_candidates_searched)" >&2
     echo "  From a LiveCD, point at the mounted tree with --root" >&2
     echo "" >&2
     echo "  A machine without this file has only the TPM left. A BIOS update" >&2
@@ -513,7 +526,7 @@ do_backup() {
   local key dev tag out
 
   key="$(resolve_key)" || {
-    err "No key file found in: ${KEY_CANDIDATES[*]}"
+    err "No key file found in: $(key_candidates_searched)"
     err "From a LiveCD, point at the mounted tree with --root"
     exit "${EXIT_FAILURE}"
   }
