@@ -274,3 +274,36 @@ _plan() {
   [[ "$body" == *"files_identical"* ]]
   [[ "$body" == *"is not the image that was built"* ]]
 }
+
+@test "no file comparison outside files_identical calls cmp" {
+  # cmp comes from diffutils and the Gentoo minimal ISO — the medium this
+  # installer is written for — does not carry it. files_identical exists
+  # because of that, with the story in its own comment; two callers had never
+  # been moved over. One of them decided whether a wrapped LUKS key file on
+  # the ESP belonged to another container.
+  local hits
+  hits="$(gi_shell_files | xargs grep -n 'cmp -s' \
+    | grep -v '^[^:]*lib/core.sh:' | grep -v '#' || true)"
+  [ -z "$hits" ] || {
+    printf 'cmp survives outside files_identical:\n%s\n' "$hits" >&2
+    return 1
+  }
+}
+
+@test "an identical key file is not taken for another container's" {
+  # `! cmp -s` with no cmp reads as "these differ", so a rerun of step 30 on
+  # the ISO took the key it had just written for a stranger's — and under
+  # --on-conflict refuse that stops the run.
+  local dir
+  dir="$(gi_tmp)"
+  printf 'wrapped key\n' >"${dir}/src"
+  cp "${dir}/src" "${dir}/dst"
+  gi_bash 'have() { [[ "$1" != "cmp" ]] && command -v "$1" >/dev/null 2>&1; }
+    files_identical "$1/src" "$1/dst"' "$dir"
+  [ "$status" -eq 0 ]
+
+  printf 'another container\n' >"${dir}/dst"
+  gi_bash 'have() { [[ "$1" != "cmp" ]] && command -v "$1" >/dev/null 2>&1; }
+    files_identical "$1/src" "$1/dst"' "$dir"
+  [ "$status" -ne 0 ]
+}

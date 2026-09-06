@@ -84,6 +84,16 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **Two file comparisons still called `cmp`, which the minimal ISO does not
+  have.** `files_identical` exists because of exactly that, with the story in
+  its own comment, and two callers had never been moved over. The one that
+  mattered decided whether a wrapped LUKS key file already on the ESP belonged
+  to another container: with no `cmp`, `! cmp -s` reads as "these differ", so a
+  rerun of step 30 took the key it had just written for a stranger's — and
+  under `--on-conflict refuse` that stops the run with "it belongs to another
+  container; this one would not open", about its own file. The other, in
+  `boot_copy_to_esp`, only ever meant copying a file that was already right.
+
 - **The file at the fallback path has to be *this* image, not a file with the
   right name.** Step 95 checked that `EFI/BOOT/BOOTX64.EFI` existed and called
   that "unified kernel image at the fallback path". An ESP that carried GRUB

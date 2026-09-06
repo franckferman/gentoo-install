@@ -419,7 +419,11 @@ boot_copy_to_esp() {
     return 1
   fi
   run_cmd mkdir -p -- "${dest%/*}" || return 1
-  if [[ -f "$dest" && "$DRY_RUN" != "yes" ]] && cmp -s -- "$src" "$dest"; then
+  # files_identical rather than `cmp -s`, for the reason written where it is
+  # defined: no cmp on the minimal ISO. Here the polarity made it harmless —
+  # a failed comparison only meant copying a file that was already right — but
+  # the same call one file away was refusing to install a key.
+  if [[ -f "$dest" && "$DRY_RUN" != "yes" ]] && files_identical "$src" "$dest"; then
     skip "${dest}: already identical"
     return 0
   fi

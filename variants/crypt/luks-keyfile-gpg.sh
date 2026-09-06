@@ -302,7 +302,13 @@ _kg_install_key() {
     return 1
   fi
 
-  if [[ -e "$dst" ]] && ! cmp -s -- "$src" "$dst" 2>/dev/null; then
+  # files_identical, not `cmp -s`: cmp comes from diffutils and the Gentoo
+  # minimal ISO does not carry it. A missing cmp fails, `! cmp` then reads as
+  # "these differ", and this file's own copy — byte for byte the same one, on a
+  # rerun of step 30 — was taken for another container's. Under
+  # --on-conflict refuse that is a run stopped by the words "it belongs to
+  # another container; this one would not open", about the key it just wrote.
+  if [[ -e "$dst" ]] && ! files_identical "$src" "$dst"; then
     if ! resolve_conflict "$dst" "wrapped key file"; then
       err "${dst} holds a different key file and was left alone"
       err "       it belongs to another container; this one would not open"
