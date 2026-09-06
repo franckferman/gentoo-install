@@ -614,7 +614,10 @@ with it, and leaves a fifth of the group unallocated. `desktop` gives `/home`
 what is left. `custom` reads the records you write in `disk_volumes` or
 `disk_volumes_file`, in the same format the three built-in layouts print, so a
 plan can be started from `--disk-layout desktop`, read off the table, and
-adjusted.
+adjusted. One source or the other, never both: they name two different layouts
+and merging them is how a disk gets partitioned for one nobody wrote. The set
+is judged before the erase — exactly one volume must mount `/`, and at most one
+may ask for `rest`.
 
 ---
 

@@ -69,6 +69,27 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **A layout is judged as a set, before the disk is erased.** Every check in
+  `_disk_parse_records` judged one record at a time, and the message printed
+  for an empty list promised something none of them tested — "at least a root
+  volume is needed". A hand-written layout with no `/` was accepted, the disk
+  was erased and partitioned for it, and the install failed three steps later.
+  Exactly one volume must mount `/` now, and at most one may ask for `rest`.
+
+- **`disk_volumes` and `disk_volumes_file` are no longer merged.** Both were
+  printed in turn: two layouts concatenated, two volumes able to claim `rest`,
+  and the plan's own one-line description naming whichever source came second —
+  the sentence the operator reads before typing the device path to confirm the
+  erase. They get the refusal `stage_file` and `stage_url` get, for the same
+  reason.
+
+- **`variants/layout/custom.sh` pointed twice at `--layout`, a flag that does
+  not exist.** Once in a comment and once in an error message; the hygiene test
+  that catches this class only reads lines beginning `example:`. Comments and
+  blank lines in a volumes file are also dropped now, as the header had always
+  said they were — they went through verbatim and worked only because the
+  record parser happened to be forgiving.
+
 - **`VIDEO_CARDS` and `GRUB_PLATFORMS` say where they came from.** Both are
   facts about the machine running the installer, written into the machine being
   installed: one read off the PCI bus with `lspci`, the other from how this very

@@ -813,6 +813,39 @@ _disk_parse_records() {
     err "       example:  root:/:rest:@fs@"
     return 1
   fi
+
+  # The set, not each record. Every check above judges one record on its own,
+  # and the message just above promised something none of them tests: that
+  # there is a root. A hand-written layout with no "/" partitioned the disk
+  # and failed three steps later, after the erase — which is the one place
+  # this project refuses to find things out.
+  local _i _roots=0 _rests=0
+  for ((_i = 0; _i < ${#_DISK_N[@]}; _i++)); do
+    [[ "${_DISK_M[_i]}" == "/" ]] && _roots=$((_roots + 1))
+    [[ "${_DISK_K[_i]}" == "rest" ]] && _rests=$((_rests + 1))
+  done
+
+  if ((_roots == 0)); then
+    err "Layout ${layout} declares no root volume"
+    err "       ${#_DISK_N[@]} volume(s), and none of them mounts /"
+    err "       the disk would be erased and partitioned for a system that"
+    err "       has nowhere to be installed"
+    err "       example:  root:/:rest:@fs@"
+    return 1
+  fi
+  if ((_roots > 1)); then
+    err "Layout ${layout} declares ${_roots} volumes mounting /"
+    err "       only one filesystem can be the root of the target"
+    err "       example:  root:/:rest:@fs@"
+    return 1
+  fi
+  if ((_rests > 1)); then
+    err "Layout ${layout} gives 'rest' to ${_rests} volumes"
+    err "       'rest' means every megabyte left, so only one may ask for it"
+    err "       give the others a size or a percentage"
+    err "       example:  home:/home:40%/8G/:@fs@"
+    return 1
+  fi
   return 0
 }
 
