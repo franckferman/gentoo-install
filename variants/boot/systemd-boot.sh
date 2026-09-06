@@ -76,7 +76,7 @@ boot_systemd_boot_require_bootctl() {
   err "       init = openrc:   USE=\"boot\" emerge --oneshot sys-apps/systemd-utils   inside the chroot"
   err "       init = systemd:  sys-apps/systemd carries it, and is already in the stage"
   err "       bootloader = grub  needs none of this"
-  err "       example:  echo 'sys-apps/systemd-utils boot' >> ${root%/}/etc/portage/package.use/70-gentoo-install-kernel"
+  err "       example:  echo 'sys-apps/systemd-utils boot kernel-install' >> ${root%/}/etc/portage/package.use/70-gentoo-install-kernel"
   return 1
 }
 
@@ -208,16 +208,38 @@ boot_systemd_boot_packages() {
     # own, and the boot flag is the one that builds bootctl and the loader.
     # Without it the merge succeeds and leaves nothing behind that can install
     # a bootloader, which is a failure with no symptom until step 80.
+    # kernel-install comes with boot because the ebuild demands it —
+    # REQUIRED_USE carries boot? ( kernel-install ) — and asking for boot alone
+    # does not merge the package, it refuses to resolve at all:
+    #   The following REQUIRED_USE flag constraints are unsatisfied:
+    #     boot? ( kernel-install )
+    # which is what every openrc install with bootloader = systemd-boot walked
+    # into, including the advice the old error message gave the operator.
     kernel_write_package_use "$root" \
       "# bootctl and systemd-bootx64.efi come from systemd-utils, and only with" \
-      "# this flag. Without it the package merges and installs no bootctl." \
-      "sys-apps/systemd-utils boot" || return 1
+      "# these flags. Without boot the package merges and installs no bootctl;" \
+      "# without kernel-install beside it the ebuild refuses boot outright." \
+      "sys-apps/systemd-utils boot kernel-install" || return 1
 
-    if kernel_pkg_installed "$root" "sys-apps/systemd-utils"; then
-      skip "sys-apps/systemd-utils already installed"
-      log "       a copy merged before the boot flag was set has no bootctl; the check below is what catches it"
-    else
+    if ! kernel_pkg_installed "$root" "sys-apps/systemd-utils"; then
       kernel_emerge "$root" "sys-apps/systemd-utils" || return 1
+    elif boot_systemd_boot_bootctl "$root" >/dev/null 2>&1; then
+      skip "sys-apps/systemd-utils already installed, and it carries bootctl"
+    else
+      # Installed, and no bootctl: the copy in the stage3 was merged before the
+      # boot flag existed in this configuration, and --noreplace will not rebuild
+      # it. Saying so and stopping was the old behaviour, and it left an operator
+      # who had asked for systemd-boot to emerge the bootloader by hand — which
+      # the grub variant never asks of anyone. --changed-use is exactly what the
+      # flag written just above calls for.
+      log "sys-apps/systemd-utils is installed without bootctl; rebuilding it for the boot flag"
+      kernel_in_target "$root" emerge --verbose --changed-use --quiet-build=n \
+        sys-apps/systemd-utils || {
+        err "sys-apps/systemd-utils would not rebuild with the boot flag"
+        err "       emerge --info sys-apps/systemd-utils in the chroot shows what it read"
+        err "       bootloader = grub needs none of this"
+        return 1
+      }
     fi
   fi
 

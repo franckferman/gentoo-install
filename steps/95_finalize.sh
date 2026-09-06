@@ -838,15 +838,20 @@ _fin_check_bootentry() {
   fi
 
   if [[ "$firmware" == "uefi" && "$nvram" == "no" ]]; then
-    # No entry, but the removable path is there. When boot_removable asked for
-    # exactly that, warning about the entry it deliberately did not create is
-    # noise on a machine that boots — and noise in a verdict list is how a real
-    # warning stops being read. The fallback is what the firmware tries with no
-    # entry to guide it, so say so and pass.
-    if [[ "$(target_fact boot_removable "" "no")" == "yes" ]]; then
+    # No entry, and the removable path is there. The question a boot-entry check
+    # exists to answer is whether this disk can start, and the fallback answers
+    # it: a firmware with nothing in NVRAM tries exactly that file. Warning
+    # anyway is noise on a machine that boots, and noise in a verdict list is
+    # how a real warning stops being read.
+    #
+    # The test is on the file rather than on boot_removable, because bootctl
+    # installs the removable copy whether or not anyone asked — so keying on the
+    # setting warned about a systemd-boot install that was perfectly fine.
+    if [[ -n "$(_fin_find_efi "$esp" 'bootx64.efi' || true)" ]]; then
       _fin_verdict PASS bootentry "Boot entry" "${variant} on the removable path, no entry needed"
       _fin_note "EFI/BOOT/BOOTX64.EFI is what a firmware starts when nothing in"
-      _fin_note "NVRAM points anywhere, which is what boot_removable asked for."
+      _fin_note "NVRAM points anywhere. boot_removable asks for it; bootctl"
+      _fin_note "installs it either way."
       return 0
     fi
     _fin_verdict WARN bootentry "Boot entry" "${variant} installed, not in NVRAM"
