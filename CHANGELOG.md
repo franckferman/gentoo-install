@@ -12,6 +12,21 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **clevis was asked for a USE flag that does not exist, and not for the one
+  that matters.** `app-crypt/clevis` in GURU has `IUSE="dracut pkcs11 test tpm1
+  udisks"`; the installer wrote `tpm2`, which nobody has and portage ignores in
+  silence, and never wrote `dracut`. Without it the package installs its
+  binaries and no initramfs module, so the sealing succeeded, was proved, and
+  the machine still asked for its passphrase at every boot. The optional
+  packages are also emerged with `--changed-use` now: they are usually already
+  installed by the time the flag is written, and `--noreplace` would leave them
+  exactly as they are.
+- **An initramfs older than its modules is rebuilt rather than kept.** Step 70
+  returned early when the kernel package was installed and `/boot` held an
+  image, so a package installed on a later run — clevis, here — never reached
+  the initramfs. The image is asked what it carries, with `lsinitrd` run inside
+  the target where dracut lives, and the deployment is re-run when it is behind.
+
 - **An LVM root never got the `lvm` binary, so no LVM install could boot.**
   `sys-fs/lvm2` installs device-mapper and nothing more unless it is built with
   `USE=lvm`, and it arrives as a dependency of cryptsetup — present, correct

@@ -320,9 +320,16 @@ crypt_variant_seal() {
   # Bind a keyslot to the TPM and prove the chip honours it. Called by step 75
   # with a target attached and CRYPT_CLEVIS_IN_TARGET set, so every clevis
   # command below runs inside that target.
-  local dev="$CRYPT_DEVICE" slot="${CFG[crypt_tpm_slot]}" bound=""
+  local dev slot="${CFG[crypt_tpm_slot]}" bound=""
 
+  # The device is read after crypt_require_device, not in the declaration
+  # above it: that is what fills CRYPT_DEVICE from the journal, and a local
+  # initialised on the same line as the declaration is initialised first. In a
+  # run where step 30 had already set it this went unnoticed; step 75 on its
+  # own asked for "the recovery passphrase for " and refused it against slot 0
+  # of nothing.
   crypt_require_device || return 1
+  dev="$CRYPT_DEVICE"
   _lt_seal_requires || return 1
 
   # Already bound? Then this is a re-run, and the honest thing is to prove the

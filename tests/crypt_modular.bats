@@ -431,3 +431,76 @@ load helper
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
+
+@test "the seal resolves the container before it uses it" {
+  # local dev="$CRYPT_DEVICE" on the line above crypt_require_device reads the
+  # variable that call is there to fill. Inside one run step 30 had already set
+  # it, so nothing showed; step 75 on its own asked for "the recovery
+  # passphrase for " and refused it against "slot 0 of ".
+  gi_bash '
+    config_init_defaults
+    source "${GI_ROOT}/variants/crypt/luks-tpm.sh"
+    CRYPT_DEVICE=""
+    crypt_require_device() { CRYPT_DEVICE=/dev/sdz; return 0; }
+    _lt_seal_requires() { return 0; }
+    crypt_clevis_slot() { return 1; }
+    _lt_seal_key() { printf "asked for %s\n" "$1" >&2; return 1; }
+    crypt_variant_seal
+  '
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"asked for /dev/sdz"* ]]
+}
+
+@test "clevis is asked for the flag that exists, and rebuilt when it changes" {
+  # The only clevis ebuild Gentoo has is app-crypt/clevis in GURU, and its
+  # flags are: dracut pkcs11 test tpm1 udisks. The installer asked for tpm2 —
+  # a flag nobody has, ignored in silence — while dracut, the one that installs
+  # the initramfs modules, was never requested. The sealing then succeeds and
+  # is proved, and the machine still asks for its passphrase at every boot.
+  #
+  # And the emerge has to be --changed-use: the package is usually already
+  # installed by then, and --noreplace would leave it exactly as it is.
+  gi_bash '
+    config_init_defaults
+    target_crypt() { printf "tpm\n"; }
+    target_topology() { printf "plain\n"; }
+    kernel_pkg_installed() { return 0; }
+    kernel_write_package_use() { printf "USE %s\n" "$*"; }
+    kernel_write_dracut_conf() { return 0; }
+    kernel_in_target() { shift; printf "RAN %s\n" "$*"; }
+    kernel_ensure_crypt_packages /mnt/gentoo
+  '
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"app-crypt/clevis dracut"* ]]
+  [[ "$output" != *"app-crypt/clevis tpm2"* ]]
+  [[ "$output" == *"--changed-use"* ]]
+  [[ "$output" == *"app-crypt/clevis"* ]]
+}
+
+@test "an initramfs that predates its modules is named as such" {
+  # The image on disk can be older than the packages the configuration asks
+  # for, and nothing in the configuration says so — only the image can. It
+  # happened here: clevis arrived on a later run, the module list was right,
+  # and the initramfs was the one built before it existed. The machine had a
+  # sealed TPM keyslot it could not use.
+  local root
+  root="$(gi_tmp)/initrd"
+  mkdir -p "${root}/usr/lib/dracut/modules.d/90crypt" \
+    "${root}/usr/lib/dracut/modules.d/90dm" "${root}/boot"
+  : >"${root}/boot/initramfs-test.img"
+
+  gi_capture '
+    chroot() { shift 2; printf "crypt\n"; }
+    kernel_dracut_modules() { printf "crypt dm\n"; }
+    kernel_initramfs_missing_modules "$1" /boot/initramfs-test.img
+  ' "$root" >"${root}/out" 2>/dev/null
+  [ "$(cat "${root}/out")" = "dm" ]
+
+  # And says nothing when the image carries everything asked of it.
+  gi_capture '
+    chroot() { shift 2; printf "crypt\ndm\n"; }
+    kernel_dracut_modules() { printf "crypt dm\n"; }
+    kernel_initramfs_missing_modules "$1" /boot/initramfs-test.img
+  ' "$root" >"${root}/out2" 2>/dev/null
+  [ ! -s "${root}/out2" ]
+}

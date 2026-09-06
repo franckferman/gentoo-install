@@ -77,9 +77,31 @@ kernel_dist_kernel_build() {
     skip "linux-firmware not requested (kernel_firmware=no)"
   fi
 
+  # Installed, and /boot holds a kernel — but the image there may be older than
+  # the packages the initramfs is meant to carry, and this shortcut is where
+  # that went unnoticed: clevis arrived on a later run, the module list was
+  # right, the configuration was right, and the initramfs was the one built
+  # before any of it. The machine had a TPM keyslot it could not use. So the
+  # image is asked what it carries before this returns.
   if kernel_pkg_installed "$root" "$package" && [[ "$DRY_RUN" != "yes" ]] \
     && kernel_installed "$root" >/dev/null 2>&1; then
-    skip "${package} already installed and /boot holds a kernel"
+    local stale_record stale_initrd stale_missing
+    stale_record="$(kernel_installed "$root")"
+    IFS=$'\t' read -r _ _ stale_initrd <<<"$stale_record"
+    stale_missing="$(kernel_initramfs_missing_modules "$root" "$stale_initrd")"
+    if [[ -z "$stale_missing" ]]; then
+      skip "${package} already installed and /boot holds a kernel"
+      return 0
+    fi
+    warn "the initramfs predates the modules it needs: ${stale_missing}"
+    warn "       ${stale_initrd} was built before those packages were installed"
+    log "re-running the deployment: emerge --config ${package}"
+    kernel_in_target "$root" emerge --config "$package" || {
+      err "emerge --config ${package} rebuilt no initramfs"
+      err "       the dracut lines above name the module it stopped on"
+      return 1
+    }
+    ok "deployment re-run: ${package}"
     return 0
   fi
 
@@ -96,9 +118,30 @@ kernel_dist_kernel_build() {
   # nothing. That is not a corner case: a dracut module that will not build is
   # enough, and it is exactly what a --resume after such a failure walks into.
   # The ebuild names the way out itself.
-  if [[ "$DRY_RUN" != "yes" ]] && ! kernel_installed "$root" >/dev/null 2>&1; then
-    warn "${package} is installed but deployed no kernel image"
-    warn "       /boot is written by its postinst, and that did not finish"
+  local redeploy="" record missing initrd
+  if [[ "$DRY_RUN" != "yes" ]]; then
+    if ! kernel_installed "$root" >/dev/null 2>&1; then
+      warn "${package} is installed but deployed no kernel image"
+      warn "       /boot is written by its postinst, and that did not finish"
+      redeploy="yes"
+    elif record="$(kernel_installed "$root")"; then
+      # The image that exists may predate a package that has just arrived. It
+      # did here: clevis was installed on a second run, the module list was
+      # right, the configuration was right, and the initramfs was the one built
+      # before any of that — so the machine had a sealed TPM slot it could not
+      # use, and asked for the passphrase at every boot. The image itself is
+      # asked what it carries; nothing else can answer.
+      IFS=$'\t' read -r _ _ initrd <<<"$record"
+      missing="$(kernel_initramfs_missing_modules "$root" "$initrd")"
+      if [[ -n "$missing" ]]; then
+        warn "the initramfs predates the modules it needs: ${missing}"
+        warn "       ${initrd} was built before those packages were installed"
+        redeploy="yes"
+      fi
+    fi
+  fi
+
+  if [[ "$redeploy" == "yes" ]]; then
     log "re-running the deployment: emerge --config ${package}"
     if ! kernel_in_target "$root" emerge --config "$package"; then
       err "emerge --config ${package} deployed no kernel either"

@@ -399,6 +399,39 @@ kernel_check_dracut_modules() {
   return 0
 }
 
+kernel_initramfs_missing_modules() {
+  # Which of the modules the configuration asks for are absent from the image
+  # that exists. A returned value, so stdout; empty when there is nothing to
+  # say, including when there is no image or no lsinitrd to read it with.
+  # Args: $1 = target root, $2 = the initramfs, as the target sees it.
+  local root="${1%/}" initrd="$2" module wanted
+  local -a want=() missing=()
+
+  [[ -n "$initrd" && -f "${root}${initrd}" ]] || return 0
+  wanted="$(kernel_dracut_modules)" || return 0
+  wanted="$(kernel_dracut_prune_modules "$root" "$wanted")" || return 0
+  [[ -n "$wanted" ]] || return 0
+  read -r -a want <<<"$wanted"
+
+  # lsinitrd comes from dracut, which is installed in the target and not on the
+  # live medium — so it is run in the target, exactly as step 95 does. Asking
+  # the host for it found nothing, said nothing, and let a stale initramfs
+  # through: the check existed and never ran.
+  local -a carried=()
+  if [[ -n "$root" && "$root" != "/" ]]; then
+    mapfile -t carried < <(chroot "$root" lsinitrd "$initrd" --mod 2>/dev/null)
+  else
+    have lsinitrd || return 0
+    mapfile -t carried < <(lsinitrd "$initrd" --mod 2>/dev/null)
+  fi
+  ((${#carried[@]} > 0)) || return 0
+  for module in "${want[@]}"; do
+    printf '%s\n' "${carried[@]}" | grep -qx -- "$module" || missing+=("$module")
+  done
+  ((${#missing[@]} > 0)) || return 0
+  printf '%s\n' "${missing[*]}"
+}
+
 kernel_dracut_prune_modules() {
   # Drop the modules that are not in the target, and say what each one costs.
   #
@@ -836,7 +869,24 @@ kernel_ensure_crypt_packages() {
     tpm)
       want=(sys-fs/cryptsetup sys-kernel/dracut)
       optional=(app-crypt/clevis app-crypt/tpm2-tss)
-      use=("app-crypt/clevis tpm2")
+      # dracut, not tpm2. The flag list of the only clevis ebuild that exists
+      # for Gentoo — app-crypt/clevis in GURU — is
+      #
+      #   IUSE="dracut pkcs11 test tpm1 udisks"
+      #
+      # so tpm2 was a flag nobody had, silently ignored, while the one that
+      # matters was never asked for. Without dracut the package installs the
+      # clevis binaries and no initramfs module, dracut says
+      #
+      #   Module 'clevis-pin-file' depends on module 'clevis', which can't be
+      #   installed
+      #
+      # and builds an initramfs with no way to reach the TPM. The sealing then
+      # works, is proved, and the machine still asks for the passphrase at
+      # every boot — which is the failure this project exists to not ship.
+      # The tpm2 pin itself comes from app-crypt/tpm2-tools, pulled in as a
+      # dependency.
+      use=("app-crypt/clevis dracut")
       ;;
     keyfile) want=(sys-fs/cryptsetup sys-kernel/dracut app-crypt/gnupg) ;;
     *) return 0 ;;
@@ -848,11 +898,10 @@ kernel_ensure_crypt_packages() {
       missing+=("$atom")
     fi
   done
-  for atom in ${optional[@]+"${optional[@]}"}; do
-    if ! kernel_pkg_installed "$root" "$atom"; then
-      spare+=("$atom")
-    fi
-  done
+  # Every optional atom, installed or not: the emerge below is --changed-use,
+  # which is a no-op when nothing changed and the only thing that acts when a
+  # flag has just been written for a package that is already there.
+  spare=(${optional[@]+"${optional[@]}"})
 
   if ((${#use[@]} > 0)); then
     kernel_write_package_use "$root" "${use[@]}" || return 1
@@ -864,8 +913,15 @@ kernel_ensure_crypt_packages() {
     return 1
   fi
 
-  if ((${#spare[@]} > 0)) && ! kernel_emerge "$root" "${spare[@]}"; then
-    _kernel_warn_no_sealing "${spare[*]}"
+  if ((${#spare[@]} > 0)); then
+    # --changed-use and not --noreplace: these carry USE flags this step has
+    # just written, and a package already installed without them would be left
+    # exactly as it is by --noreplace. That is how clevis ended up installed
+    # with no dracut module.
+    if ! kernel_in_target "$root" emerge --verbose --changed-use --quiet-build=n \
+      "${spare[@]}"; then
+      _kernel_warn_no_sealing "${spare[*]}"
+    fi
   fi
 
   # Written once more, now that the packages are either there or known not to
