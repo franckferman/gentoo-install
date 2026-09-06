@@ -698,16 +698,30 @@ kernel_ensure_crypt_packages() {
   # The dracut modules the crypt variant needs come from packages, and dracut
   # builds an initramfs without them without saying a word. Emerging them here
   # is idempotent: --noreplace on a package already in the tree is a no-op.
+  #
+  # Two lists, and the split is the point. `want` is what the machine needs to
+  # open its container at all; without it there is no reason to build a kernel.
+  # `optional` is what seals a slot to the TPM afterwards, in step 75 — useful,
+  # and not worth a kernel.
+  #
+  # That distinction was learned in one run. app-crypt/clevis is not in the
+  # official Gentoo repository (it is in GURU), so `emerge` answered "there are
+  # no ebuilds to satisfy app-crypt/clevis", this function returned non-zero,
+  # step 70 failed, and with it went the kernel, the bootloader and the final
+  # verification. The machine was left unbootable because an optional helper was
+  # unavailable — while the container it was for opened perfectly well with the
+  # recovery passphrase.
   # Args: $1 = target root.
   local root="$1" crypt
-  local -a want=() missing=() use=()
+  local -a want=() optional=() missing=() spare=() use=()
 
   crypt="$(target_crypt)"
   case "$crypt" in
     none) return 0 ;;
     passphrase) want=(sys-fs/cryptsetup sys-kernel/dracut) ;;
     tpm)
-      want=(sys-fs/cryptsetup sys-kernel/dracut app-crypt/clevis app-crypt/tpm2-tss)
+      want=(sys-fs/cryptsetup sys-kernel/dracut)
+      optional=(app-crypt/clevis app-crypt/tpm2-tss)
       use=("app-crypt/clevis tpm2")
       ;;
     keyfile) want=(sys-fs/cryptsetup sys-kernel/dracut app-crypt/gnupg) ;;
@@ -720,6 +734,11 @@ kernel_ensure_crypt_packages() {
       missing+=("$atom")
     fi
   done
+  for atom in ${optional[@]+"${optional[@]}"}; do
+    if ! kernel_pkg_installed "$root" "$atom"; then
+      spare+=("$atom")
+    fi
+  done
 
   if ((${#use[@]} > 0)); then
     kernel_write_package_use "$root" "${use[@]}" || return 1
@@ -727,9 +746,30 @@ kernel_ensure_crypt_packages() {
 
   if ((${#missing[@]} == 0)); then
     skip "crypt=${crypt}: every package the initramfs needs is already installed"
+  elif ! kernel_emerge "$root" "${missing[@]}"; then
+    return 1
+  fi
+
+  ((${#spare[@]} > 0)) || return 0
+  if kernel_emerge "$root" "${spare[@]}"; then
     return 0
   fi
-  kernel_emerge "$root" "${missing[@]}"
+  _kernel_warn_no_sealing "${spare[*]}"
+  return 0
+}
+
+_kernel_warn_no_sealing() {
+  # Said here rather than left to step 75, because this is the moment the
+  # reason is known: emerge has just printed it.
+  # Args: $1 = the packages that would not merge.
+  warn "the TPM sealing helpers would not merge: $1"
+  warn "       app-crypt/clevis is not in the official Gentoo repository — the"
+  warn "       GURU overlay carries it:  eselect repository enable guru"
+  warn "       then, in the target:  emerge --ask app-crypt/clevis"
+  warn "       this does not stop the install and does not cost the kernel:"
+  warn "       the container opens with the recovery passphrase, at every boot,"
+  warn "       and step 75 will say plainly that nothing was sealed"
+  warn "       once clevis is there:  ./gentoo-install.sh --steps 50,75"
 }
 
 kernel_nproc() {

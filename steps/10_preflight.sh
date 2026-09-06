@@ -716,18 +716,25 @@ _pf_check_tpm() {
   if [[ ! -e /dev/tpmrm0 ]]; then
     _pf_verdict WARN tpm "TPM 2.0" "present, /dev/tpmrm0 missing"
     _pf_note "The in-kernel resource manager is what every userspace tool talks"
-    _pf_note "to. Without it the sealing in step 30 fails on a healthy TPM."
+    _pf_note "to. Without it the sealing in step 75 fails on a healthy TPM."
     _pf_fix "modprobe tpm_tis && ls -l /dev/tpmrm0"
     return 0
   fi
 
   if ! have tpm2_pcrread; then
-    _pf_verdict WARN tpm "TPM 2.0" "2.0 at /dev/tpmrm0, tpm2-tools absent"
-    _pf_note "The device is usable but nothing here can read a PCR, so the before"
-    _pf_note "and after comparison a reseal needs cannot be made."
-    _pf_fix "emerge --ask --oneshot $(_pf_package_for tpm2_pcrread)"
+    _pf_verdict WARN tpm "TPM 2.0" "2.0 at /dev/tpmrm0, tpm2-tools absent here"
+    _pf_note "The install does not need them here: the sealing runs in step 75,"
+    _pf_note "inside the target, with the clevis and tpm2-tools step 70 installs"
+    _pf_note "there — the Gentoo minimal ISO has neither and cannot get them."
+    _pf_note "What is missing on this medium is the before-and-after PCR reading"
+    _pf_note "that tools/tpm-pcr.sh does, which is a diagnostic, not a step."
+    _pf_fix "# nothing to do for the install itself"
+    _pf_fix "emerge --ask --oneshot $(_pf_package_for tpm2_pcrread)  # only if you want tpm-pcr.sh here"
     return 0
   fi
+
+  # tpm2-tools on the live medium says nothing about the target, which is where
+  # the sealing happens; this is the PASS for reading PCRs from here.
 
   _pf_verdict PASS tpm "TPM 2.0" "2.0 at /dev/tpmrm0, tpm2-tools present"
   _pf_note "A firmware update changes PCR 0 and breaks a policy sealed on it."

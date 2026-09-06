@@ -2,7 +2,7 @@
 
 # gentoo-install
 
-**A modular Gentoo installer in bash: ten numbered steps, a signed stage3, encryption that proves there is more than one way back in, and a plan you can read before anything is written.**
+**A modular Gentoo installer in bash: eleven numbered steps, a signed stage3, encryption that proves there is more than one way back in, and a plan you can read before anything is written.**
 
 [![Gentoo](https://img.shields.io/badge/Gentoo-amd64-54487A?style=flat-square&logo=gentoo&logoColor=white)](https://www.gentoo.org)
 [![Shell](https://img.shields.io/badge/shell-bash-4EAA25?style=flat-square&logo=gnubash&logoColor=white)](gentoo-install.sh)
@@ -21,7 +21,7 @@ step, until the device path has been typed out by hand.
 ## Status
 
 **One machine has been installed by this script and booted.** On 2026-09-05 a
-24 GiB disk image was taken from an empty GPT to a login prompt by the ten steps
+24 GiB disk image was taken from an empty GPT to a login prompt by the steps
 in order — `minimal` layout, no encryption, GRUB on UEFI, the distribution
 kernel — and then started under QEMU with OVMF firmware, where it reached:
 
@@ -85,12 +85,31 @@ because that is what was asked.
 GPG-wrapped key file deployed onto the ESP, and both ways in exercised: the key
 file opens slot 0, the recovery passphrase opens slot 1.
 
-**What none of it covers.** `luks-tpm` has been exercised against throwaway
-containers, never carried through to a boot: sealing a key binds it to the TPM
-of the machine being installed, so it needs the installer running inside the VM
-with a software TPM attached. `efistub` has not
-been booted, nor has an LVM layout, nor a `musl` or `hardened` stage. Version `0.1.0` should
-still meet a disk you would miss with `--dry-run` first.
+**`luks-tpm` has now been run inside a VM with a software TPM**, and it found
+something worth stating plainly, at the top of the page rather than in a
+footnote: **`app-crypt/clevis` is not in the official Gentoo repository.** The
+sealing this variant performs needs it, and on a stock Gentoo the package
+cannot be merged at all — it lives in the GURU overlay:
+
+```bash
+# in the target, before ./gentoo-install.sh --steps 50,75
+eselect repository enable guru && emaint sync -r guru
+emerge --ask app-crypt/clevis
+```
+
+Without it the run still produces a working encrypted machine: the container is
+built, the recovery passphrase is proved against it, the kernel and the
+bootloader are installed, and step 75 says — in those words — that nothing was
+sealed and what to do about it. The one thing you do not get is the automatic
+unlock. The installer says this before the disk is erased, not after.
+
+**What none of it covers.** The automatic unlock itself has not been booted, for
+the reason above. The LVM layout that run used was carried from an empty disk to
+a configured system — volume group, four volumes, filesystems, fstab, chroot,
+portage, accounts — but that machine was not booted either, because the run that
+built it is the run that found the missing package. `efistub` has not been
+booted, nor has a `musl` or `hardened` stage. Version `0.1.0` should still meet a disk you would miss with `--dry-run`
+first.
 
 One finding from that run is worth repeating here, because it is the difference
 between a disk that boots and a disk that does not. A UEFI firmware with no
@@ -119,6 +138,7 @@ The table of contents is the table of the steps, in the order they run.
   - [50 chroot](#50-chroot) — mount the pseudo-filesystems and enter the chroot
   - [60 portage](#60-portage) — make.conf, repositories, profile, USE flags
   - [70 kernel](#70-kernel) — kernel sources, configuration and build
+  - [75 seal](#75-seal) — seal the container to the TPM, inside the target
   - [80 boot](#80-boot) — bootloader install and entries
   - [90 system](#90-system) — fstab, locale, timezone, network, users, packages
   - [95 finalize](#95-finalize) — verify, unmount, report what to do next
@@ -166,7 +186,7 @@ cd gentoo-install
 # What would happen on this machine, changing nothing. No root needed.
 ./gentoo-install.sh --dry-run
 
-# The ten steps, their numbers, and what each one does
+# Every step, its number, and what it does
 ./gentoo-install.sh --list-steps
 
 # Every setting this version knows, its value, and where the value came from
@@ -192,13 +212,13 @@ sudo ./gentoo-install.sh --resume
 
 ## How it works
 
-Ten steps run in order. Each is one file under `steps/`, each returns a code,
+Eleven steps run in order. Each is one file under `steps/`, each returns a code,
 and the runner accumulates failures instead of stopping at the first one — a
 run that announces success after a failed step tells you nothing. The final
 summary names what failed and how to resume:
 
 ```
-[x] 2 of 10 step(s) failed in 41s:
+[x] 2 of 11 step(s) failed in 41s:
 [x]        70 step_70_kernel
 [x]        80 step_80_boot
 [x]        fix the cause, then: ./gentoo-install.sh --resume
@@ -397,6 +417,39 @@ initramfs with the alternative, boot a machine encrypted each of the four ways,
 and only then add the name to the list. Adding it first and finding out later is
 how an installer earns a reputation it deserves.
 
+## 75 seal
+
+What the encryption variant still owes the target, done inside the target. One
+variant owes anything today: `luks-tpm` seals a keyslot with clevis, and clevis
+is not on the Gentoo minimal ISO — no jose, no tpm2-tools either, and no way to
+add them there, because that medium carries no ebuild repository.
+
+So the binding does not happen on the live medium. Step 70 has already
+installed clevis into the target, since the initramfs needs it to unlock at
+boot; this step runs afterwards and binds from inside, with the very binaries
+that will have to release the key at every boot. The version that seals is the
+version that unseals.
+
+What that buys, beyond the ordering:
+
+```bash
+# install now, seal later, deliberately
+sudo ./gentoo-install.sh --skip-steps 75
+
+# seal a target that is already installed — after a BIOS update, or a run
+# that stopped before this point
+sudo ./gentoo-install.sh --steps 50,75
+```
+
+Step 30 ends an encrypted install with one proved way in, the recovery
+passphrase, and says so. This step adds the second and proves it the only way a
+sealing can be proved: by making the chip release the key and testing what it
+hands back against the keyslot. `clevis luks list` reads identically whether
+the TPM honours a token or refuses it.
+
+A variant with nothing to seal says so and the step succeeds. A step that
+vanishes when it has no work leaves you guessing.
+
 ## 80 boot
 
 Makes the kernel of step 70 reachable at power-on, with `grub`, `efistub` or
@@ -454,7 +507,10 @@ not one: the everyday passphrase in slot 0 and a recovery passphrase in slot 1,
 so a mistyped-and-forgotten credential is an annoyance and not a wiped disk.
 `luks-tpm` seals to the TPM with clevis and always keeps a recovery slot,
 because a TPM that stops releasing the key after a firmware update is a
-documented incident and not a hypothesis. `luks-keyfile-gpg` draws a long
+documented incident and not a hypothesis. It needs `app-crypt/clevis` in the
+target, which the official Gentoo repository does not carry — the GURU overlay
+does — and the sealing is [step 75](#75-seal), on its own, so a machine
+installed without it can be sealed later without being reinstalled. `luks-keyfile-gpg` draws a long
 random key, pipes it straight into a GPG envelope, and puts the envelope on the
 ESP: two secrets, the passphrase that opens the file and the file that opens
 the disk. `none` says out loud what it means.

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>gentoo-install</title>
-<meta name="description" content="A modular Gentoo installer in bash: ten numbered steps, a signed stage3, and a plan you can read before anything is written.">
+<meta name="description" content="A modular Gentoo installer in bash: eleven numbered steps, a signed stage3, and a plan you can read before anything is written.">
 <style>
   :root {
     --bg:      #fbfbfa;
@@ -111,7 +111,7 @@
 
   <header>
     <h1>gentoo-install</h1>
-    <p class="tagline">A modular Gentoo installer in bash: ten numbered steps, a signed stage3,
+    <p class="tagline">A modular Gentoo installer in bash: eleven numbered steps, a signed stage3,
     and a plan you can read before anything is written.</p>
   </header>
 
@@ -128,7 +128,7 @@
   </div>
 
   <h2>What it is</h2>
-  <p>An installer for Gentoo on amd64, written as ten numbered steps that can be
+  <p>An installer for Gentoo on amd64, written as eleven numbered steps that can be
   run together, selected individually, or resumed after an interruption. The step
   number is the public API and does not change.</p>
 
@@ -142,7 +142,7 @@
   <pre><span class="c"># the plan, on this machine, changing nothing — no root needed</span>
 ./gentoo-install.sh --dry-run</pre>
 
-  <h2>The ten steps</h2>
+  <h2>The eleven steps</h2>
   <p>Each one runs alone, in a range, or resumed after an interruption. The number
   is the API: <code>--steps 20,40-60</code> means what it says, and the numbering
   does not shift when a step is added between two others.</p>
@@ -154,6 +154,7 @@
     <li><b>50</b> <span>mount the pseudo-filesystems and enter the chroot</span></li>
     <li><b>60</b> <span>portage: make.conf, repositories, profile, USE flags</span></li>
     <li><b>70</b> <span>kernel sources, configuration and build</span></li>
+    <li><b>75</b> <span>seal the container to the TPM, inside the target</span></li>
     <li><b>80</b> <span>bootloader install and entries</span></li>
     <li><b>90</b> <span>system: fstab, locale, timezone, network, users, packages</span></li>
     <li><b>95</b> <span>finalize: verify, unmount, report what to do next</span></li>

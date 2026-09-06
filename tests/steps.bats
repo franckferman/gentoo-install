@@ -161,7 +161,13 @@ load helper
   # registry must survive intact.
   gi_run --skip-steps 0 --json
   [ "$status" -eq 0 ]
-  [ "$(printf '%s\n' "$output" | grep -c '"number"')" -eq 10 ]
+  # Counted from the directory rather than written down: one file per step is
+  # the rule (DESIGN.md §4), and a literal here would have to be edited by
+  # whoever adds a step — which is exactly the second point of truth the step
+  # registry exists to avoid.
+  local expected
+  expected="$(find "${GI_ROOT}/steps" -maxdepth 1 -name '*.sh' | wc -l)"
+  [ "$(printf '%s\n' "$output" | grep -c '"number"')" -eq "$expected" ]
   [[ "$output" == *'"number": 10'* ]]
   [[ "$output" == *'"number": 95'* ]]
 }
@@ -170,4 +176,20 @@ load helper
   gi_run --skip-steps 10-95 --json
   [ "$status" -eq 2 ]
   [[ "$stderr" == *"removes every selected step"* ]]
+}
+
+@test "every step in the registry has a section of its own in the README" {
+  # The README's table of contents is the table of the steps, and its sections
+  # are one per step. That 1:1 alignment is the promise that reading the README
+  # tells you what the installer does — a step added to the registry and left
+  # out of the page breaks it silently, which is what happened to the eleventh.
+  local missing=""
+  missing="$(gi_bash '
+    for n in $(printf "%s\n" "${!STEP_MAP[@]}" | sort -n); do
+      grep -q "^## ${n} " "${GI_ROOT}/README.md" || printf "%s " "$n"
+    done' && printf '%s' "$output")"
+  if [[ -n "$missing" ]]; then
+    printf 'steps with no README section: %s\n' "$missing" >&2
+    return 1
+  fi
 }

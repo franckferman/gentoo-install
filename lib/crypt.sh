@@ -258,6 +258,7 @@ crypt_pcr_rationale() {
 # --------------------------------------------------------------------------- #
 _GI_CRYPT_SECRETS=()
 _GI_CRYPT_TMPDIR=""
+CRYPT_HELD_KEYFILE=""
 _GI_CRYPT_TRAPPED="no"
 
 crypt_secure_tmpdir() {
@@ -329,34 +330,52 @@ crypt_arm_secret_trap() {
 crypt_secret_file() {
   # A mode-600 file on the tmpfs, registered for the trap and for core's
   # cleanup(), so it goes away on every exit path including Ctrl-C.
-  # Args: $1 = a short purpose, for the file name only. Prints the path.
-  local purpose="${1:-secret}" dir path
-  dir="$(crypt_secure_tmpdir)"
-  path="$(umask 077 && mktemp "${dir}/gentoo-install-${purpose}.XXXXXXXX")" || {
-    err "cannot create a temporary file under ${dir}"
+  # Args: $1 = variable to fill with the path, $2 = a short purpose, used for
+  #       the file name only, $3 = a directory to use instead of the tmpfs
+  #       this side picked, for the one case where another side reads it too.
+  #
+  # The path goes into a caller-named variable and not to stdout, and that is
+  # not a style choice. This function used to print it, so every caller was
+  #
+  #     key="$(crypt_secret_file recovery)"
+  #
+  # a command substitution, which is a subshell. The two registrations below —
+  # _GI_CRYPT_SECRETS for crypt_wipe_secrets(), track_temp for cleanup() —
+  # were made in that subshell and died with it. The array the trap read was
+  # empty at every exit, so nothing was ever wiped: a file holding the LUKS
+  # passphrase in clear stayed on the tmpfs for the length of the run and past
+  # the end of it. Every call site had the bug, and the module's own promise
+  # hid it. Filling a variable in the caller's scope keeps both registrations
+  # in the shell that has to act on them.
+  #
+  # The trap is NOT armed here either, for a related reason kept from the
+  # version that printed: crypt_arm_secret_trap() is called by the step, in
+  # the parent shell, before any secret exists. A `trap ... EXIT` armed inside
+  # a subshell fires when that subshell ends, and _crypt_exit_trap calls
+  # cleanup(), which unmounts every tracked mount — which is how arming it
+  # here once tore the target tree down mid-run, three lines after a mount.
+  # The locals are prefixed because printf -v writes into whatever name the
+  # caller passed, and a local of that name here would swallow it: the first
+  # version used `path` and `crypt_secret_file path demo` filled its own local
+  # and left the caller with nothing. A prefix nobody would pass as an argument
+  # is the whole fix.
+  local _csf_var="$1" _csf_purpose="${2:-secret}" _csf_dir="${3:-}" _csf_path
+
+  if [[ ! "$_csf_var" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+    die "internal: crypt_secret_file() got an invalid variable name: ${_csf_var}"
+  fi
+
+  [[ -n "$_csf_dir" ]] || _csf_dir="$(crypt_secure_tmpdir)"
+  _csf_path="$(umask 077 && mktemp "${_csf_dir}/gentoo-install-${_csf_purpose}.XXXXXXXX")" || {
+    err "cannot create a temporary file under ${_csf_dir}"
     return 1
   }
-  chmod 0600 -- "$path" 2>/dev/null || true
-  _GI_CRYPT_SECRETS+=("$path")
+  chmod 0600 -- "$_csf_path" 2>/dev/null || true
+  _GI_CRYPT_SECRETS+=("$_csf_path")
   if declare -F track_temp >/dev/null 2>&1; then
-    track_temp "$path"
+    track_temp "$_csf_path"
   fi
-  # The trap is NOT armed here, and that is the whole point of this comment.
-  #
-  # This function prints a path, so every caller runs it as "$(crypt_secret_file
-  # ...)" — a command substitution, which is a subshell. `trap ... EXIT` executed
-  # inside a subshell fires when that subshell ends, and _crypt_exit_trap calls
-  # cleanup(), which unmounts every tracked mount. So arming here tore the target
-  # tree down on the spot: every secret file created after step 30 mounted
-  # anything left the machine unmounted a line later, and the next command failed
-  # with "No such file or directory" about a path that existed the line before.
-  #
-  # The idempotence guard did not save it either: _GI_CRYPT_TRAPPED="yes" is set
-  # in the subshell and never reaches the parent, so every call armed it afresh.
-  #
-  # crypt_arm_secret_trap() is called by the step instead, in the parent shell,
-  # before any secret exists.
-  printf '%s\n' "$path"
+  printf -v "$_csf_var" '%s' "$_csf_path"
 }
 
 crypt_write_secret() {
@@ -372,6 +391,30 @@ crypt_write_secret() {
     return 1
   }
   chmod 0600 -- "$path" 2>/dev/null || true
+}
+
+crypt_hold_key() {
+  # Keep a key file alive for a later step, and say so out loud.
+  #
+  # The TPM sealing does not happen in step 30 any more (see the header of
+  # variants/crypt/luks-tpm.sh): it happens in step 75, inside the target,
+  # because that is where clevis exists. The key that proves the right to edit
+  # the header therefore has to outlive the step that made it. It stays where
+  # every other secret stays — a mode-600 file on a tmpfs, registered for the
+  # trap — and the run wipes it on every exit path, including Ctrl-C.
+  #
+  # This lives in lib/crypt.sh and not in the variant on purpose: step 75 loads
+  # the variant again, which re-sources the file and resets every variable in
+  # it. The library is sourced once per run, so a value left here survives.
+  # Args: $1 = path.
+  CRYPT_HELD_KEYFILE="$1"
+}
+
+crypt_held_key() {
+  # The key a previous step left behind, if it is still there. A returned
+  # value, so stdout; non-zero when the caller has to ask for it again.
+  [[ -n "$CRYPT_HELD_KEYFILE" && -s "$CRYPT_HELD_KEYFILE" ]] || return 1
+  printf '%s\n' "$CRYPT_HELD_KEYFILE"
 }
 
 crypt_wipe_secrets() {
@@ -390,6 +433,7 @@ crypt_wipe_secrets() {
     done
   fi
   _GI_CRYPT_SECRETS=()
+  CRYPT_HELD_KEYFILE=""
   return 0
 }
 
@@ -410,6 +454,16 @@ crypt_read_passphrase() {
   if [[ ! "$varname" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
     die "internal: crypt_read_passphrase() got an invalid variable name: ${varname}"
   fi
+
+  # printf -v writes into the name the caller passed, so a name this function
+  # already uses as a local would be filled here and stay empty out there — an
+  # empty passphrase, silently, with no error on any path. crypt_secret_file()
+  # shipped with exactly that collision on `path`. Refused rather than risked.
+  case "$varname" in
+    varname | label | file_key | env_name | twice | file | mode | value)
+      die "internal: crypt_read_passphrase() cannot fill \"${varname}\": it is one of its own locals"
+      ;;
+  esac
 
   value="${!env_name:-}"
   if [[ -n "$value" ]]; then
@@ -589,6 +643,18 @@ _GI_CRYPT_WAYS_IN=()
 
 crypt_record_way_in() {
   # Args: $1 = slot, $2 = one line saying what a human does with it.
+  #
+  # Idempotent by slot, because the count is a safety gate and not a tally:
+  # step 75 proves the recovery slot again before it may write a second one,
+  # and one credential counted twice would satisfy a rule that exists to
+  # insist on two different ones.
+  local entry
+  for entry in ${_GI_CRYPT_WAYS_IN[@]+"${_GI_CRYPT_WAYS_IN[@]}"}; do
+    if [[ "${entry%%|*}" == "$1" ]]; then
+      ok "proved again: slot $1 opens the container — $2"
+      return 0
+    fi
+  done
   _GI_CRYPT_WAYS_IN+=("$1|$2")
   ok "proved: slot $1 opens the container — $2"
 }
@@ -754,8 +820,8 @@ crypt_gpg_unwrap() {
     export GPG_TTY
   fi
 
-  local diag
-  diag="$(crypt_secret_file gpgdiag 2>/dev/null || printf '')"
+  local diag=""
+  crypt_secret_file diag gpgdiag 2>/dev/null || diag=""
   gpg --quiet --batch --pinentry-mode loopback --passphrase-fd 3 \
     --decrypt "$wrapped" 3<<<"$passphrase" >"$out" 2>"${diag:-/dev/null}" || rc=$?
 
@@ -786,13 +852,80 @@ crypt_tpm_present() {
   [[ -c /dev/tpmrm0 || -c /dev/tpm0 || -d /sys/class/tpm/tpm0 ]]
 }
 
+# Where clevis runs.
+#
+# Sealing needs clevis, jose and the tpm2 helpers, and the medium the Gentoo
+# handbook tells everyone to boot — install-amd64-minimal.iso — ships none of
+# them, cannot install them (it carries no ebuild repository) and never will.
+# Requiring them on the live medium made this variant unusable on the standard
+# one, which run 4 established by refusing there, with a message that said the
+# opposite of what had happened.
+#
+# So the binding runs inside the target, with the very clevis that has to
+# release the key at every boot afterwards — which is also the stronger proof.
+# Nothing else about it changes: the device, the keyslot and the header are the
+# same on both sides of a chroot, and the PCRs this project binds (0, 2, 3, 6)
+# measure the firmware and its option ROMs, not the operating system reading
+# them, so a value sealed from inside the chroot is the value the installed
+# system finds at boot.
+#
+# Set to yes by step 75, the only caller with a target attached.
+CRYPT_CLEVIS_IN_TARGET="no"
+
+crypt_clevis_where() {
+  # For messages: the two sides read differently to an operator.
+  if [[ "$CRYPT_CLEVIS_IN_TARGET" == "yes" ]]; then
+    printf 'in the target\n'
+  else
+    printf 'here\n'
+  fi
+}
+
+crypt_clevis_run() {
+  # A clevis or tpm2 command, run where the sealing happens.
+  if [[ "$CRYPT_CLEVIS_IN_TARGET" == "yes" ]]; then
+    chroot_run "$@"
+  else
+    run_cmd "$@"
+  fi
+}
+
+crypt_clevis_capture() {
+  # The same for a command whose stdout is the answer — never through run_cmd,
+  # because a value is not a side effect.
+  if [[ "$CRYPT_CLEVIS_IN_TARGET" == "yes" ]]; then
+    chroot_capture "$@"
+  else
+    "$@" 2>/dev/null
+  fi
+}
+
+crypt_clevis_have() {
+  # Is this command present where the sealing happens? Args: $1 = command.
+  #
+  # `command -v` cannot be handed to chroot_run: its prelude ends in
+  # exec "$0" "$@", and a shell builtin is not something exec can start. A
+  # bash -c around it is, and the name goes in as a positional argument rather
+  # than as text spliced into the script.
+  local cmd="$1"
+  if [[ "$CRYPT_CLEVIS_IN_TARGET" == "yes" ]]; then
+    # shellcheck disable=SC2016  # single quotes are the point: the inner
+    # shell expands $1, and the name goes in as an argument rather than as
+    # text spliced into a script.
+    chroot_run_quiet bash -c 'command -v "$1" >/dev/null 2>&1' bash "$cmd"
+  else
+    have "$cmd"
+  fi
+}
+
 crypt_clevis_slot() {
   # The slot clevis really owns, read from its own listing rather than
   # assumed. A container bound on another slot would otherwise keep its old
   # binding while a second one was created beside it.
   local dev="$1" slot
-  have clevis || return 1
-  slot="$(clevis luks list -d "$dev" 2>/dev/null | head -n 1 | cut -d: -f1 | tr -d ' ')"
+  crypt_clevis_have clevis || return 1
+  slot="$(crypt_clevis_capture clevis luks list -d "$dev" \
+    | head -n 1 | cut -d: -f1 | tr -d ' ')"
   [[ "$slot" =~ ^[0-9]+$ ]] || return 1
   printf '%s\n' "$slot"
 }
@@ -803,9 +936,12 @@ crypt_clevis_bind() {
   # and only uses this file to prove it may write to the header. The TPM slot
   # and the human slot therefore hold different secrets, and removing the key
   # file does not remove "a copy" of anything.
+  #
+  # The key file is named by a path the sealing side has to be able to open:
+  # crypt_key_for_target() answers that question when that side is a chroot.
   local dev="$1" keyfile="$2" slot="$3" policy
   policy="$(crypt_pcr_policy)"
-  run_cmd clevis luks bind -k "$keyfile" -s "$slot" -d "$dev" tpm2 "$policy"
+  crypt_clevis_run clevis luks bind -k "$keyfile" -s "$slot" -d "$dev" tpm2 "$policy"
 }
 
 crypt_clevis_verify_seal() {
@@ -822,11 +958,12 @@ crypt_clevis_verify_seal() {
     return 0
   fi
 
-  released="$(crypt_secret_file tpm-released)" || return 1
+  crypt_secret_file released tpm-released || return 1
 
   # The released key is written to a file and never to a variable or a log:
-  # it is the material that opens the disk.
-  clevis luks pass -d "$dev" -s "$slot" >"$released" 2>/dev/null || rc=$?
+  # it is the material that opens the disk. The redirection is this shell's,
+  # so the file is written on this side whichever side clevis ran on.
+  crypt_clevis_capture clevis luks pass -d "$dev" -s "$slot" >"$released" || rc=$?
   if ((rc != 0)); then
     err "the TPM refused to release the key it was just sealed with"
     err "       the binding exists, the sealing does not work"
@@ -848,11 +985,56 @@ crypt_clevis_verify_seal() {
   return 0
 }
 
+CRYPT_KEY_IN_TARGET=""
+
+crypt_key_for_target() {
+  # Name a key file as the sealing side sees it, in CRYPT_KEY_IN_TARGET.
+  #
+  # Secrets live on the first tmpfs among /run, /dev/shm and /tmp. Step 50
+  # bind-mounts /run and rbinds /dev into the target, so the first two are
+  # already visible inside at the same path and the answer is the path itself.
+  # /tmp is not, and rather than assume, this asks the target.
+  #
+  # The answer goes into a global and not to stdout, which would make every
+  # caller a command substitution: a copy created in a subshell is registered
+  # for the trap in that subshell and left behind when it ends — a key file
+  # surviving the run, which is the one outcome this module exists to prevent.
+  # Args: $1 = path on this side.
+  local path="$1" copy root
+  CRYPT_KEY_IN_TARGET=""
+  if [[ "$CRYPT_CLEVIS_IN_TARGET" != "yes" ]] || chroot_run_quiet test -r "$path"; then
+    CRYPT_KEY_IN_TARGET="$path"
+    return 0
+  fi
+  # Copied, never moved, and registered like every other secret, so the same
+  # trap removes it.
+  root="$(chroot_target)"
+  crypt_secret_file copy seal "${root}/run" || return 1
+  cat -- "$path" >"$copy" || {
+    err "cannot copy the key where the target can read it: ${copy}"
+    return 1
+  }
+  # shellcheck disable=SC2034  # read by variants/crypt/luks-tpm.sh
+  CRYPT_KEY_IN_TARGET="${copy#"$root"}"
+  return 0
+}
+
 # --------------------------------------------------------------------------- #
 #  Variants                                                                   #
 # --------------------------------------------------------------------------- #
-# A variant file defines these seven and nothing else. The first three are
-# values (stdout), the last four act or render.
+# A variant file defines these seven. The first three are values (stdout), the
+# last four act or render.
+#
+# Two more are optional, and a variant defines one only if it has the work:
+#
+#   crypt_variant_deploy   step 30, once the target tree is mounted: a file the
+#                          container needs at boot, put where it belongs.
+#   crypt_variant_seal     step 75, inside the target: the part that needs
+#                          packages the live medium does not have. luks-tpm
+#                          binds the TPM there, with the target's own clevis.
+#
+# Both are looked up with declare -F rather than required, so adding a variant
+# still means adding one file and nothing else (DESIGN.md §10).
 readonly CRYPT_VARIANT_HOOKS=(
   crypt_variant_describe
   crypt_variant_boot_note

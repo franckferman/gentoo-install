@@ -12,6 +12,34 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **The TPM sealing left the live medium.** `crypt = luks-tpm` refused at step
+  30 unless the running medium carried clevis, jose and tpm2-tools, and
+  `install-amd64-minimal.iso` — the medium the Gentoo handbook tells everyone to
+  boot — carries none of them and cannot install them: it has no ebuild
+  repository. The refusal even blamed the target. The binding now happens in the
+  new step 75, inside the target: step 30 ends with one proved way in and says
+  so, step 75 adds the second and proves it by making the chip release the key.
+  `--steps 50,75` seals a machine that is already installed, and
+  `--skip-steps 75` installs now and seals later.
+- **`app-crypt/clevis` is not in the official Gentoo repository**, which the
+  same run discovered — and a missing optional package no longer costs the
+  kernel. Step 70's `emerge` of the sealing helpers failed, the step failed with
+  it, and the run lost the kernel, the bootloader and the final verification:
+  an unbootable machine, because a helper was unavailable, for a container that
+  opened perfectly well with its recovery passphrase. Step 70 now separates what
+  the machine needs to open its container from what seals a slot afterwards, and
+  every message that mentions clevis names the GURU overlay it lives in.
+- **No secret file was ever wiped.** `crypt_secret_file()` registered every file
+  it made for the trap and for `cleanup()` — but it printed the path, so every
+  call site was a command substitution and both registrations died with that
+  subshell. The array `crypt_wipe_secrets()` read was empty at every exit: a
+  file holding the LUKS passphrase in clear survived the run. It fills a
+  caller-named variable now, the same shape `crypt_read_passphrase()` already
+  had, and a test creates one and looks for it after the wipe.
+- **A slot proved twice counted as two ways in.** The count is the gate that
+  stops `luks-tpm` finishing with the TPM as the only credential, so it has to
+  count credentials rather than proofs.
+
 - **A dry run of an encrypted install always failed.** The state journal is how
   one step tells the next what it did — step 20 records `disk.crypt_device`,
   step 30 reads it — and a dry run wrote nothing, so step 30 stopped with "No
@@ -80,6 +108,11 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Added
 
+- **Step 75, `seal`** — what the encryption variant still owes the target, done
+  inside the target. It is a number of its own rather than a few lines at the
+  end of step 70 because the number is the public API: `--skip-steps 75`
+  installs now and seals later, `--steps 50,75` seals a machine that is already
+  installed. A variant with nothing to seal says so and the step succeeds.
 - `tests/firmware_guard.bats`, `tests/mode_guard.bats`, and two hygiene tests
   that fail when a setting or a state-journal key is read under a name nothing
   declares or writes. Every one of them exists because of a defect above.

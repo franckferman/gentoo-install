@@ -100,13 +100,60 @@ running, which is far more comfortable than typing in a VM window.
 
 ```bash
 mkdir -p tpm
-swtpm socket --tpmstate dir=tpm --ctrl type=unixio,path=tpm/sock --tpm2 -d
+swtpm socket --tpm2 --tpmstate dir=tpm \
+  --ctrl type=unixio,path=tpm/sock --flags startup-clear &
 
 # add to the qemu line:
 #   -chardev socket,id=chrtpm,path=tpm/sock \
 #   -tpmdev emulator,id=tpm0,chardev=chrtpm \
 #   -device tpm-tis,tpmdev=tpm0
 ```
+
+`--flags startup-clear` is not decoration: it makes swtpm start the TPM itself
+rather than wait for firmware to send `TPM2_Startup`. Without it the guest can
+find the device and get nothing out of it. Check from inside the guest, not
+from the QEMU monitor — the monitor reports the device QEMU created, which says
+nothing about whether the guest's kernel bound a driver to it:
+
+```bash
+ls -l /dev/tpm0 /dev/tpmrm0
+cat /sys/class/tpm/tpm0/tpm_version_major    # 2
+```
+
+`swtpm_setup` is not needed for this and may fail on some hosts ("Error getting
+next filename"); `swtpm socket` creates the state it needs on its own.
+
+---
+
+## Headless: a serial console instead of a window
+
+`-display gtk` needs a screen and a keyboard. To drive a run from a script — or
+from an ssh session — boot the ISO's kernel directly and put the console on a
+socket. The ISO's own GRUB is graphical, and its menu cannot be driven blind:
+`screendump` returns a framebuffer, not text.
+
+```bash
+# once: take the kernel and the initramfs out of the ISO
+sudo mount -o ro,loop install-amd64-minimal.iso /mnt/iso
+cp /mnt/iso/boot/gentoo ./kernel && cp /mnt/iso/boot/gentoo.igz ./initrd
+blkid -o value -s LABEL install-amd64-minimal.iso   # e.g. Gentoo-amd64-20260830
+sudo umount /mnt/iso
+```
+
+```bash
+# then, instead of -boot menu=on -display gtk:
+  -kernel ./kernel -initrd ./initrd \
+  -append "dokeymap nodhcp root=live:CDLABEL=<the label> rd.live.dir=/ \
+           rd.live.squashimg=image.squashfs cdroot console=ttyS0,115200" \
+  -serial unix:./serial.sock,server=on,wait=off \
+  -display none
+```
+
+The ISO still goes in as `-cdrom`: the kernel above is only the entry point,
+and the live system is read from the same disc. `socat UNIX-CONNECT:serial.sock
+-` then gives a shell, `dhcpcd eth0` gives it network (the `nodhcp` above keeps
+the boot from waiting for one), and the installer's prompts — the typed disk
+proof, the passwords — are answered by writing lines to it.
 
 ---
 
@@ -252,8 +299,30 @@ cp /usr/share/edk2-ovmf/OVMF_VARS.fd ./vars.fd
 
 ## Run 4 — the TPM
 
-Needs the swtpm lines above. This is the variant with the most ways to go wrong
-and the one whose failure mode this whole project was shaped by.
+Needs the swtpm lines above and the headless section: the installer has to run
+**inside** the VM, because sealing binds a key to the TPM of the machine being
+installed.
+
+**Read this before running it.** `app-crypt/clevis` is not in the official
+Gentoo repository. That was found here, by running this: `emerge` answered
+"there are no ebuilds to satisfy app-crypt/clevis". The GURU overlay carries
+it, and the sealing needs it in the target:
+
+```bash
+# inside the target, or before --steps 50,75
+eselect repository enable guru && emaint sync -r guru
+emerge --ask app-crypt/clevis
+```
+
+Without it the run is still worth doing and still ends with an encrypted
+machine — the container built, the recovery passphrase proved, the kernel and
+the bootloader installed. What you are checking then is that step 75 refuses
+clearly and that nothing else is damaged by its refusal, which is a real
+property: an earlier version failed step 70 over the same missing package and
+lost the kernel with it.
+
+This is the variant with the most ways to go wrong and the one whose failure
+mode this whole project was shaped by.
 
 ```bash
 ./gentoo-install.sh \

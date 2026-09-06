@@ -102,10 +102,10 @@ crypt_variant_apply() {
     fi
   fi
 
-  _LP_KEY_PRIMARY="$(crypt_secret_file boot)" || return 1
+  crypt_secret_file _LP_KEY_PRIMARY boot || return 1
   crypt_write_secret "$_LP_KEY_PRIMARY" "$boot_pass" || return 1
   if [[ -n "$recovery_pass" ]]; then
-    _LP_KEY_RECOVERY="$(crypt_secret_file recovery)" || return 1
+    crypt_secret_file _LP_KEY_RECOVERY recovery || return 1
     crypt_write_secret "$_LP_KEY_RECOVERY" "$recovery_pass" || return 1
   fi
 

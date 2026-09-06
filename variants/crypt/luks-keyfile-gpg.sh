@@ -176,8 +176,8 @@ crypt_variant_apply() {
 
   # Everything below happens on the tmpfs, mode 600, and is wiped by the trap
   # whichever way this run ends.
-  _KG_WRAPPED="$(crypt_secret_file wrapped)" || return 1
-  _KG_KEY_RAW="$(crypt_secret_file rawkey)" || return 1
+  crypt_secret_file _KG_WRAPPED wrapped || return 1
+  crypt_secret_file _KG_KEY_RAW rawkey || return 1
 
   log "drawing the LUKS key and wrapping it"
   crypt_gpg_wrap "$_KG_WRAPPED" "$master_pass" || return 1
@@ -188,7 +188,7 @@ crypt_variant_apply() {
   crypt_gpg_unwrap "$_KG_WRAPPED" "$_KG_KEY_RAW" "$master_pass" || return 1
 
   if [[ -n "$recovery_pass" ]]; then
-    _KG_KEY_RECOVERY="$(crypt_secret_file recovery)" || return 1
+    crypt_secret_file _KG_KEY_RECOVERY recovery || return 1
     crypt_write_secret "$_KG_KEY_RECOVERY" "$recovery_pass" || return 1
   fi
 
@@ -252,7 +252,7 @@ crypt_variant_deploy() {
 
   # The proof that matters is about the deployed file, not the one on the
   # tmpfs: they are meant to be the same bytes, and "meant to" is not a check.
-  _KG_KEY_FROM_ESP="$(crypt_secret_file esprawkey)" || return 1
+  crypt_secret_file _KG_KEY_FROM_ESP esprawkey || return 1
   crypt_gpg_unwrap "$key" "$_KG_KEY_FROM_ESP" "$_KG_MASTER_PASS" || return 1
   return 0
 }

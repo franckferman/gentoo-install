@@ -154,7 +154,7 @@ load helper
 @test "no function invoked inside a command substitution can install a trap" {
   # This one cost a night, and it is a class rather than a case.
   #
-  # crypt_secret_file() prints a path, so every caller runs it as
+  # crypt_secret_file() used to print a path, so every caller ran it as
   # "$(crypt_secret_file ...)" — a subshell. It called crypt_arm_secret_trap(),
   # which holds `trap ... EXIT`. A trap installed inside a subshell fires when
   # that subshell ends, and this one calls cleanup(), which unmounts every
@@ -173,4 +173,163 @@ load helper
     printf 'a trap can be armed from inside a command substitution:\n%s\n' "$offenders" >&2
     return 1
   fi
+}
+
+# --------------------------------------------------------------------------- #
+#  Secrets, and who is left holding them                                      #
+# --------------------------------------------------------------------------- #
+@test "a secret file is registered where the trap can actually see it" {
+  # The same subshell, one consequence further on, and this one was live.
+  #
+  # crypt_secret_file() registered every file it made in _GI_CRYPT_SECRETS and
+  # handed it to track_temp — but it printed the path, so every call site was
+  # a command substitution and both registrations died with that subshell. The
+  # array crypt_wipe_secrets() read was empty at every exit: nothing was ever
+  # wiped, and a file holding the LUKS passphrase in clear stayed on the tmpfs
+  # for the length of the run and past the end of it.
+  #
+  # It fills a caller-named variable now, which is the same shape
+  # crypt_read_passphrase() already had. This test is the property, not the
+  # shape: make one, wipe, and look.
+  gi_bash '
+    DRY_RUN=no
+    crypt_secret_file path demo || exit 1
+    [[ -f "$path" ]] || exit 1
+    (( ${#_GI_CRYPT_SECRETS[@]} == 1 )) || exit 2
+    crypt_wipe_secrets
+    if [[ -e "$path" ]]; then rm -f "$path"; exit 3; fi
+  '
+  [ "$status" -eq 0 ]
+}
+
+@test "a slot proved twice is still one way in" {
+  # The count is a safety gate — luks-tpm refuses to finish under two — so it
+  # has to count credentials and not proofs. Step 75 proves the recovery slot
+  # again before it may write the TPM one, and that must not be enough on its
+  # own to satisfy the rule.
+  gi_bash '
+    crypt_forget_ways_in
+    crypt_record_way_in 0 "recovery"
+    crypt_record_way_in 0 "recovery, proved again by the seal"
+    crypt_ways_in_count
+  '
+  [ "$status" -eq 0 ]
+  [ "$output" = "1" ]
+}
+
+# --------------------------------------------------------------------------- #
+#  luks-tpm: what runs where                                                  #
+# --------------------------------------------------------------------------- #
+@test "luks-tpm asks the live medium for the chip and for nothing else" {
+  # It used to refuse without clevis, jose and tpm2-tools on the medium that is
+  # running — and install-amd64-minimal.iso, the one the Gentoo handbook tells
+  # everyone to boot, has none of them and cannot install them. A run on that
+  # ISO stopped at step 30 with a message that said the target needed them.
+  # The sealing moved into the target, where step 70 installs clevis anyway;
+  # the only thing asked here is the chip, because that cannot be installed.
+  gi_bash '
+    config_init_defaults
+    CFG[crypt]=luks-tpm
+    CFG[crypt_recovery]=yes
+    source "${GI_ROOT}/variants/crypt/luks-tpm.sh"
+    crypt_require_device() { CRYPT_DEVICE=/dev/sdz; return 0; }
+    crypt_tpm_present() { return 0; }
+    crypt_already_provisioned() { return 1; }
+    have() { [[ "$1" != clevis && "$1" != jose && "$1" != tpm2_createprimary ]]; }
+    crypt_variant_check
+  '
+  [ "$status" -eq 0 ]
+}
+
+@test "luks-tpm still refuses a machine with no TPM, before anything is destroyed" {
+  gi_bash '
+    config_init_defaults
+    CFG[crypt]=luks-tpm
+    CFG[crypt_recovery]=yes
+    source "${GI_ROOT}/variants/crypt/luks-tpm.sh"
+    crypt_require_device() { CRYPT_DEVICE=/dev/sdz; return 0; }
+    crypt_tpm_present() { return 1; }
+    crypt_already_provisioned() { return 1; }
+    crypt_variant_check
+  '
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"no TPM 2.0 device"* ]]
+}
+
+@test "the binding is in the seal hook and nowhere near apply()" {
+  # Order matters more than presence here: apply() runs in step 30, on the live
+  # medium, where clevis does not exist. A binding that crept back into it
+  # would fail on the standard install medium and nowhere else — the worst
+  # kind of regression, because every developer machine has clevis.
+  gi_bash '
+    source "${GI_ROOT}/variants/crypt/luks-tpm.sh"
+    declare -F crypt_variant_seal >/dev/null || exit 1
+    declare -f crypt_variant_apply | grep -q clevis_bind && exit 2
+    declare -f crypt_variant_seal | grep -q clevis_bind || exit 3
+    exit 0
+  '
+  [ "$status" -eq 0 ]
+}
+
+@test "a variant with nothing to seal makes step 75 succeed and say so" {
+  gi_bash 'config_init_defaults; set_explicit crypt luks-passphrase; step_75_seal'
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"nothing to seal"* ]]
+}
+
+@test "crypt = none reaches step 75 and finds no container" {
+  gi_bash 'config_init_defaults; set_explicit crypt none; step_75_seal'
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"no container to seal"* ]]
+}
+
+# --------------------------------------------------------------------------- #
+#  What a missing package may and may not cost                                #
+# --------------------------------------------------------------------------- #
+@test "a sealing helper that will not merge does not cost the kernel" {
+  # app-crypt/clevis is not in the official Gentoo repository. emerge answered
+  # "there are no ebuilds to satisfy app-crypt/clevis", step 70 returned
+  # non-zero, and the run lost the kernel, the bootloader and the final
+  # verification with it — leaving a machine that could not boot because an
+  # optional helper was unavailable, for a container that opened perfectly well
+  # with its recovery passphrase.
+  gi_bash '
+    config_init_defaults
+    target_crypt() { printf "tpm\n"; }
+    kernel_pkg_installed() { return 1; }
+    kernel_write_package_use() { return 0; }
+    kernel_emerge() { shift; case "$*" in *clevis*) return 1 ;; esac; return 0; }
+    kernel_ensure_crypt_packages /mnt/gentoo
+  '
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"guru"* || "$stderr" == *"GURU"* ]]
+}
+
+@test "but cryptsetup and dracut still do" {
+  # Those two are how the machine opens its container at all. Without them
+  # there is no reason to build a kernel, and the step says so by failing.
+  gi_bash '
+    config_init_defaults
+    target_crypt() { printf "tpm\n"; }
+    kernel_pkg_installed() { return 1; }
+    kernel_write_package_use() { return 0; }
+    kernel_emerge() { shift; case "$*" in *cryptsetup*) return 1 ;; esac; return 0; }
+    kernel_ensure_crypt_packages /mnt/gentoo
+  '
+  [ "$status" -ne 0 ]
+}
+
+@test "luks-tpm says the overlay is needed before the disk is erased" {
+  gi_bash '
+    config_init_defaults
+    CFG[crypt_recovery]=yes
+    source "${GI_ROOT}/variants/crypt/luks-tpm.sh"
+    crypt_require_device() { CRYPT_DEVICE=/dev/sdz; return 0; }
+    crypt_tpm_present() { return 0; }
+    crypt_already_provisioned() { return 1; }
+    crypt_variant_check
+  '
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"not in the official Gentoo repository"* ]]
+  [[ "$stderr" == *"guru"* ]]
 }
