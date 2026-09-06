@@ -99,3 +99,43 @@ _layout() {
     return 1
   }
 }
+
+@test "no layout's description claims a topology the plan can override" {
+  # disk_lvm overrides what a layout asks for. server and desktop said "LVM;"
+  # in their about: line, and with --disk-lvm no the report printed that
+  # sentence one line above "no LVM: plain GPT partitions" — in the one
+  # sentence an operator reads before typing the device path to confirm the
+  # erase.
+  local hits
+  hits="$(grep -rn '^# about:.*\b\(LVM\|lvm\)\b' "${GI_ROOT}/variants/layout" || true)"
+  [ -z "$hits" ] || {
+    printf 'a description that names a topology:\n%s\n' "$hits" >&2
+    return 1
+  }
+}
+
+@test "the topology is stated by the plan, whatever the layout asked for" {
+  local name
+  for name in server desktop; do
+    gi_capture 'config_init_defaults >/dev/null 2>&1
+      _DISK_LVM=""; _DISK_ABOUT=""
+      _DISK_N=(); _DISK_M=(); _DISK_K=(); _DISK_P=()
+      _DISK_MIN=(); _DISK_MAX=(); _DISK_F=()
+      mapfile -t rows < <(disk_load_layout "$1")
+      _disk_parse_records "$1" "${rows[@]}" >/dev/null 2>&1
+      printf "%s|%s\n" "$_DISK_LVM" "$_DISK_ABOUT"' "$name" >"${BATS_TEST_TMPDIR}/${name}"
+    grep -q '^yes|' "${BATS_TEST_TMPDIR}/${name}"
+    ! grep -qi 'lvm' <(cut -d'|' -f2 "${BATS_TEST_TMPDIR}/${name}")
+  done
+}
+
+@test "minimal asks for no LVM and says so in the record, not in prose" {
+  gi_capture 'config_init_defaults >/dev/null 2>&1
+    _DISK_LVM=""; _DISK_ABOUT=""
+    _DISK_N=(); _DISK_M=(); _DISK_K=(); _DISK_P=()
+    _DISK_MIN=(); _DISK_MAX=(); _DISK_F=()
+    mapfile -t rows < <(disk_load_layout minimal)
+    _disk_parse_records minimal "${rows[@]}" >/dev/null 2>&1
+    printf "%s\n" "$_DISK_LVM"' >"${BATS_TEST_TMPDIR}/m"
+  [ "$(cat "${BATS_TEST_TMPDIR}/m")" = "no" ]
+}

@@ -84,6 +84,14 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **A layout's one-line description no longer claims a topology the plan can
+  override.** `server` and `desktop` began theirs with "LVM;", and `disk_lvm`
+  overrides what a layout asks for — so `--disk-layout server --disk-lvm no`
+  printed "LVM; /var and /var/log split off…" one line above "no LVM: plain GPT
+  partitions". That sentence is the one an operator reads before typing the
+  device path to confirm the erase. The topology is stated by the plan, which
+  knows; the description says what the shape is for.
+
 - **A `--resume` no longer writes a TPM slot into the journal that nothing
   sealed.** On the already-provisioned path, the `luks-tpm` variant asserted
   `crypt_tpm_slot` outright, and it was wrong in both directions. Where step 75

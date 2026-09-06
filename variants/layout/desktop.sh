@@ -31,7 +31,7 @@ layout_desktop() {
   # tree and one kernel build actually occupy.
   cat <<'EOF'
 # lvm: yes
-# about: LVM; the system takes what it needs and /home takes the rest.
+# about: the system takes what it needs and /home takes the rest.
 swap:swap:auto::
 root:/:25%/8G/80G:@fs@
 var:/var:12%/6G/80G:@fs@

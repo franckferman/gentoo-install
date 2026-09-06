@@ -20,6 +20,11 @@
 #
 set -euo pipefail
 
+# The about: line says what the shape is for, and never which topology carries
+# it. disk_lvm overrides what a layout asks for, and this line said "LVM;" on a
+# plan the very next line of the report called "no LVM: plain GPT partitions" —
+# in the one sentence an operator reads before typing the device path to
+# confirm the erase.
 layout_server() {
   # /var takes the largest share: on a Gentoo server it holds the portage
   # tree, the distfiles, the binary package cache and whatever the services
@@ -27,7 +32,7 @@ layout_server() {
   # is a rotation problem, not a capacity problem.
   cat <<'EOF'
 # lvm: yes
-# about: LVM; /var and /var/log split off so a runaway log cannot fill the root.
+# about: /var and /var/log split off so a runaway log cannot fill the root.
 swap:swap:auto::
 root:/:20%/6G/40G:@fs@
 var:/var:35%/8G/400G:@fs@
