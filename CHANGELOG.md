@@ -12,6 +12,15 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Added
 
+- **A `musl` stage has been installed.** Never done before: the flavour was
+  offered, the tables named it, and nothing had ever unpacked one. Steps 20 to
+  50 on an encrypted disk, four steps and none failed — the signed pointer, the
+  detached `.asc` and the signed sha256 all check out for
+  `stage3-amd64-musl-openrc`, and the tree that lands is a real musl one
+  (`ld-musl-x86_64.so.1`, `CHOST="x86_64-pc-linux-musl"`, no `libc.so.6`). The
+  `default/linux/amd64/23.0/musl` profile is selected against a real Portage
+  tree, with the development-profile warning the table asks for.
+
 - **`cpu_governor`, `performance` by default.** An install is one long compile
   and a live medium boots on whatever governor its image shipped with, which
   is the right default for a laptop reading a web page and the wrong one for
@@ -36,6 +45,22 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   without a word. It measures them now and says which ones bind nothing.
 
 ### Fixed
+
+- **A musl target is no longer given locale work it cannot do.** musl has no
+  locale system: there is no `locale-gen`, there never will be one, and
+  `/etc/locale.gen` is a file nothing on such a system reads. Step 90 wrote it
+  anyway, warned that the locales "were listed, not built", and handed the
+  operator `chroot ... locale-gen && eselect locale set en_US.UTF-8` to run by
+  hand — a command that cannot succeed there. A to-do nobody can do reads as
+  unfinished work on a machine that is finished. `LANG` is still written to
+  `/etc/env.d/02locale`, because programs read it for their own messages and
+  for the character set they assume. The C library is read off the tree and
+  not off `flavour`: `--stage-file` brings archives the catalogue never named.
+
+- **The governor is one command, not one per CPU.** `run_cmd` in a loop put
+  sixteen identical lines in the plan on the machine this was written on, and
+  a hundred and twenty-eight on a two-socket server. `tee` takes every file at
+  once.
 
 - **The crypt settings are judged before step 20 erases anything.**
   `crypt_validate_config` describes itself as "ten milliseconds, before a

@@ -515,9 +515,51 @@ _sys_locale_lines() {
   fi
 }
 
+_sys_target_libc() {
+  # Asked of the tree, not of CFG[flavour]: --stage-file brings archives the
+  # catalogue never named, and the C library is the thing that decides here.
+  # A returned value, so stdout.
+  local root="$1" f
+  for f in "${root}"/lib/ld-musl-*.so.1 "${root}"/lib64/ld-musl-*.so.1; do
+    [[ -e "$f" ]] && {
+      printf 'musl\n'
+      return 0
+    }
+  done
+  if [[ -e "${root}/lib64/libc.so.6" || -e "${root}/lib/libc.so.6" ]]; then
+    printf 'glibc\n'
+    return 0
+  fi
+  printf 'unknown\n'
+}
+
 _sys_locales() {
   local root="$1" locale eselect_name
   locale="$(_sys_cfg "en_US.UTF-8" locale lang)"
+
+  # musl has no locale system at all. There is no locale-gen, there never will
+  # be one, and /etc/locale.gen is a file nothing on such a system reads.
+  #
+  # This step used to write that file anyway, then warn that "locale-gen is not
+  # in the target tree; locales were listed, not built", then hand the operator
+  # `chroot ... locale-gen && eselect locale set en_US.UTF-8` to run by hand —
+  # a command that cannot succeed on musl and never could. A to-do nobody can
+  # do is worse than no to-do: it reads as unfinished work on a machine that
+  # is finished.
+  if [[ "$(_sys_target_libc "$root")" == "musl" ]]; then
+    log "musl: no locale-gen, and no /etc/locale.gen to feed it"
+    log "       musl is UTF-8 and only UTF-8, so there is nothing to generate."
+    log "       LANG is still set, because programs read it for their own"
+    log "       messages and for the character set they assume."
+    write_block "${root}/etc/env.d/02locale" "locale" <<EOF
+LANG="${locale}"
+LC_COLLATE="C.UTF-8"
+EOF
+    _sys_note_change
+    _sys_in_chroot "$root" env-update || true
+    _sys_record locale "$locale"
+    return 0
+  fi
 
   write_block "${root}/etc/locale.gen" "locales" <<EOF
 $(_sys_locale_lines "$locale" | sort -u)

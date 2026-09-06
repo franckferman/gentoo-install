@@ -84,7 +84,7 @@ cpu_validate_governor() {
 
 cpu_apply_governor() {
   # Args: none. Reads CFG[cpu_governor]. Returns 0 when there is nothing to do.
-  local want="${CFG[cpu_governor]:-keep}" now f
+  local want="${CFG[cpu_governor]:-keep}" now
   local -a files=()
 
   [[ "$want" == "keep" ]] && return 0
@@ -105,12 +105,15 @@ cpu_apply_governor() {
   log "       this is the machine running the installer, not the target;"
   log "       step 95 and any exit put ${now:-it} back"
 
-  for f in "${files[@]}"; do
-    run_cmd tee "$f" <<<"$want" >/dev/null || {
-      warn "could not set ${f}; the build runs on ${now:-the current governor}"
-      return 0
-    }
-  done
+  # One command and not one per CPU. tee takes every file at once, so the
+  # journal carries one entry and --dry-run one line that names every file
+  # that will be written. The first version called run_cmd in a loop and put
+  # sixteen identical lines in the plan on this machine, which on a two-socket
+  # server would be a hundred and twenty-eight.
+  if ! run_cmd tee "${files[@]}" <<<"$want" >/dev/null; then
+    warn "could not set every governor; the build runs on ${now:-what is there}"
+    return 0
+  fi
 
   # Recorded after the change and not before it: a journal entry naming a
   # governor that was never left is a restore that undoes nothing on the next

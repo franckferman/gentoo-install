@@ -330,3 +330,60 @@ gi_root_lock() {
     return 1
   }
 }
+
+@test "the target's C library is read off the tree, not off the flavour" {
+  # --stage-file brings archives the catalogue never named, so CFG[flavour]
+  # cannot be the source of truth for something the tree itself states.
+  local dir
+  dir="$(gi_tmp)"
+  mkdir -p "${dir}/musl/lib" "${dir}/glibc/lib64" "${dir}/neither/lib"
+  : >"${dir}/musl/lib/ld-musl-x86_64.so.1"
+  : >"${dir}/glibc/lib64/libc.so.6"
+
+  gi_bash '_sys_target_libc "$1/musl"' "$dir"
+  [ "$output" = "musl" ]
+  gi_bash '_sys_target_libc "$1/glibc"' "$dir"
+  [ "$output" = "glibc" ]
+  gi_bash '_sys_target_libc "$1/neither"' "$dir"
+  [ "$output" = "unknown" ]
+}
+
+@test "a musl target gets no locale.gen and no to-do nobody can do" {
+  # musl has no locale-gen and never will. The step wrote /etc/locale.gen
+  # anyway, said the locales "were listed, not built", and handed over
+  # `locale-gen && eselect locale set en_US.UTF-8` to run by hand — a command
+  # that cannot succeed on such a system. A to-do nobody can do reads as
+  # unfinished work on a machine that is finished.
+  local dir
+  dir="$(gi_tmp)/musltree"
+  mkdir -p "${dir}/lib" "${dir}/etc/env.d"
+  : >"${dir}/lib/ld-musl-x86_64.so.1"
+
+  gi_bash 'config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no; STATE_FILE=""; NON_INTERACTIVE=yes
+    _sys_in_chroot() { return 0; }
+    _sys_locales "$1"' "$dir"
+  [ "$status" -eq 0 ]
+  [ ! -e "${dir}/etc/locale.gen" ]
+  # It may say the word — "musl: no locale-gen" is the explanation. What it
+  # must not do is hand over work.
+  [[ "$stderr" != *"to do by hand"* ]] || {
+    printf 'a to-do nobody can do:\n%s\n' "$stderr" >&2
+    return 1
+  }
+  [[ "$stderr" != *"were listed, not built"* ]]
+  grep -q 'LANG="en_US.UTF-8"' "${dir}/etc/env.d/02locale"
+}
+
+@test "a glibc target still gets its locale.gen" {
+  local dir
+  dir="$(gi_tmp)/glibctree"
+  mkdir -p "${dir}/lib64" "${dir}/etc/env.d"
+  : >"${dir}/lib64/libc.so.6"
+
+  gi_bash 'config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no; STATE_FILE=""; NON_INTERACTIVE=yes
+    _sys_in_chroot() { return 0; }
+    _sys_locales "$1"' "$dir"
+  grep -q 'en_US.UTF-8 UTF-8' "${dir}/etc/locale.gen"
+}
