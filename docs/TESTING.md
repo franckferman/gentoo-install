@@ -292,20 +292,57 @@ was wrong.
 |---|---|---|---|
 | 3a | `grub` | booted | Run 2, 6 September: the passphrase prompt, then a login prompt on the installed machine |
 | 3b | `efistub` | booted | 6 September: `BdsDxe: starting Boot0001 "gentoo" … \EFI\gentoo\vmlinuz.efi`, quoted in full below |
-| 3c | `systemd-boot` | not booted | never run. `bootctl list` has never been read on a machine this installer built |
+| 3c | `systemd-boot` | booted | 7 September: the loader's own menu, quoted below, then the passphrase prompt |
 | 3d | `uki` | booted | Run 3b, 6 September: started from `\EFI\BOOT\BOOTX64.EFI` with no NVRAM entry at all |
 
-**Three of the four have been booted.** This page said "all four pass" for
-several days, over a table that named `systemd-boot` and an evidence column
-that did not exist yet. Nothing was ever quoted for it: no boot log, no
-`bootctl list`, nothing. The claim was written from the shape of the matrix
-rather than from a run, which is the one thing the top of this page says it
-will not do.
+**All four have been booted, and this time each has a log behind it.** For
+several days this page said "all four pass" over a table with no evidence
+column, and nothing had ever been quoted for `systemd-boot`. It was run on
+7 September, and what it produced is worth keeping in full, because it is the
+only one of the four where the loader draws a menu of its own:
 
-What run 3c still needs, and the only reason it is interesting: `bootctl`
-comes from `sys-apps/systemd-utils`, so systemd-boot works under OpenRC and
-`--init systemd` is not required. That is the assertion nobody has watched
-happen.
+```
+BdsDxe: starting Boot0001 "UEFI Misc Device" from PciRoot(0x0)/Pci(0x3,0x0)
+
+              Gentoo Linux (gentoo)
+              Reboot Into Firmware Interface
+                        Boot in 5s.
+
+[    0.000000] Linux version 6.18.48-gentoo-dist-bin …
+[    0.966531] dracut: dracut-111
+[    1.324409] dracut: luksOpen /dev/vda2 luks-862f4007-ed06-455e-b64b-5dbf0adb11ef
+Enter passphrase for /dev/vda2:
+```
+
+Three things in that transcript, in order:
+
+- **`UEFI Misc Device`** is what OVMF calls the removable path when its NVRAM
+  has never heard of the disk. `vars.fd` was a fresh copy of `OVMF_VARS.fd`,
+  and the install had been given `--no-variables` on purpose, so there was no
+  entry to find — the firmware fell back to `\EFI\BOOT\BOOTX64.EFI`, which
+  `bootctl install` writes beside its own directory. A systemd-boot install
+  that never touched an NVRAM still boots.
+- **the menu** is systemd-boot's, with the entry step 80 wrote
+  (`loader/entries/gentoo.conf`, title *Gentoo Linux*) and the five-second
+  timeout from the `loader.conf` step 80 wrote next to it.
+- **the passphrase prompt** is the same end point runs 2, 3b and 3d reached.
+
+The assertion this run existed to check also held: `--init openrc`, and
+`bootctl` came from `sys-apps/systemd-utils`. Step 80 found the package
+installed *without* it and rebuilt it for the `boot` USE flag on its own —
+a branch of the variant nobody had ever watched execute.
+
+And the run found a defect, which is why it was worth doing: step 80 reported
+
+```
+[+] NVRAM entry 'Linux Boot Manager' points at the loader
+```
+
+about an install that had just been refused its variables and had written no
+entry at all. `efibootmgr` reads the NVRAM of the machine it runs on, and this
+host has a `Linux Boot Manager` entry of its own. All three verifiers that read
+an NVRAM entry now ask `disk_may_write_firmware_state` first, exactly as the
+three that write one do.
 
 **`efistub` passed on 6 September**, by the first of the two routes this page
 already named and nobody had taken. An efistub install has no configuration

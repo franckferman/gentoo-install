@@ -85,13 +85,19 @@ this kernel has no serial console that early, so a machine that was booting
 correctly printed nowhere at all. The installer says so now when a command line
 names consoles and none of them is a screen.
 
-**`systemd-boot` has not been booted.** This paragraph used to say it had, on
-the same encrypted disk, through to the passphrase prompt — and nothing in this
-repository backs that up: no boot log, no `bootctl list`, no run recorded. The
-other three each have a quoted line from the firmware or the kernel. The status
-of record is the table in [docs/TESTING.md](docs/TESTING.md#run-3--the-bootloaders),
-one row per bootloader, and a test refuses this file and the project page if
-either says booted where that table does not.
+**`systemd-boot` has been booted**, on 7 September, and this time with a log
+behind it. The firmware was given a pristine variable store and the install had
+been refused an NVRAM entry on purpose, so OVMF fell back to
+`\EFI\BOOT\BOOTX64.EFI` — which `bootctl install` writes beside its own
+directory — and systemd-boot drew its own menu, with the entry and the
+five-second timeout step 80 had written, before starting the kernel and
+stopping at the passphrase prompt. `bootctl` came from
+`sys-apps/systemd-utils` under OpenRC, as this project has claimed all along;
+step 80 found the package installed without it and rebuilt it for the `boot`
+USE flag by itself. The status of record is the table in
+[docs/TESTING.md](docs/TESTING.md#run-3--the-bootloaders), one row per
+bootloader, and a test refuses this file and the project page if either says
+booted where that table does not.
 
 **A stage of your own works too.** `--stage-file` skips the catalogue, finds a
 `.asc` sitting beside the archive without being told about it, checks both the

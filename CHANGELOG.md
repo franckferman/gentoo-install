@@ -12,6 +12,17 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Added
 
+- **`systemd-boot` has been booted.** The last of the four, and the last claim
+  in this project without a log behind it. On a firmware given a pristine
+  variable store, with the install refused an NVRAM entry on purpose, OVMF fell
+  back to `\EFI\BOOT\BOOTX64.EFI` and systemd-boot drew its own menu — the
+  entry step 80 wrote, counting down the timeout step 80 wrote — then started
+  the kernel, and dracut stopped at the passphrase prompt. The assertion the
+  run existed to check held too: under `--init openrc`, `bootctl` comes from
+  `sys-apps/systemd-utils`, and step 80 found the package installed without it
+  and rebuilt it for the `boot` USE flag by itself. `docs/TESTING.md` carries
+  the transcript.
+
 - **The page's status section is four lines, one per bootloader.** A dense
   paragraph is where "all four of them started at least once" hid a boot that
   had not happened. Each bootloader now has its own row, its verdict in a
@@ -133,6 +144,24 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   through a redirection whose errors were discarded.
 
 ### Fixed
+
+- **A verifier that reads the NVRAM of the machine it runs on is not a
+  verifier.** Found by the run the previous fix finally made safe. Step 80
+  installed `systemd-boot` to a loop image, was refused its variables, wrote no
+  entry at all — and then reported
+
+      [+] NVRAM entry 'Linux Boot Manager' points at the loader
+
+  because `efibootmgr` reads the firmware of the machine it runs on, and this
+  host has a `Linux Boot Manager` entry of its own from the day before. `grub`
+  is worse: `boot_label` defaults to `gentoo`, which is exactly what a Gentoo
+  workstation calls its own entry, so an install to a loop image would have
+  been told its entry was in place. `efistub` failed the other way — it
+  *demanded* an entry step 80 had deliberately not written, and would have
+  failed a correct install. All three now ask
+  `disk_may_write_firmware_state()` before reading, as the three that write
+  one already ask before writing, and say that the removable path is what will
+  start the machine.
 
 - **Two of the four bootloaders could still write this machine's NVRAM.** The
   guard `disk_may_write_firmware_state()` exists because of one accident, and

@@ -306,7 +306,7 @@ footer { padding: 2rem; border-top: 1px solid var(--border); text-align: center;
   <div class="stat"><div class="stat-num">4</div><div class="stat-label">Choices to make</div></div>
   <div class="stat"><div class="stat-num">19</div><div class="stat-label">Stage3 variants</div></div>
   <div class="stat"><div class="stat-num">10</div><div class="stat-label">Rescue scripts</div></div>
-  <div class="stat"><div class="stat-num">382</div><div class="stat-label">Tests</div></div>
+  <div class="stat"><div class="stat-num">386</div><div class="stat-label">Tests</div></div>
 </div>
 
 <!-- FEATURES -->
@@ -528,19 +528,18 @@ sudo ./gentoo-install.sh --resume</pre>
       <span class="bs-verdict yes">booted</span>
       <span class="bs-note">Against a firmware whose NVRAM had never heard of it: started from <code>\EFI\BOOT\BOOTX64.EFI</code>, where the same firmware with a GRUB install had fallen through to PXE the day before.</span>
     </li>
-    <li data-bootloader="systemd-boot" data-status="not booted">
+    <li data-bootloader="systemd-boot" data-status="booted">
       <span class="bs-name">systemd-boot</span>
-      <span class="bs-verdict no">not booted</span>
-      <span class="bs-note">Never run. This page claimed it for several days on the strength of the matrix rather than of a boot log; nothing was ever quoted for it, and saying so is cheaper than the claim was.</span>
+      <span class="bs-verdict yes">booted</span>
+      <span class="bs-note">The loader's own menu — the entry step 80 wrote, counting down the timeout step 80 wrote — reached from <code>\EFI\BOOT\BOOTX64.EFI</code> on a firmware given a pristine variable store, because the install was refused an NVRAM entry on purpose.</span>
     </li>
   </ul>
 
   <p style="color:var(--muted);font-size:.92rem;line-height:1.8;margin-top:1.75rem;max-width:720px">
     <strong style="color:var(--text)">What none of it covers:</strong>
-    <code>systemd-boot</code> has never been started, and <code>efistub</code>
-    has not been booted from the removable path — that one needs a kernel with
-    its command line compiled in, because the fallback is launched with no load
-    options at all. <code>musl</code>, <code>hardened</code> and <code>llvm</code>
+    <code>efistub</code> has not been booted from the removable path — that one
+    needs a kernel with its command line compiled in, because the fallback is
+    launched with no load options at all. <code>musl</code>, <code>hardened</code> and <code>llvm</code>
     stages have been unpacked, and musl carried as far as step 70 — a kernel and
     a dracut initramfs with <code>crypt</code>, <code>crypt-lib</code> and
     <code>dm</code> in it — but no musl machine has been booted either. Read the

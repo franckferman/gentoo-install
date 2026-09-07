@@ -361,6 +361,16 @@ boot_grub_verify() {
 
   if boot_grub_removable; then
     ok "removable path: the firmware starts \\EFI\\BOOT\\BOOTX64.EFI with no entry"
+  elif ! disk_may_write_firmware_state "$(boot_disk)"; then
+    # The NVRAM efibootmgr reads is the NVRAM of the machine it runs on, and
+    # that is only the target when the guard says so. Asking anyway made this
+    # check answer about the host: boot_label defaults to 'gentoo', a Gentoo
+    # workstation has an entry of exactly that name, and an install to a loop
+    # image was told "NVRAM entry 'gentoo' points at the GRUB binary" about the
+    # entry the host itself boots from.
+    skip "no NVRAM entry was written, and this machine's own is not this install's"
+    skip "       \\EFI\\BOOT\\BOOTX64.EFI was written instead and needs no entry"
+    skip "       grub-install writes the entry when run on the target itself"
   elif have efibootmgr; then
     if boot_entry_exists "$label" "$(boot_efi_path "/EFI/${label}/grubx64.efi")"; then
       ok "NVRAM entry '${label}' points at the GRUB binary"

@@ -447,7 +447,21 @@ boot_systemd_boot_verify() {
     return 1
   fi
 
-  if have efibootmgr; then
+  # The NVRAM belongs to the machine efibootmgr runs on, which is only the
+  # machine being installed when the guard says so. Asking unconditionally is
+  # how this check reported
+  #
+  #     [+] NVRAM entry 'Linux Boot Manager' points at the loader
+  #
+  # about an install to /dev/loop0 that had just been given --no-variables and
+  # had written no entry at all: it had found the *host's* own Linux Boot
+  # Manager entry, dated the day before, and called it this install's. A
+  # verifier that reads another machine's firmware is not a verifier.
+  if ! disk_may_write_firmware_state "$(boot_disk)"; then
+    skip "no NVRAM entry was written, and this machine's own is not this install's"
+    skip "       the firmware will start \\EFI\\BOOT\\BOOTX64.EFI, which bootctl wrote"
+    skip "       bootctl --esp-path=${esp_mount} install writes the entry on the target itself"
+  elif have efibootmgr; then
     if boot_entry_exists "$BOOT_SDB_NVRAM_LABEL" "$(boot_efi_path "$BOOT_SDB_LOADER")"; then
       ok "NVRAM entry '${BOOT_SDB_NVRAM_LABEL}' points at the loader"
     else

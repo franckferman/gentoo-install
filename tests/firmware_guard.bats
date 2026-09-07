@@ -360,3 +360,89 @@ EOF
     return 1
   }
 }
+
+# --------------------------------------------------------------------------- #
+#  Reading the NVRAM is the same question as writing it                       #
+# --------------------------------------------------------------------------- #
+# Found by the run this guard finally made safe. Step 80 installed systemd-boot
+# to a loop image with --no-variables, wrote no entry at all, and then reported
+#
+#     [+] NVRAM entry 'Linux Boot Manager' points at the loader
+#
+# because efibootmgr reads the NVRAM of the machine it runs on, and this host
+# has a Linux Boot Manager entry of its own, dated the day before. grub is
+# worse: boot_label defaults to 'gentoo' and a Gentoo workstation has an entry
+# of exactly that name. efistub fails the other way — it demanded an entry that
+# step 80 had deliberately not written, and failed a correct install.
+
+@test "the systemd-boot verifier does not claim this machine's own NVRAM entry" {
+  gi_bash '
+    boot_load_variant systemd-boot >/dev/null 2>&1
+    body="$(declare -f boot_systemd_boot_verify)"
+    [[ "$body" == *disk_may_write_firmware_state* ]] || exit 1
+  '
+  [ "$status" -eq 0 ] || {
+    printf 'it reads the host NVRAM whenever efibootmgr is installed\n' >&2
+    return 1
+  }
+}
+
+@test "the grub verifier does not claim this machine's own NVRAM entry" {
+  gi_bash '
+    boot_load_variant grub >/dev/null 2>&1
+    body="$(declare -f boot_grub_verify)"
+    [[ "$body" == *disk_may_write_firmware_state* ]] || exit 1
+  '
+  [ "$status" -eq 0 ] || {
+    printf "boot_label defaults to 'gentoo' and so does this machine's entry\n" >&2
+    return 1
+  }
+}
+
+@test "the efistub verifier does not demand an entry it was refused" {
+  gi_bash '
+    boot_load_variant efistub >/dev/null 2>&1
+    body="$(declare -f boot_efistub_verify)"
+    [[ "$body" == *disk_may_write_firmware_state* ]] || exit 1
+  '
+  [ "$status" -eq 0 ] || {
+    printf 'step 80 writes the removable fallback instead; that is not a failure\n' >&2
+    return 1
+  }
+}
+
+@test "a verifier refused the NVRAM says so instead of reading somebody else's" {
+  # Behavioural: with the guard answering no, the systemd-boot verifier must
+  # never call boot_entry_exists at all.
+  local dir
+  dir="$(gi_tmp)/nv"
+  mkdir -p "${dir}/efi/loader/entries" "${dir}/efi/EFI/systemd" "${dir}/efi/EFI/BOOT"
+  : >"${dir}/efi/EFI/systemd/systemd-bootx64.efi"
+  : >"${dir}/efi/EFI/BOOT/BOOTX64.EFI"
+  printf 'title Gentoo\nlinux /vmlinuz\n' >"${dir}/efi/loader/entries/gentoo.conf"
+  : >"${dir}/efi/vmlinuz"
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+    config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no
+    CFG[root]="$1"; CFG[boot_disk]=/dev/loop0
+    disk_on_live_medium() { return 1; }
+    disk_target_carries_this_system() { return 1; }
+    boot_load_variant systemd-boot >/dev/null 2>&1
+    boot_systemd_boot_entry_id() { printf "gentoo.conf\n"; }
+    boot_systemd_boot_validate_entry() { return 0; }
+    boot_systemd_boot_bootctl() { printf "/usr/bin/bootctl\n"; return 0; }
+    kernel_in_target() { printf "        title: Gentoo (gentoo.conf)\n"; return 0; }
+    boot_entry_exists() { printf "READ-THE-HOST-NVRAM\n"; return 0; }
+    show_boot_entries() { return 0; }
+    boot_systemd_boot_verify "$1" uefi
+  ' bash "$dir"
+  [[ "$output$stderr" != *"READ-THE-HOST-NVRAM"* ]] || {
+    printf 'the verifier read the NVRAM of the machine running the installer:\n%s\n%s\n' \
+      "$output" "$stderr" >&2
+    return 1
+  }
+  [[ "$output$stderr" == *"not this install"* ]] || {
+    printf 'and it has to say why it is not checking: %s\n' "$stderr" >&2
+    return 1
+  }
+}

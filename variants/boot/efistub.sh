@@ -367,7 +367,16 @@ boot_efistub_verify() {
     return 0
   fi
 
-  if have efibootmgr; then
+  # Same question as boot_create_entry asked before writing: an entry may only
+  # be read back as this install's when this install was allowed to write one.
+  # Without this the check demanded an entry that step 80 had deliberately not
+  # written, and failed a correct install — the mirror image of the false pass
+  # the other two variants gave, and the same cause.
+  if ! disk_may_write_firmware_state "$(boot_disk)"; then
+    skip "no NVRAM entry was written: ${label} would have named this machine's own"
+    skip "       \\EFI\\BOOT\\BOOTX64.EFI carries the kernel instead"
+    skip "       write the entry on the target itself, as step 80 printed it"
+  elif have efibootmgr; then
     if boot_entry_exists "$label" "$(boot_efi_path "$(boot_efistub_efi_name)")"; then
       ok "NVRAM entry '${label}' points at the kernel"
     else
