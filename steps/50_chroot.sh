@@ -85,14 +85,30 @@ _step50_reattach() {
     return 1
   fi
 
-  if [[ "${CFG[crypt]:-none}" != "none" ]]; then
+  # The journal decides here, not the settings — this step exists for the
+  # second invocation, and the second invocation is the one launched without
+  # the configuration file that named the container. target_fact's own comment
+  # says why: a *default* loses to the record of what was done, because
+  # config_init_defaults gives crypt a non-empty default (luks-passphrase) and
+  # crypt_name a non-empty default (gentoo).
+  #
+  # Reading CFG here cost both directions. An install the operator asked NOT to
+  # encrypt was reattached by trying to open a LUKS container on a partition
+  # with no header, and step 50 failed with "the target could not be made
+  # reachable" on a machine that needed no container at all. And an install
+  # with crypt_name = vault was reopened as /dev/mapper/gentoo, which is not
+  # the device the recorded plan names, so the mount failed and a mapping under
+  # the wrong name was left behind on the way out.
+  local variant
+  variant="$(target_fact crypt crypt.variant "none")"
+  if [[ "$variant" != "none" ]]; then
     local container name
-    name="${CFG[crypt_name]:-gentoo}"
+    name="$(target_fact crypt_name crypt.name "gentoo")"
     if ! crypt_is_open "$name"; then
       container="$(target_fact crypt_device crypt.device "")"
       [[ -n "$container" ]] || container="$(target_fact "" disk.crypt_device "")"
       if [[ -z "$container" ]]; then
-        err "crypt = ${CFG[crypt]} but no container is recorded"
+        err "crypt = ${variant} but no container is recorded"
         err "       step 20 writes disk.crypt_device and step 30 writes crypt.device"
         err "       name it yourself with crypt_device = /dev/nvme0n1p2"
         return 1

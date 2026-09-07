@@ -99,6 +99,12 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Removed
 
+- **`_fin_fact()`, a second copy of `target_fact()`.** The two bodies were
+  identical. The comment that justified the copy said `target_fact` "reads CFG
+  first" — it has not for some time; it carries the same explicit-then-journal
+  ordering and the same explanation. Two implementations of a precedence rule
+  drift, and precedence is what the fix above is about.
+
 - **`disk_fstab_records()` and the `disk-fstab.tsv` it wrote.** Its own comment
   said "what step 90 needs to write an fstab". Step 90 does not read it: it
   generates fstab from `findmnt`, deliberately, because the kernel's mount
@@ -107,6 +113,25 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   through a redirection whose errors were discarded.
 
 ### Fixed
+
+- **The steps that run after step 30 read the encryption from the journal.**
+  `crypt` defaults to `luks-passphrase` and `crypt_name` to `gentoo`, and a
+  second invocation — `--resume`, `--steps 70,80`, the sequence step 95 prints
+  when it fails — is very often launched without the configuration file, so CFG
+  holds those defaults and nothing else. `target_fact` exists for exactly this
+  and its own comment says so; step 50 and step 75 read CFG anyway. It cost in
+  both directions. An install the operator asked to leave *plain* was
+  reattached by trying to open a LUKS container on a partition with no header,
+  and step 50 gave up with "the target could not be made reachable". An install
+  with `crypt_name = vault` was reopened as `/dev/mapper/gentoo` — not the
+  device the recorded plan names — so the mount failed and a mapping under the
+  wrong name was left behind. Step 75 was the quiet one: on a `luks-tpm`
+  machine it loaded the passphrase variant, found it defines no
+  `crypt_variant_seal`, and returned **success** saying "luks-passphrase has
+  nothing to seal in the target". The TPM was never sealed, the step reported
+  done, and the machine asked for the recovery passphrase at every boot. A
+  hygiene test now refuses `CFG[crypt]` and `CFG[crypt_name]` in any step after
+  30.
 
 - **An encrypted install now records the UUIDs of the filesystems it made.**
   The facts step 20 journals are read off the devices at the moment it journals

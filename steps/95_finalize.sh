@@ -155,47 +155,15 @@ _fin_item() {
 # --------------------------------------------------------------------------- #
 #  Small readers                                                              #
 # --------------------------------------------------------------------------- #
-_fin_fact() {
-  # Args: $1 = CFG key ("" for none), $2 = state key ("" for none),
-  #       $3 = fallback. A returned value, so stdout.
-  #
-  # steps/70_kernel.sh has target_fact() for the same job and this step does
-  # not use it, for one reason that only matters here. target_fact reads CFG
-  # first, and lib/config.sh gives crypt, layout, kernel and bootloader
-  # non-empty built-in defaults; so on a --resume run with no configuration
-  # file, `cfg crypt` answers "none" about a machine step 30 encrypted three
-  # hours ago. Every check below would then be verifying a plain install that
-  # does not exist, and the initramfs check — the one this file is written for
-  # — would pass an image that cannot open the container.
-  #
-  # The order here is explicit setting, then the journal, then the built-in
-  # default. An explicit value still wins, because that is the operator talking
-  # and DESIGN.md §5 says nothing may override an intention; a default loses to
-  # the record of what was actually done, because a verifier that trusts the
-  # plan over the machine is not a verifier.
-  local cfg_key="$1" state_key="${2:-}" fallback="${3:-}" value=""
-
-  if [[ -n "$cfg_key" ]] && is_explicit "$cfg_key"; then
-    value="$(cfg "$cfg_key")"
-  fi
-  if [[ -z "$value" && -n "$state_key" ]]; then
-    value="$(state_get "$state_key" 2>/dev/null || true)"
-  fi
-  if [[ -z "$value" && -n "$cfg_key" ]]; then
-    value="$(cfg "$cfg_key")"
-  fi
-  printf '%s\n' "${value:-$fallback}"
-}
-
 _fin_recorded() {
   # A fact only the journal ever knows: which stage tarball step 40 unpacked,
   # which keyslots step 30 filled. Args: $1 = state key, $2 = fallback.
-  _fin_fact "" "$1" "${2:-}"
+  target_fact "" "$1" "${2:-}"
 }
 
 _fin_esp_mount() {
   # Where the ESP is mounted inside the target. A returned value.
-  _fin_fact esp_mount disk.esp_mount "/efi"
+  target_fact esp_mount disk.esp_mount "/efi"
 }
 
 _fin_root() {
@@ -209,9 +177,9 @@ _fin_root() {
   # target_root. Both were other spellings of root, and reaching them meant
   # root was unset, which it never is.
   local root
-  root="$(_fin_fact root chroot.target "")"
+  root="$(target_fact root chroot.target "")"
   if [[ -z "$root" ]]; then
-    root="$(_fin_fact "" disk.mountpoint "${GI_ROOT:-/mnt/gentoo}")"
+    root="$(target_fact "" disk.mountpoint "${GI_ROOT:-/mnt/gentoo}")"
   fi
   printf '%s\n' "${root%/}"
 }
@@ -231,7 +199,7 @@ _fin_crypt() {
   # command-line composer spells the same choice tpm. Step 95 reads a journal
   # that may carry either, and normalising here is cheaper than a check that
   # silently believes an encrypted machine needs no crypt module.
-  crypt_family "$(_fin_fact crypt crypt.variant "none")"
+  crypt_family "$(target_fact crypt crypt.variant "none")"
 }
 
 _fin_uses_lvm() {
@@ -241,11 +209,11 @@ _fin_uses_lvm() {
   # layout of plain|lvm. Both are asked, because getting this wrong drops dm and
   # lvm from the list of modules the image is checked for.
   local value
-  value="$(_fin_fact disk_lvm disk.lvm "")"
+  value="$(target_fact disk_lvm disk.lvm "")"
   if [[ "$value" == "yes" ]]; then
     return 0
   fi
-  [[ "$(_fin_fact disk_layout disk.layout "")" == "lvm" ]]
+  [[ "$(target_fact disk_layout disk.layout "")" == "lvm" ]]
 }
 
 _fin_esp_dir() {
@@ -363,7 +331,7 @@ _fin_check_kernel() {
   fi
 
   _fin_verdict PASS kernel "Kernel image" "${_FIN_KIMAGE}, $((kib / 1024)) MiB"
-  _fin_note "version ${_FIN_KVERSION}, built by the $(_fin_fact kernel kernel.variant "dist-kernel") variant"
+  _fin_note "version ${_FIN_KVERSION}, built by the $(target_fact kernel kernel.variant "dist-kernel") variant"
   return 0
 }
 
@@ -707,9 +675,9 @@ _fin_check_bootentry() {
   local primary="" fallback="" nvram="no" rel=""
   local -a configs=()
 
-  variant="$(_fin_fact bootloader boot.variant "grub")"
-  firmware="$(_fin_fact firmware boot.firmware "$(_fin_firmware)")"
-  label="$(_fin_fact boot_label boot.label "gentoo")"
+  variant="$(target_fact bootloader boot.variant "grub")"
+  firmware="$(target_fact firmware boot.firmware "$(_fin_firmware)")"
+  label="$(target_fact boot_label boot.label "gentoo")"
   esp="$(_fin_esp_dir "$root")"
 
   case "$variant" in
@@ -740,8 +708,8 @@ _fin_check_bootentry() {
         if [[ ! -f "$primary" ]]; then
           _fin_verdict FAIL bootentry "Boot entry" "no BIOS core.img under ${root}/boot/grub"
           _fin_note "A legacy BIOS install needs GRUB's i386-pc image, and the"
-          _fin_note "boot sector that chain-loads it, on $(_fin_fact disk disk.device '<the disk>')."
-          _fin_fix "chroot ${root} grub-install --target=i386-pc $(_fin_fact disk disk.device '/dev/sdX')"
+          _fin_note "boot sector that chain-loads it, on $(target_fact disk disk.device '<the disk>')."
+          _fin_fix "chroot ${root} grub-install --target=i386-pc $(target_fact disk disk.device '/dev/sdX')"
           return 0
         fi
       fi
@@ -844,7 +812,7 @@ _fin_check_bootentry() {
   # held no loader any firmware would look for. The image then dropped straight
   # to PXE on its first power-on.
   if [[ "$nvram" == "yes" ]] \
-    && ! disk_may_write_firmware_state "$(_fin_fact disk disk.device "")"; then
+    && ! disk_may_write_firmware_state "$(target_fact disk disk.device "")"; then
     nvram="no"
   fi
 
@@ -857,7 +825,7 @@ _fin_check_bootentry() {
       _fin_note "The kernel is on the ESP and nothing points the firmware at it."
       _fin_note "There is no removable fallback either, so this machine will boot"
       _fin_note "into the firmware menu and stay there."
-      _fin_fix "efibootmgr --create --disk $(_fin_fact disk disk.device '/dev/sdX') --part 1 --label '${label}' --loader $(_fin_efi_spelling "${primary#"$esp"}")"
+      _fin_fix "efibootmgr --create --disk $(target_fact disk disk.device '/dev/sdX') --part 1 --label '${label}' --loader $(_fin_efi_spelling "${primary#"$esp"}")"
       return 0
     fi
   fi
@@ -1084,8 +1052,8 @@ _fin_check_access() {
   local privilege sshd others
   local -a accounts=() keys=()
 
-  privilege="$(_fin_fact privilege system.privilege "")"
-  sshd="$(_fin_fact sshd system.sshd "")"
+  privilege="$(target_fact privilege system.privilege "")"
+  sshd="$(target_fact sshd system.sshd "")"
 
   mapfile -t keys < <(_fin_authorized_keys "$root")
 
@@ -1156,7 +1124,7 @@ _fin_recap_installed() {
   log "what is on ${root}"
   _fin_item "stage" "$(_fin_recorded stage.variant)"
   _fin_item "verified" "$(_fin_recorded stage.verified)"
-  _fin_item "disk" "$(_fin_fact disk disk.device "")"
+  _fin_item "disk" "$(target_fact disk disk.device "")"
 
   layout="$(_fin_recorded disk.layout)"
   if [[ -n "$layout" ]]; then
@@ -1174,14 +1142,14 @@ _fin_recap_installed() {
   fi
   _fin_item "encryption" "$line"
 
-  _fin_item "kernel" "${_FIN_KVERSION:-none} ($(_fin_fact kernel kernel.variant "dist-kernel"))"
+  _fin_item "kernel" "${_FIN_KVERSION:-none} ($(target_fact kernel kernel.variant "dist-kernel"))"
   _fin_item "initramfs" "${_FIN_KINITRD:-none}"
-  _fin_item "bootloader" "$(_fin_fact bootloader boot.variant "")"
-  _fin_item "hostname" "$(_fin_fact hostname system.hostname "")"
-  _fin_item "timezone" "$(_fin_fact timezone system.timezone "")"
-  _fin_item "locale" "$(_fin_fact locale system.locale "")"
-  _fin_item "network" "$(_fin_fact network system.network "")"
-  _fin_item "user" "$(_fin_fact user system.user "")"
+  _fin_item "bootloader" "$(target_fact bootloader boot.variant "")"
+  _fin_item "hostname" "$(target_fact hostname system.hostname "")"
+  _fin_item "timezone" "$(target_fact timezone system.timezone "")"
+  _fin_item "locale" "$(target_fact locale system.locale "")"
+  _fin_item "network" "$(target_fact network system.network "")"
+  _fin_item "user" "$(target_fact user system.user "")"
   _fin_item "sshd" "$(_fin_recorded system.sshd)"
 }
 
@@ -1242,7 +1210,7 @@ _fin_recap_secrets() {
       ;;
     passphrase)
       _fin_note "You will be asked for it at every boot, on a console that comes"
-      _fin_note "up with the $(_fin_fact keymap system.keymap "us") keymap — type it there before"
+      _fin_note "up with the $(target_fact keymap system.keymap "us") keymap — type it there before"
       _fin_note "trusting that a non-ASCII character survives."
       ;;
     *) ;;
@@ -1314,7 +1282,7 @@ _fin_close_container() {
   # tree that is no longer mounted. Journal-driven, like everything else here —
   # a name this run did not record is a name this run did not open.
   local name
-  name="$(_fin_fact crypt_name crypt.name "")"
+  name="$(target_fact crypt_name crypt.name "")"
 
   [[ "$(_fin_crypt)" != "none" ]] || return 0
   [[ -n "$name" ]] || return 0
@@ -1405,7 +1373,7 @@ _fin_reboot() {
   # a check or the unmount failed, because a machine that failed a proof is not
   # a machine to reboot into on the installer's initiative.
   local target
-  target="$(_fin_fact disk disk.device "")"
+  target="$(target_fact disk disk.device "")"
 
   # First question: would this reboot even enter the target? On a live medium,
   # yes. Reinstalling the machine we are running on, yes. Anywhere else the

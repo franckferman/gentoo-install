@@ -232,8 +232,8 @@ GI_INTERNAL_TOKENS='trinity|cagip|ca-gip|matric|gundabad|thrain|keepass|gps_'
   # as a reference.
   grep -rhvE '^[[:space:]]*#' \
     "${GI_ROOT}/lib" "${GI_ROOT}/steps" "${GI_ROOT}/variants" "${GI_ENTRY}" \
-    | grep -oE '\$\((cfg|target_fact|_fin_fact) [a-z_]+|CFG\[[a-z_]+\]' \
-    | sed -E 's/.*\((cfg|target_fact|_fin_fact) //; s/CFG\[//; s/\]//' \
+    | grep -oE '\$\((cfg|target_fact) [a-z_]+|CFG\[[a-z_]+\]' \
+    | sed -E 's/.*\((cfg|target_fact) //; s/CFG\[//; s/\]//' \
     | sort -u >"$refd"
 
   # And the predicates. cfg_yes and cfg_is read a setting just as cfg does,
@@ -303,7 +303,7 @@ GI_INTERNAL_TOKENS='trinity|cagip|ca-gip|matric|gundabad|thrain|keepass|gps_'
 
   grep -rhvE '^[[:space:]]*#' \
     "${GI_ROOT}/lib" "${GI_ROOT}/steps" "${GI_ROOT}/variants" \
-    | grep -oE 'state_get +['"'"'"]?[a-z_]+\.[a-z_]+|(target_fact|_fin_fact) +['"'"'"a-z_]+ +[a-z_]+\.[a-z_]+' \
+    | grep -oE 'state_get +['"'"'"]?[a-z_]+\.[a-z_]+|target_fact +['"'"'"a-z_]+ +[a-z_]+\.[a-z_]+' \
     | grep -oE '[a-z_]+\.[a-z_]+' | sort -u >"$read_keys"
   [ -s "$read_keys" ]
 
@@ -312,6 +312,34 @@ GI_INTERNAL_TOKENS='trinity|cagip|ca-gip|matric|gundabad|thrain|keepass|gps_'
     printf 'state keys read by a step, written by none:\n%s\n' "$missing" >&2
     return 1
   fi
+}
+
+@test "no step after 30 decides the encryption from the settings alone" {
+  # Steps 20 and 30 decide: they read CFG because CFG is the operator asking.
+  # Every step after them reads back a decision already made, and the run that
+  # reads it back is very often the one launched without the configuration
+  # file, where CFG holds only the built-in defaults — crypt = luks-passphrase
+  # and crypt_name = gentoo. Both cost a real failure. Step 50 tried to open a
+  # LUKS container on an install the operator had asked to leave plain, and
+  # step 75 loaded the passphrase variant on a luks-tpm machine, found it has
+  # nothing to seal, and returned success. target_fact is the reader that puts
+  # the journal ahead of a default.
+  local file base bad=""
+  for file in "${GI_ROOT}"/steps/*.sh; do
+    base="$(basename -- "$file")"
+    case "$base" in
+      [12][0-9]_* | 30_*) continue ;;
+    esac
+    if grep -nE 'CFG\[crypt\]|CFG\[crypt_name\]' "$file" | grep -vE '^\s*[0-9]+:\s*#'; then
+      bad="${bad} ${base}"
+    fi
+  done
+  [[ -z "$bad" ]] || {
+    printf 'these steps run after the encryption was decided and journalled,\n' >&2
+    printf 'and read it from CFG anyway:%s\n' "$bad" >&2
+    printf 'use target_fact crypt crypt.variant / target_fact crypt_name crypt.name\n' >&2
+    return 1
+  }
 }
 
 @test "every flag an error message offers as an example must exist" {

@@ -105,7 +105,16 @@ step_75_seal() {
   local variant root
 
   crypt_config_defaults
-  variant="${CFG[crypt]}"
+
+  # The journal, not the settings. This step can be reached on its own —
+  # --steps 75 is exactly what an operator runs after fixing a TPM — and a run
+  # launched without the configuration file has only defaults, which say
+  # luks-passphrase. Sealing a luks-tpm machine then loaded the passphrase
+  # variant, found it defines no crypt_variant_seal, and returned success with
+  # "luks-passphrase has nothing to seal in the target": the TPM was never
+  # sealed, the step reported done, and the machine asked for the recovery
+  # passphrase at every boot for ever after.
+  variant="$(target_fact crypt crypt.variant "none")"
 
   if [[ "$variant" == "none" ]]; then
     skip "crypt = none: there is no container to seal"

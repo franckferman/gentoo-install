@@ -147,6 +147,124 @@ plan_fixture() {
   [[ "$stderr" == *"no container is recorded"* ]]
 }
 
+# --------------------------------------------------------------------------- #
+#  The second invocation has no configuration file                            #
+# --------------------------------------------------------------------------- #
+# Every test above names the setting with set_explicit, and an explicit value
+# is the one case where the settings and the journal cannot disagree — which is
+# exactly why this class survived. The run this step exists for is the one
+# launched as `--resume` with nothing else, where CFG holds only the built-in
+# defaults: crypt = luks-passphrase and crypt_name = gentoo.
+
+gi_journal() {
+  # A state directory this test owns, holding the journal lines given as
+  # arguments in "key value" form. Prints nothing; the snippet follows.
+  cat <<'EOF'
+  dir="${BATS_TEST_TMPDIR}/j"; rm -rf -- "$dir"; mkdir -p -- "$dir"
+  CFG[state_dir]="$dir"; STATE_DIR="$dir"; DRY_RUN="no"
+  state_init >/dev/null 2>&1
+EOF
+}
+
+@test "a resume with no configuration file does not encrypt what was left plain" {
+  # crypt defaults to luks-passphrase, so an install the operator asked NOT to
+  # encrypt was reattached by trying to open a LUKS container on a partition
+  # that has no header. Step 50 then failed with "the target could not be made
+  # reachable" on a machine that needed no container at all.
+  run --separate-stderr bash -c 'source "$GI_ENTRY"
+    config_init_defaults
+'"$(gi_journal)"'
+    state_set crypt.variant none
+    state_set disk.crypt_device /dev/vdz2
+    [[ "${CFG[crypt]}" == "luks-passphrase" ]] || { echo "default changed"; exit 2; }
+    disk_saved_plan() { printf "meta	mountpoint	/mnt/gentoo	0	-	-
+meta	device	/dev/vdz	0	-	-
+"; }
+    disk_target_is_mounted() { return 1; }
+    disk_target_carries_this_system() { return 1; }
+    crypt_is_open() { return 1; }
+    crypt_open_for_resume() { printf "OPEN %s %s
+" "$1" "$2"; return 1; }
+    disk_activate_volume_group() { return 0; }
+    disk_mount_tree() { printf "MOUNT
+"; }
+    _step50_reattach
+  '
+  [ "$status" -eq 0 ] || {
+    printf 'the journal says crypt.variant = none; nothing should be opened
+' >&2
+    printf 'stdout: %s
+stderr: %s
+' "$output" "$stderr" >&2
+    return 1
+  }
+  [[ "$output" != *OPEN* ]] || {
+    printf 'a container was opened on an install that has none: %s
+' "$output" >&2
+    return 1
+  }
+  [[ "$output" == *MOUNT* ]]
+}
+
+@test "the container is reopened under the name it was created with" {
+  # crypt_name defaults to gentoo, and the recorded plan names
+  # /dev/mapper/vault. Opening under the default made a mapping the plan does
+  # not mention, the mount failed, and the wrong name was left behind.
+  run --separate-stderr bash -c 'source "$GI_ENTRY"
+    config_init_defaults
+'"$(gi_journal)"'
+    state_set crypt.variant luks-passphrase
+    state_set crypt.name    vault
+    state_set crypt.device  /dev/vdz2
+    [[ "${CFG[crypt_name]}" == "gentoo" ]] || { echo "default changed"; exit 2; }
+    disk_saved_plan() { printf "meta	mountpoint	/mnt/gentoo	0	-	-
+meta	device	/dev/vdz	0	-	-
+"; }
+    disk_target_is_mounted() { return 1; }
+    disk_target_carries_this_system() { return 1; }
+    crypt_is_open() { return 1; }
+    crypt_open_for_resume() { printf "OPEN %s %s
+" "$1" "$2"; }
+    disk_activate_volume_group() { return 0; }
+    disk_mount_tree() { printf "MOUNT
+"; }
+    _step50_reattach
+  '
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"OPEN /dev/vdz2 vault"* ]] || {
+    printf 'the plan names /dev/mapper/vault; the container has to be opened
+' >&2
+    printf 'under that name and no other: %s
+' "$output" >&2
+    return 1
+  }
+}
+
+@test "sealing follows what step 30 recorded, not what the defaults say" {
+  # --steps 75 is what an operator runs after fixing a TPM, and it is run
+  # without the configuration file as often as not. With CFG alone, a luks-tpm
+  # machine loaded the passphrase variant, found it defines no
+  # crypt_variant_seal, and returned success saying "luks-passphrase has
+  # nothing to seal in the target". The TPM was never sealed and the step said
+  # it was done.
+  run --separate-stderr bash -c 'source "$GI_ENTRY"
+    config_init_defaults
+'"$(gi_journal)"'
+    state_set crypt.variant luks-tpm
+    [[ "${CFG[crypt]}" == "luks-passphrase" ]] || { echo "default changed"; exit 2; }
+    crypt_load_variant() { printf "LOAD %s
+" "$1"; return 1; }
+    step_75_seal
+  '
+  [[ "$output" == *"LOAD luks-tpm"* ]] || {
+    printf 'the journal says luks-tpm; that is the variant to seal: %s
+' "$output" >&2
+    printf 'stderr: %s
+' "$stderr" >&2
+    return 1
+  }
+}
+
 @test "the saved plan is read from the state directory the run was given" {
   local dir
   dir="$(gi_tmp)/withplan"
