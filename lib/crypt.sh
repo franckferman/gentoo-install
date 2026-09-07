@@ -713,6 +713,10 @@ crypt_record_way_in() {
   # step 75 proves the recovery slot again before it may write a second one,
   # and one credential counted twice would satisfy a rule that exists to
   # insist on two different ones.
+  # ${a[@]+"${a[@]}"} is the set -u guard, and it does not word-split: the
+  # quotes inside the alternative are honoured, so each entry stays one word
+  # even though the outer expansion is bare. Measured, because a previous pass
+  # over this file recorded the opposite in the reprise and was wrong.
   local entry
   for entry in ${_GI_CRYPT_WAYS_IN[@]+"${_GI_CRYPT_WAYS_IN[@]}"}; do
     if [[ "${entry%%|*}" == "$1" ]]; then

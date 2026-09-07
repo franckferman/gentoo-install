@@ -12,6 +12,14 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Added
 
+- **The credential paths of `lib/crypt.sh` are under test.** `luksFormat`,
+  `luksAddKey` reusing the same argv, and each key proved against each keyslot
+  were exercised on a loop-backed LUKS2 container: both slots come out at 512
+  bits and each credential opens its own slot and only its own. The ways-in
+  gate — the counter that insists on two independent credentials — is pinned
+  too, including that a description holding a bare number is not mistaken for a
+  slot.
+
 - **musl reaches step 70: a kernel and an initramfs, built on a musl target.**
   The last thing this project had never done. Steps 50, 60 and 70 on an
   encrypted musl root: `sys-kernel/gentoo-kernel-bin` 6.18.41-gentoo-dist-bin installed, dracut

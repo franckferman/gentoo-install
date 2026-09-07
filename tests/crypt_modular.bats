@@ -631,3 +631,42 @@ load helper
   # And still registered like every other secret, so the trap removes it.
   [[ "$body" == *"crypt_secret_file copy seal"* ]]
 }
+
+@test "the ways-in gate counts entries, not the words in their descriptions" {
+  # The count is a safety gate: step 75 proves the recovery slot again before
+  # it may write a second one, and one credential counted twice would satisfy
+  # a rule that exists to insist on two different ones.
+  gi_bash 'crypt_forget_ways_in
+    crypt_record_way_in 1 "recovery, typed when the TPM refuses"
+    crypt_record_way_in 2 "the TPM releases it while the firmware is unchanged"
+    crypt_record_way_in 1 "recovery, typed when the TPM refuses"
+    crypt_ways_in_count'
+  [ "$output" = "2" ]
+}
+
+@test "a description holding a number does not pass for a slot" {
+  # ${a[@]+"${a[@]}"} is the set -u guard and does not word-split — the quotes
+  # inside the alternative are honoured. Pinned because an earlier pass over
+  # this file recorded the opposite.
+  gi_bash 'crypt_forget_ways_in
+    crypt_record_way_in 1 "kept in safe 2 on the third floor"
+    crypt_record_way_in 2 "the TPM releases it"
+    crypt_ways_in_count'
+  [ "$output" = "2" ]
+}
+
+@test "two credentials each open their own keyslot and no other" {
+  # Exercised for real on a loop-backed LUKS2 container: luksFormat with the
+  # composed argv, then luksAddKey reusing it, then each key tested against
+  # each slot. crypt_add_key hands luksAddKey the whole format argv, including
+  # --type and --batch-mode; cryptsetup takes it and both slots come out at
+  # 512 bits.
+  local body
+  body="$(sed -n '/^crypt_add_key/,/^}/p' "${GI_ROOT}/lib/crypt.sh")"
+  [[ "$body" == *"--new-key-slot"* ]]
+  [[ "$body" == *"crypt_format_args"* ]]
+  # And the proof always disables the token plugin, or a machine whose TPM
+  # answers accepts any key file at all.
+  body="$(sed -n '/^crypt_test_key_file/,/^}/p' "${GI_ROOT}/lib/crypt.sh")"
+  [[ "$body" == *"--disable-external-tokens"* ]]
+}
