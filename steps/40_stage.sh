@@ -62,6 +62,13 @@ _step_40_local() {
 
   state_set "stage.source" "$kind"
   state_set "stage.tarball" "${tarball##*/}"
+
+  # The catalogue path records this and step 95 prints it back; this path did
+  # not, so the closing screen of a --stage-file install said nothing about the
+  # archive it had installed and nothing about what had checked it. "nothing"
+  # is a value, and it is the one worth keeping: the warning that says so goes
+  # by hours before the recap, and a --resume never sees it at all.
+  state_set "stage.verified" "${STAGE_LOCAL_VERIFIED:-nothing}"
   stage_show_result "$tarball" "$root"
   return "$EXIT_SUCCESS"
 }

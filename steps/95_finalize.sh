@@ -1122,15 +1122,28 @@ _fin_recap_installed() {
   local root="$1" layout line
 
   log "what is on ${root}"
-  _fin_item "stage" "$(_fin_recorded stage.variant)"
+
+  # The catalogue names a variant; --stage-file has none to name, and the
+  # archive's own file name is what the operator will recognise. Without the
+  # fallback the closing screen of a stage-of-one's-own install said nothing at
+  # all about what it had installed.
+  line="$(_fin_recorded stage.variant)"
+  [[ -n "$line" ]] || line="$(_fin_recorded stage.tarball)"
+  _fin_item "stage" "$line"
   _fin_item "verified" "$(_fin_recorded stage.verified)"
   _fin_item "disk" "$(target_fact disk disk.device "")"
 
   layout="$(_fin_recorded disk.layout)"
   if [[ -n "$layout" ]]; then
-    line="${layout}, $(_fin_recorded disk.filesystem "unknown fs")"
+    # disk.root_fstype and disk.vg_name, which is what step 20 writes. This
+    # asked for disk.filesystem and disk.vg — two of the four names step 20's
+    # own comment lists as the wrong ones. The writer was corrected and this
+    # reader was not, so the last screen of every LVM install read
+    # "server, unknown fs, LVM group " with the group left blank, about two
+    # facts the journal was holding all along.
+    line="${layout}, $(_fin_recorded disk.root_fstype "unknown fs")"
     if _fin_uses_lvm; then
-      line="${line}, LVM group $(_fin_recorded disk.vg)"
+      line="${line}, LVM group $(_fin_recorded disk.vg_name)"
     fi
     _fin_item "layout" "$line"
   fi

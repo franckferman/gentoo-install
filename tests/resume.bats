@@ -444,3 +444,59 @@ meta	device	/dev/vdz	0	-	-
   [[ "$hint" == *"rescue-chroot.sh"* ]]
   [[ "$hint" != *"--steps 50   # then"* ]]
 }
+
+# --------------------------------------------------------------------------- #
+#  The closing screen reads the names the steps actually wrote                #
+# --------------------------------------------------------------------------- #
+gi_recap_journal() {
+  cat <<'EOF'
+  config_init_defaults
+  dir="${BATS_TEST_TMPDIR}/recap"; rm -rf -- "$dir"; mkdir -p -- "$dir"
+  CFG[state_dir]="$dir"; STATE_DIR="$dir"; DRY_RUN="no"
+  state_init >/dev/null 2>&1
+  state_set disk.device      /dev/vdz
+  state_set disk.layout      server
+  state_set disk.lvm         yes
+  state_set disk.vg_name     vg0
+  state_set disk.root_fstype ext4
+  state_set crypt.variant    none
+EOF
+}
+
+@test "the recap names the filesystem and the group step 20 recorded" {
+  # It asked for disk.filesystem and disk.vg — two of the four names step 20's
+  # own comment lists as the wrong ones. The writer was corrected years of
+  # cycles ago and this reader was not, so the last screen of every LVM install
+  # read "server, unknown fs, LVM group " about two facts the journal held.
+  run --separate-stderr bash -c 'source "$GI_ENTRY"
+'"$(gi_recap_journal)"'
+    state_set stage.variant openrc
+    _fin_recap_installed /mnt/gentoo
+  '
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"server, ext4, LVM group vg0"* ]] || {
+    printf 'the recap must read the names step 20 writes: %s\n' "$stderr" >&2
+    return 1
+  }
+}
+
+@test "the recap of a stage of one's own names the archive and what checked it" {
+  # --stage-file records no catalogue variant, so both lines used to vanish and
+  # the closing screen said nothing about what had been installed.
+  run --separate-stderr bash -c 'source "$GI_ENTRY"
+'"$(gi_recap_journal)"'
+    state_set stage.source   file
+    state_set stage.tarball  mystage.tar.xz
+    state_set stage.verified nothing
+    _fin_recap_installed /mnt/gentoo
+  '
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"stage"*"mystage.tar.xz"* ]] || {
+    printf 'the archive name is what an operator recognises: %s\n' "$stderr" >&2
+    return 1
+  }
+  [[ "$stderr" == *"verified"*"nothing"* ]] || {
+    printf 'the one thing this screen must not omit: %s\n' "$stderr" >&2
+    return 1
+  }
+}

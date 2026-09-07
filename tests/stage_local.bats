@@ -146,3 +146,74 @@ load helper
   [[ "$body" == *"wget --no-verbose"* ]]
   [[ "$body" != *"wget --quiet"* ]]
 }
+
+# --------------------------------------------------------------------------- #
+#  What checked it, kept                                                      #
+# --------------------------------------------------------------------------- #
+# The catalogue path journals stage.verified and step 95 prints it back on the
+# closing screen. This path said "nothing verified this archive" once, hours
+# earlier, and then had nothing to show — so the recap of a --stage-file
+# install was silent about the archive it had installed and silent about what,
+# if anything, had checked it. A --resume never saw the warning at all.
+
+@test "an archive nobody checked is recorded as checked by nothing" {
+  gi_bash '
+    tmp="${BATS_TEST_TMPDIR}/a.tar"; : >"$tmp"
+    CFG[stage_signature]=""; CFG[stage_checksum]=""
+    stage_local_verify "$tmp" >/dev/null 2>&1
+    printf "%s\n" "$STAGE_LOCAL_VERIFIED"
+  '
+  [ "$status" -eq 0 ]
+  [ "$output" = "nothing" ]
+}
+
+@test "a checksum that matches is recorded as the sha256 it was" {
+  gi_bash '
+    tmp="${BATS_TEST_TMPDIR}/a.tar"; printf "payload" >"$tmp"
+    CFG[stage_signature]=""
+    CFG[stage_checksum]="$(sha256sum -- "$tmp" | cut -d" " -f1)"
+    stage_local_verify "$tmp" >/dev/null 2>&1 || { echo "verify refused"; exit 1; }
+    printf "%s\n" "$STAGE_LOCAL_VERIFIED"
+  '
+  [ "$status" -eq 0 ]
+  [ "$output" = "sha256" ]
+}
+
+@test "a signature and a checksum are both recorded, in one value" {
+  # stage_verify_detached is stubbed because this test is about the record, not
+  # about gpg; the signature path itself is exercised by the catalogue suite.
+  gi_bash '
+    tmp="${BATS_TEST_TMPDIR}/a.tar"; printf "payload" >"$tmp"
+    printf "sig" >"${tmp}.asc"
+    CFG[stage_signature]=""
+    CFG[stage_checksum]="$(sha256sum -- "$tmp" | cut -d" " -f1)"
+    stage_verify_detached() { return 0; }
+    stage_local_verify "$tmp" >/dev/null 2>&1 || { echo "verify refused"; exit 1; }
+    printf "%s\n" "$STAGE_LOCAL_VERIFIED"
+  '
+  [ "$status" -eq 0 ]
+  [ "$output" = "pgp-signature+sha256" ]
+}
+
+@test "the local path journals what checked the archive, like the catalogue one" {
+  run --separate-stderr bash -c 'source "$GI_ENTRY"
+    config_init_defaults
+    dir="${BATS_TEST_TMPDIR}/j"; rm -rf -- "$dir"; mkdir -p -- "$dir"
+    CFG[state_dir]="$dir"; STATE_DIR="$dir"; DRY_RUN="no"
+    state_init >/dev/null 2>&1
+    CFG[stage_file]="${BATS_TEST_TMPDIR}/mine.tar.xz"; : >"${CFG[stage_file]}"
+    stage_local_check_file() { return 0; }
+    stage_local_verify()     { STAGE_LOCAL_VERIFIED="nothing"; return 0; }
+    stage_unpack()           { return 0; }
+    stage_show_result()      { return 0; }
+    _step_40_local /mnt/gentoo file >/dev/null
+    printf "verified=%s\n" "$(state_get stage.verified)"
+    printf "tarball=%s\n"  "$(state_get stage.tarball)"
+  '
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"verified=nothing"* ]] || {
+    printf 'the recap has to be able to say that nothing checked it: %s\n' "$output" >&2
+    return 1
+  }
+  [[ "$output" == *"tarball=mine.tar.xz"* ]]
+}

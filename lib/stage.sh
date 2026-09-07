@@ -60,10 +60,11 @@ _STAGE_SHOUTED="no" # the unverified warning has already been given in full
 # never cleaned up and a keyring it built is rebuilt on the next call. Anything
 # in this module that creates a temporary or talks to gpg therefore returns a
 # code and fills these in; only the pure printers below are safe inside $( ).
-STAGE_RELPATH="" # <timestamp>/stage3-<arch>-<variant>-<timestamp>.tar.xz
-STAGE_SIZE=""    # the byte count the signed pointer announced
-STAGE_POINTER="" # the URL the pointer was read from
-STAGE_TARBALL="" # the verified tarball, once it is in the cache
+STAGE_RELPATH=""        # <timestamp>/stage3-<arch>-<variant>-<timestamp>.tar.xz
+STAGE_SIZE=""           # the byte count the signed pointer announced
+STAGE_POINTER=""        # the URL the pointer was read from
+STAGE_TARBALL=""        # the verified tarball, once it is in the cache
+STAGE_LOCAL_VERIFIED="" # what actually checked a stage of one's own
 
 # --------------------------------------------------------------------------- #
 #  Settings                                                                   #
@@ -924,8 +925,16 @@ stage_local_verify() {
   # here there is nothing to check against unless the operator brings it. So
   # verification is opt-in, and its absence is said out loud rather than
   # implied by silence.
+  #
+  # What it checked goes into STAGE_LOCAL_VERIFIED, because saying it once on
+  # the terminal is not the same as recording it. The catalogue path journals
+  # stage.verified and step 95 prints it back on the closing screen; the local
+  # path said "nothing verified this archive" hours earlier and then had
+  # nothing to show, which is the one case where the recap most needs to speak.
   local tarball="$1" sig="${CFG[stage_signature]:-}" want="${CFG[stage_checksum]:-}"
   local checked=0 got
+  local -a proofs=()
+  STAGE_LOCAL_VERIFIED=""
 
   if [[ -z "$sig" && -f "${tarball}.asc" ]]; then
     sig="${tarball}.asc"
@@ -943,6 +952,7 @@ stage_local_verify() {
       return 1
     fi
     ok "signature verified against ${sig##*/}"
+    proofs+=("pgp-signature")
     checked=1
   fi
 
@@ -961,10 +971,17 @@ stage_local_verify() {
       return 1
     fi
     ok "sha256 matches"
+    proofs+=("sha256")
     checked=1
   fi
 
-  if ((checked == 0)); then
+  if ((checked > 0)); then
+    local proof
+    for proof in "${proofs[@]}"; do
+      STAGE_LOCAL_VERIFIED="${STAGE_LOCAL_VERIFIED:+${STAGE_LOCAL_VERIFIED}+}${proof}"
+    done
+  else
+    STAGE_LOCAL_VERIFIED="nothing"
     warn "nothing verified this archive"
     warn "       a stage of one's own carries no signature this project can"
     warn "       check on its own. Bring one and it will be used:"

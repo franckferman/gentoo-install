@@ -303,7 +303,7 @@ GI_INTERNAL_TOKENS='trinity|cagip|ca-gip|matric|gundabad|thrain|keepass|gps_'
 
   grep -rhvE '^[[:space:]]*#' \
     "${GI_ROOT}/lib" "${GI_ROOT}/steps" "${GI_ROOT}/variants" \
-    | grep -oE 'state_get +['"'"'"]?[a-z_]+\.[a-z_]+|target_fact +['"'"'"a-z_]+ +[a-z_]+\.[a-z_]+' \
+    | grep -oE 'state_get +['"'"'"]?[a-z_]+\.[a-z_]+|target_fact +['"'"'"a-z_]+ +[a-z_]+\.[a-z_]+|_fin_recorded +[a-z_]+\.[a-z_]+' \
     | grep -oE '[a-z_]+\.[a-z_]+' | sort -u >"$read_keys"
   [ -s "$read_keys" ]
 

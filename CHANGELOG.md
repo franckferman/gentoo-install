@@ -114,6 +114,32 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **The closing screen reads the names the steps actually write.** The recap
+  asked the journal for `disk.filesystem` and `disk.vg` — two of the four names
+  step 20's own comment lists as the wrong ones, next to the note that they are
+  "names no consumer reads". The writer was corrected; this reader was not. So
+  the last screen of every LVM install said
+
+      layout       server, unknown fs, LVM group
+
+  with the group blank, about two facts the journal was holding under
+  `disk.root_fstype` and `disk.vg_name` the whole time. The hygiene test that
+  guards "every key read is a key some step writes" could not see it: it scans
+  `state_get` and `target_fact` calls, and step 95 reads through a wrapper,
+  `_fin_recorded`, which passes the key in a variable. That was the only such
+  wrapper in the project; the scanner knows it now, and with the scanner
+  widened the defect is caught.
+
+- **A stage of one's own is recorded, and so is what checked it.** The
+  catalogue path journals `stage.variant` and `stage.verified`; `--stage-file`
+  journalled neither, so the recap printed no stage line and no verified line
+  at all — silent about the archive it had installed and silent about whether
+  anything had vouched for it. `stage_local_verify` now publishes what it
+  checked (`pgp-signature`, `sha256`, both, or `nothing`), step 40 journals it,
+  and the recap falls back to the archive's own file name when there is no
+  catalogue variant to name. `nothing` is the value that matters: the warning
+  that says so goes by hours before the recap, and a `--resume` never saw it.
+
 - **The steps that run after step 30 read the encryption from the journal.**
   `crypt` defaults to `luks-passphrase` and `crypt_name` to `gentoo`, and a
   second invocation — `--resume`, `--steps 70,80`, the sequence step 95 prints
