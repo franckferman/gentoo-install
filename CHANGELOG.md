@@ -99,6 +99,16 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **Every spelling of `/` is refused as a chroot target.** The refusal that
+  keeps mounts off the running system compared the path as text, so `/` and `//`
+  were caught while `/.`, `/..`, `/mnt/..` and `/tmp/../` — four other spellings
+  of the same directory — went straight through. Past it, `/proc`, `/sys` and
+  `/dev` would have been mounted onto the running machine's own, recorded as
+  this run's, and unmounted again by `chroot_cleanup` — which is exactly the
+  sentence the refusal already printed and could not keep. The path is resolved
+  before it is compared, and kept resolved, so `/mnt/gentoo/../gentoo` also
+  arrives as `/mnt/gentoo`.
+
 - **On a machine with only `wget`, a 404 was retried instead of reported.** The
   fallback downloader ran `wget --quiet` and then searched wget's message for
   `404 ` to tell "gone" from "try again" — but `--quiet` silences that very

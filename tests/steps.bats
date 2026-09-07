@@ -417,3 +417,35 @@ load helper
   # The host is the fallback, and only when the target answered nothing.
   [[ "$body" == *'((${#carried[@]} == 0)) && have lsinitrd'* ]]
 }
+
+@test "every spelling of / is refused as a chroot target" {
+  # The test was textual, so "/" and "//" were refused while "/.", "/..",
+  # "/mnt/.." and "/tmp/../" went through — and every mount below would then
+  # have landed on the running system, with chroot_cleanup unmounting its
+  # /proc, /sys and /dev afterwards. That is the sentence the refusal already
+  # carried and could not keep.
+  local spelling
+  for spelling in / // /. /.. /mnt/.. /tmp/../; do
+    gi_bash 'chroot_attach "$1"' "$spelling"
+    [ "$status" -ne 0 ] || {
+      printf '%s was accepted as a chroot target\n' "$spelling" >&2
+      return 1
+    }
+    [[ "$stderr" == *"Refusing to treat / as a chroot target"* ]]
+  done
+}
+
+@test "a real target is accepted and comes back canonical" {
+  local dir
+  dir="$(gi_tmp)/tree"
+  mkdir -p "$dir"
+  gi_bash 'chroot_attach "$1"; printf "%s\n" "$CHROOT_ROOT"' "${dir}/../tree"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$dir" ]
+}
+
+@test "the refusal says which spelling it caught" {
+  gi_bash 'chroot_attach /mnt/..'
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"another spelling of /"* ]]
+}

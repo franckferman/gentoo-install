@@ -117,11 +117,27 @@ chroot_esp_mountpoint() {
 
 chroot_attach() {
   # Point the module at a target without touching anything. Args: $1 = root.
-  local root="${1:-}"
+  local root="${1:-}" resolved
   [[ -n "$root" ]] || root="$(chroot_target)"
   CHROOT_ROOT="${root%/}"
-  if [[ -z "$CHROOT_ROOT" || "$CHROOT_ROOT" == "/" ]]; then
+
+  # Resolved before it is compared, and kept resolved.
+  #
+  # The test was textual, so "/" and "//" were refused while "/.", "/..",
+  # "/mnt/.." and "/tmp/../" — four other spellings of the same directory —
+  # went straight through. Every mount below would then have landed on the
+  # running system and chroot_cleanup would have unmounted its /proc, /sys and
+  # /dev, which is the sentence this refusal already carries and could not
+  # keep. readlink -f wants every component but the last to exist; when it
+  # cannot answer, the textual test is still there.
+  resolved="$(readlink -f -- "${CHROOT_ROOT:-/}" 2>/dev/null || true)"
+  [[ -n "$resolved" ]] && CHROOT_ROOT="${resolved%/}"
+
+  if [[ -z "$CHROOT_ROOT" || "$CHROOT_ROOT" == "/" || "$resolved" == "/" ]]; then
     err "Refusing to treat / as a chroot target"
+    if [[ "${root%/}" != "/" ]]; then
+      err "       ${root} is another spelling of /"
+    fi
     err "       every mount and every unmount below would land on the running system"
     err "       example:  --root /mnt/gentoo"
     return 1
