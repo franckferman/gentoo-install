@@ -91,6 +91,15 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **"volume group is still active" asked about the allocation policy.** The
+  teardown's last check ran `vgs -o vg_attr --noheadings | grep -q 'a'`, and the
+  `a` in `vg_attr` is the allocation policy, not activity. Measured on a real
+  machine: an active group reads `wz--n--`, with no `a` anywhere, so the warning
+  never fired for the thing it names — while a group created with
+  `--alloc anywhere` reads `wz--a--` and would have raised it while perfectly
+  inactive. LVM states activity per logical volume, so that is where it is asked
+  now. Verified on a loop-backed group in both states.
+
 - **The last partition no longer swallows space the plan keeps back.** Without
   LVM, `disk_partition` gave the last partition `0:0` — the rest of the disk —
   whatever the plan said. The `server` layout keeps a fifth of the disk

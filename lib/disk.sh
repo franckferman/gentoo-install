@@ -2002,6 +2002,21 @@ disk_target_is_mounted() {
   mountpoint -q -- "$root" 2>/dev/null
 }
 
+_disk_vg_is_active() {
+  # Does any logical volume of this group still hold a device-mapper node?
+  #
+  # This asked `vgs -o vg_attr --noheadings | grep -q a`, and the a in vg_attr
+  # is the allocation policy, not activity. Measured on this machine: an
+  # active group reads "wz--n--", with no a anywhere, so the warning never
+  # fired for the thing it names — while a group created with --alloc anywhere
+  # reads "wz--a--" and would have raised it while perfectly inactive.
+  #
+  # LVM states activity per logical volume, so that is where to ask.
+  # Args: $1 = volume group.
+  local vg="$1"
+  lvs --noheadings -o lv_active -- "$vg" 2>/dev/null | grep -q 'active'
+}
+
 disk_teardown() {
   # Undo a mounted tree so the disk can be provisioned again. Reports on the
   # final state, not on what was attempted: a lazy unmount followed by two
@@ -2035,8 +2050,7 @@ disk_teardown() {
     err "${root} is still mounted"
     left=$((left + 1))
   fi
-  if [[ "$(disk_plan_meta "$plan" lvm)" == "yes" ]] \
-    && vgs "$vg" -o vg_attr --noheadings 2>/dev/null | grep -q 'a'; then
+  if [[ "$(disk_plan_meta "$plan" lvm)" == "yes" ]] && _disk_vg_is_active "$vg"; then
     warn "volume group ${vg} is still active"
   fi
   ((left == 0)) || return 1

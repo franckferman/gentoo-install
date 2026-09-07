@@ -193,3 +193,29 @@ load helper
   [[ "$stderr" == *"-n 3:0:+40960M"* ]]
   [[ "$stderr" != *"-n 3:0:0"* ]]
 }
+
+@test "a volume group is called active when LVM says its volumes are" {
+  # The teardown asked `vgs -o vg_attr | grep -q a`, and the a in vg_attr is
+  # the allocation policy, not activity. Measured on the machine this was
+  # written on: an active group reads "wz--n--", with no a anywhere, so the
+  # warning never fired for the thing it names — while a group created with
+  # --alloc anywhere reads "wz--a--" and would have raised it while inactive.
+  gi_bash 'lvs() { printf "  active\n  active\n"; }; _disk_vg_is_active vg0'
+  [ "$status" -eq 0 ]
+
+  gi_bash 'lvs() { printf "  \n  \n"; }; _disk_vg_is_active vg0'
+  [ "$status" -ne 0 ]
+
+  # And the attributes of an active group, which used to be the question.
+  gi_bash 'lvs() { printf "  active\n"; }
+    vgs() { printf "  wz--n--\n"; }
+    _disk_vg_is_active vg0'
+  [ "$status" -eq 0 ]
+}
+
+@test "the teardown asks about activity, not about an attribute letter" {
+  local body
+  body="$(sed -n '/^disk_teardown/,/^}/p' "${GI_ROOT}/lib/disk.sh")"
+  [[ "$body" == *"_disk_vg_is_active"* ]]
+  [[ "$body" != *"vg_attr"* ]]
+}
