@@ -519,13 +519,37 @@ GI_INTERNAL_TOKENS='trinity|cagip|ca-gip|matric|gundabad|thrain|keepass|gps_'
   # Counted here, not copied: the stats bar claims a number of steps, of
   # rescue scripts and of tests, and every one of them is a fact this
   # repository can produce.
-  local page steps tools
+  local page steps tools stages choices
   page="${GI_ROOT}/docs/index.html"
   steps="$(find "${GI_ROOT}/steps" -maxdepth 1 -name '*.sh' | wc -l)"
   tools="$(find "${GI_ROOT}/tools" -maxdepth 1 -name '*.sh' | wc -l)"
+  # The catalogue, minus its comment header and its blank lines.
+  stages="$(grep -cvE '^[[:space:]]*(#|$)' "${GI_ROOT}/data/stages.tsv")"
+  choices="$(find "${GI_ROOT}/variants" -mindepth 1 -maxdepth 1 -type d | wc -l)"
 
   grep -q "<div class=\"stat-num\">${steps}</div><div class=\"stat-label\">Numbered steps" "$page"
   grep -q "<div class=\"stat-num\">${tools}</div><div class=\"stat-label\">Rescue scripts" "$page"
+
+  # The two that had drifted, and the one that could. The page said 51 stage3
+  # variants where the catalogue holds 19, and 199 tests where the suite holds
+  # far more — the most-read numbers on the page, neither of them counted.
+  grep -q "<div class=\"stat-num\">${stages}</div><div class=\"stat-label\">Stage3 variants" "$page" || {
+    printf 'the catalogue holds %s variants; the page says otherwise:\n%s\n' "$stages" \
+      "$(grep -o '<div class="stat-num">[0-9]*</div><div class="stat-label">Stage3 variants' "$page")" >&2
+    return 1
+  }
+  grep -q "<div class=\"stat-num\">${choices}</div><div class=\"stat-label\">Choices to make" "$page"
+
+  # The test count perishes every time a test is added, which is the point:
+  # a number on the public page that nothing counts is a number that drifts,
+  # and this one had drifted by most of its own value.
+  local suite
+  suite="$(grep -hc '^@test' "${GI_ROOT}"/tests/*.bats | paste -sd+ | bc)"
+  grep -q "<div class=\"stat-num\">${suite}</div><div class=\"stat-label\">Tests" "$page" || {
+    printf 'the suite holds %s tests; the page says:\n%s\n' "$suite" \
+      "$(grep -o '<div class="stat-num">[0-9]*</div><div class="stat-label">Tests' "$page")" >&2
+    return 1
+  }
 
   # And the version, which appears three times and must be the one the entry
   # point declares.
@@ -533,6 +557,97 @@ GI_INTERNAL_TOKENS='trinity|cagip|ca-gip|matric|gundabad|thrain|keepass|gps_'
   version="$(grep -oE '^readonly VERSION="[^"]+"' "${GI_ROOT}/gentoo-install.sh" | cut -d'"' -f2)"
   [ -n "$version" ]
   grep -q "v${version}" "$page"
+}
+
+@test "the site calls a bootloader booted only where TESTING.md says so" {
+  # The two documents disagreed for several days and the page was the one that
+  # was wrong: it said systemd-boot had been booted "as far as the passphrase
+  # prompt", and docs/TESTING.md said "all four pass" over a table with no
+  # evidence column. Nothing had ever been quoted for systemd-boot — no boot
+  # log, no bootctl list. The claim was written from the shape of the matrix.
+  #
+  # docs/TESTING.md now carries the status of record, one row per bootloader
+  # with a Result of exactly "booted" or "not booted", and the page carries the
+  # same four as data attributes. This compares them.
+  local record page_status name result line
+  record="${BATS_TEST_TMPDIR}/record"
+  page_status="${BATS_TEST_TMPDIR}/page"
+
+  grep -oE '^\| 3[a-z] \| `[a-z-]+` \| (not booted|booted) \|' "${GI_ROOT}/docs/TESTING.md" \
+    | sed -E 's/^\| 3[a-z] \| `([a-z-]+)` \| (not booted|booted) \|$/\1=\2/' \
+    | sort >"$record"
+  [ -s "$record" ] || {
+    printf 'docs/TESTING.md carries no bootloader status table any more.\n' >&2
+    return 1
+  }
+
+  grep -oE 'data-bootloader="[a-z-]+" data-status="(not booted|booted)"' \
+    "${GI_ROOT}/docs/index.html" \
+    | sed -E 's/data-bootloader="([a-z-]+)" data-status="(not booted|booted)"/\1=\2/' \
+    | sort >"$page_status"
+  [ -s "$page_status" ] || {
+    printf 'docs/index.html states no bootloader status any more.\n' >&2
+    return 1
+  }
+
+  if ! diff -u "$record" "$page_status" >/dev/null; then
+    printf 'the page and the record disagree about what has been booted:\n' >&2
+    diff -u --label 'docs/TESTING.md' --label 'docs/index.html' \
+      "$record" "$page_status" >&2 || true
+    printf 'the record wins; a boot with no log behind it is not a boot.\n' >&2
+    return 1
+  fi
+
+  # The README is the third document that makes this claim, and it made it too:
+  # "systemd-boot has been booted too, on the same encrypted disk … through to
+  # the passphrase prompt", with the evidence of another run behind it.
+  while IFS= read -r line; do
+    name="${line%%=*}"
+    result="${line#*=}"
+    [[ "$result" == "not booted" ]] || continue
+    if grep -qE "\`${name}\` has been booted" "${GI_ROOT}/README.md"; then
+      printf 'the README says `%s` has been booted; the record says it has not.\n' \
+        "$name" >&2
+      return 1
+    fi
+  done <"$record"
+
+  # And every bootloader the project ships has to appear in both.
+  local shipped
+  shipped="$(find "${GI_ROOT}/variants/boot" -name '*.sh' \
+    | sed -e 's#.*/##' -e 's/\.sh$//' | sort)"
+  [ "$(cut -d= -f1 <"$record")" = "$shipped" ] || {
+    printf 'the status table does not cover every bootloader the project ships:\n' >&2
+    printf 'shipped: %s\ntable:   %s\n' "$(printf '%s' "$shipped" | paste -sd,)" \
+      "$(cut -d= -f1 <"$record" | paste -sd,)" >&2
+    return 1
+  }
+}
+
+@test "the four choice groups on the site list exactly the variants that exist" {
+  # Each choice is a directory of variants, and the page names them one by one.
+  # A variant added without a line here is one nobody knows they can ask for;
+  # a line here without a file is a flag that fails at parse time.
+  local dir group name missing="" extra=""
+  local page="${GI_ROOT}/docs/index.html"
+  for dir in "${GI_ROOT}"/variants/*/; do
+    group="$(basename -- "${dir%/}")"
+    while IFS= read -r name; do
+      grep -q "<div class=\"opt-flag\">${name}</div>" "$page" \
+        || missing+=" ${group}/${name}"
+    done < <(find "$dir" -name '*.sh' | sed -e 's#.*/##' -e 's/\.sh$//')
+  done
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
+    find "${GI_ROOT}/variants" -name "${name}.sh" | grep -q . || extra+=" ${name}"
+  done < <(grep -oE '<div class="opt-flag">[a-z0-9-]+</div>' "$page" \
+    | sed -E 's/.*>([a-z0-9-]+)<.*/\1/')
+
+  if [[ -n "$missing" || -n "$extra" ]]; then
+    printf 'variants the site does not name:%s\n' "$missing" >&2
+    printf 'names on the site with no variant behind them:%s\n' "$extra" >&2
+    return 1
+  fi
 }
 
 @test "no file asks whether there is a terminal by reading a permission bit" {

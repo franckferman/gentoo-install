@@ -12,6 +12,16 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Added
 
+- **The page's status section is four lines, one per bootloader.** A dense
+  paragraph is where "all four of them started at least once" hid a boot that
+  had not happened. Each bootloader now has its own row, its verdict in a
+  colour, and the reason — including the one that reads *not booted*, which is
+  the row that made the section worth rewriting.
+
+- **The four choice groups on the page are checked against `variants/`.** A
+  variant with no line on the page is one nobody knows they can ask for; a line
+  with no variant behind it is a flag that fails at parse time.
+
 - **The settings scan knows every way of reading a setting, and a test keeps it
   that way.** Three times the scan has been widened *after* a defect, never
   before one: `cfg_yes`/`cfg_is`, then `_fin_recorded` one level down, then
@@ -123,6 +133,26 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   through a redirection whose errors were discarded.
 
 ### Fixed
+
+- **The project page, the README and `docs/TESTING.md` said a bootloader had
+  been booted that never has.** All three claimed `systemd-boot` — the page "as
+  far as the passphrase prompt", the README "`bootctl` installed, the loader
+  entry written, and the machine started from `\EFI\BOOT\BOOTX64.EFI`", and
+  TESTING.md a flat "**All four pass.**" over a table with no evidence column.
+  Nothing in this repository backs any of it: no boot log, no `bootctl list`,
+  no run recorded, while `grub`, `efistub` and `uki` each have a quoted line
+  from the firmware or the kernel. The claim was written from the shape of the
+  matrix, which is the one thing the top of TESTING.md says it will not do.
+  `docs/TESTING.md` now carries the status of record — one row per bootloader,
+  a Result of exactly `booted` or `not booted`, and the evidence beside it —
+  the page states the same four as data attributes, and a test refuses the page
+  or the README if either says booted where the record does not.
+
+- **Two headline numbers on the page had drifted by most of their own value.**
+  It claimed 51 stage3 variants where `data/stages.tsv` holds 19, and 199 tests
+  where the suite holds 377. Both are counted from the repository now, like the
+  step count and the rescue-script count already were, and so is the number of
+  choices.
 
 - **A file its own checker refuses is removed when there was nothing there
   before.** `write_validated` rolls back by putting the previous content back,

@@ -85,9 +85,13 @@ this kernel has no serial console that early, so a machine that was booting
 correctly printed nowhere at all. The installer says so now when a command line
 names consoles and none of them is a screen.
 
-**`systemd-boot` has been booted too**, on the same encrypted disk: `bootctl`
-installed, the loader entry written, and the machine started from
-`\EFI\BOOT\BOOTX64.EFI` through to the passphrase prompt.
+**`systemd-boot` has not been booted.** This paragraph used to say it had, on
+the same encrypted disk, through to the passphrase prompt — and nothing in this
+repository backs that up: no boot log, no `bootctl list`, no run recorded. The
+other three each have a quoted line from the firmware or the kernel. The status
+of record is the table in [docs/TESTING.md](docs/TESTING.md#run-3--the-bootloaders),
+one row per bootloader, and a test refuses this file and the project page if
+either says booted where that table does not.
 
 **A stage of your own works too.** `--stage-file` skips the catalogue, finds a
 `.asc` sitting beside the archive without being told about it, checks both the

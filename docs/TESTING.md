@@ -281,15 +281,31 @@ Then, from the running system:
 
 Same encryption, three boot paths. This is where the matrix earns its keep.
 
-| Run | `--bootloader` | Watch for |
-|---|---|---|
-| 3a | `grub` | already covered by Run 2 |
-| 3b | `efistub` | `efibootmgr -v` in the installed system names the kernel and carries the command line |
-| 3c | `systemd-boot` | `bootctl list` shows the entry. Does **not** need `--init systemd`: bootctl comes from `sys-apps/systemd-utils` |
-| 3d | `uki` | one signed binary at `\EFI\BOOT\BOOTX64.EFI`, started with no entry at all |
+The table below is the status of record. `docs/index.html` may call a
+bootloader booted only if this table does, and a test holds it to that — the
+two documents said different things for a while, and the page was the one that
+was wrong.
 
-**All four pass.** Each has been booted on an encrypted disk, through to the
-passphrase prompt.
+<!-- bootloader-status: Result must read exactly "booted" or "not booted". -->
+
+| Run | `--bootloader` | Result | Evidence |
+|---|---|---|---|
+| 3a | `grub` | booted | Run 2, 6 September: the passphrase prompt, then a login prompt on the installed machine |
+| 3b | `efistub` | booted | 6 September: `BdsDxe: starting Boot0001 "gentoo" … \EFI\gentoo\vmlinuz.efi`, quoted in full below |
+| 3c | `systemd-boot` | not booted | never run. `bootctl list` has never been read on a machine this installer built |
+| 3d | `uki` | booted | Run 3b, 6 September: started from `\EFI\BOOT\BOOTX64.EFI` with no NVRAM entry at all |
+
+**Three of the four have been booted.** This page said "all four pass" for
+several days, over a table that named `systemd-boot` and an evidence column
+that did not exist yet. Nothing was ever quoted for it: no boot log, no
+`bootctl list`, nothing. The claim was written from the shape of the matrix
+rather than from a run, which is the one thing the top of this page says it
+will not do.
+
+What run 3c still needs, and the only reason it is interesting: `bootctl`
+comes from `sys-apps/systemd-utils`, so systemd-boot works under OpenRC and
+`--init systemd` is not required. That is the assertion nobody has watched
+happen.
 
 **`efistub` passed on 6 September**, by the first of the two routes this page
 already named and nobody had taken. An efistub install has no configuration

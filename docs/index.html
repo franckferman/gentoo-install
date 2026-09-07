@@ -48,6 +48,23 @@ body::before {
   66% { transform: translate(-20px, 15px) scale(0.95); }
 }
 
+/* ─── BOOT STATUS ─── */
+.boot-status-lead { color: var(--muted); font-size: .92rem; line-height: 1.8; margin-top: 1.75rem; max-width: 720px; }
+.boot-status { list-style: none; margin: 1.25rem 0 0; max-width: 820px; display: flex; flex-direction: column; gap: .5rem; }
+.boot-status li {
+  display: grid; grid-template-columns: 8.5rem 7rem 1fr; align-items: baseline; gap: .75rem;
+  background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: .8rem 1rem;
+}
+.boot-status .bs-name { font-family: var(--mono); font-size: .88rem; color: var(--text); font-weight: 700; }
+.boot-status .bs-verdict { font-family: var(--mono); font-size: .78rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.boot-status .bs-verdict.yes { color: var(--accent2); }
+.boot-status .bs-verdict.no { color: var(--orange); }
+.boot-status .bs-note { color: var(--muted); font-size: .88rem; line-height: 1.65; }
+.boot-status li[data-status="not booted"] { border-color: rgba(240,136,62,.35); }
+@media (max-width: 640px) {
+  .boot-status li { grid-template-columns: 1fr; gap: .3rem; }
+}
+
 /* ─── NAV ─── */
 header {
   position: fixed; top: 0; left: 0; right: 0; z-index: 100;
@@ -287,9 +304,9 @@ footer { padding: 2rem; border-top: 1px solid var(--border); text-align: center;
 <div class="stats-bar">
   <div class="stat"><div class="stat-num">11</div><div class="stat-label">Numbered steps</div></div>
   <div class="stat"><div class="stat-num">4</div><div class="stat-label">Choices to make</div></div>
-  <div class="stat"><div class="stat-num">51</div><div class="stat-label">Stage3 variants</div></div>
+  <div class="stat"><div class="stat-num">19</div><div class="stat-label">Stage3 variants</div></div>
   <div class="stat"><div class="stat-num">10</div><div class="stat-label">Rescue scripts</div></div>
-  <div class="stat"><div class="stat-num">199</div><div class="stat-label">Tests</div></div>
+  <div class="stat"><div class="stat-num">377</div><div class="stat-label">Tests</div></div>
 </div>
 
 <!-- FEATURES -->
@@ -488,22 +505,46 @@ sudo ./gentoo-install.sh --resume</pre>
     to a software TPM under QEMU with OVMF — was booted from its own disk with no
     ISO attached. It unlocked itself, checked four filesystems and reached a login
     prompt without asking for anything. An unencrypted disk was carried from an
-    empty GPT to a login prompt earlier;
-    <code>systemd-boot</code> and <code>uki</code> were booted on an encrypted
-    disk as far as the passphrase prompt, and a second <code>uki</code> install
-    was booted against a firmware whose NVRAM had never heard of it: it started
-    from <code>\EFI\BOOT\BOOTX64.EFI</code>, where the same firmware with a
-    GRUB install had fallen through to PXE the day before. <code>efistub</code>
-    was booted too, from the NVRAM entry step 80 writes, with no bootloader of
-    any kind in between — which makes all four of them started at least once.
+    empty GPT to a login prompt earlier.
   </p>
-  <p style="color:var(--muted);font-size:.92rem;line-height:1.8;margin-top:1rem;max-width:720px">
+
+  <p class="boot-status-lead">The four bootloaders, one line each. The column on
+  the right is copied from nothing: <a href="https://github.com/franckferman/gentoo-install/blob/master/docs/TESTING.md">docs/TESTING.md</a>
+  holds the status of record and a test refuses this page if the two disagree.</p>
+
+  <ul class="boot-status">
+    <li data-bootloader="grub" data-status="booted">
+      <span class="bs-name">grub</span>
+      <span class="bs-verdict yes">booted</span>
+      <span class="bs-note">On an encrypted disk, through the passphrase prompt to a login.</span>
+    </li>
+    <li data-bootloader="efistub" data-status="booted">
+      <span class="bs-name">efistub</span>
+      <span class="bs-verdict yes">booted</span>
+      <span class="bs-note">From the NVRAM entry step 80 writes, with no bootloader of any kind in between.</span>
+    </li>
+    <li data-bootloader="uki" data-status="booted">
+      <span class="bs-name">uki</span>
+      <span class="bs-verdict yes">booted</span>
+      <span class="bs-note">Against a firmware whose NVRAM had never heard of it: started from <code>\EFI\BOOT\BOOTX64.EFI</code>, where the same firmware with a GRUB install had fallen through to PXE the day before.</span>
+    </li>
+    <li data-bootloader="systemd-boot" data-status="not booted">
+      <span class="bs-name">systemd-boot</span>
+      <span class="bs-verdict no">not booted</span>
+      <span class="bs-note">Never run. This page claimed it for several days on the strength of the matrix rather than of a boot log; nothing was ever quoted for it, and saying so is cheaper than the claim was.</span>
+    </li>
+  </ul>
+
+  <p style="color:var(--muted);font-size:.92rem;line-height:1.8;margin-top:1.75rem;max-width:720px">
     <strong style="color:var(--text)">What none of it covers:</strong>
-    no <code>musl</code> or <code>hardened</code> stage has been installed, and
-    <code>efistub</code> has not been booted from the removable path — that one
-    needs a kernel with its command line compiled in, because the fallback is
-    started with no load options at all. Read the plan before you point version
-    0.1.0 at a disk you would miss.
+    <code>systemd-boot</code> has never been started, and <code>efistub</code>
+    has not been booted from the removable path — that one needs a kernel with
+    its command line compiled in, because the fallback is launched with no load
+    options at all. <code>musl</code>, <code>hardened</code> and <code>llvm</code>
+    stages have been unpacked, and musl carried as far as step 70 — a kernel and
+    a dracut initramfs with <code>crypt</code>, <code>crypt-lib</code> and
+    <code>dm</code> in it — but no musl machine has been booted either. Read the
+    plan before you point version 0.1.0 at a disk you would miss.
   </p>
 </div>
 </div>
