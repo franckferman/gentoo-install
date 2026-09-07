@@ -355,10 +355,23 @@ disk_root_ancestors() {
   # Every block device under / on the machine running this installer, one name
   # per line, walking LVM and LUKS down to the whole disk. Empty when / is not
   # on a block device at all, which is what a live ISO looks like.
+  # -nslo and not -nso: inverse mode still draws the tree, so the names come
+  # back as "└─nvme0n1p3" and "    └─nvme0n1". `tr -d ' '` removed the spaces
+  # and left the box-drawing characters, so nothing here ever equalled a plain
+  # disk name — only the first line, which carries no prefix and is a mapper
+  # name, could match anything.
+  #
+  # _disk_holding_disks four functions down already says why list mode is the
+  # one to ask for. This one did not, and two guards were built on it:
+  # disk_may_write_firmware_state, which then refused an NVRAM entry and the
+  # reboot on a machine legitimately reinstalling itself, and the step 50
+  # refusal, which is the one that mattered — it exists to stop a stale plan
+  # from activating a volume group and mounting a running system's own
+  # filesystems under /mnt/gentoo, and it could never fire.
   local src
   src="$(findmnt -rno SOURCE --mountpoint / 2>/dev/null || true)"
   [[ -n "$src" && -b "$src" ]] || return 0
-  lsblk -nso NAME -- "$src" 2>/dev/null | tr -d ' ' || true
+  lsblk -nslo NAME -- "$src" 2>/dev/null | tr -d ' ' || true
 }
 
 disk_on_live_medium() {

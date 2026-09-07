@@ -208,3 +208,42 @@ load helper
   [ -n "$copy" ]
   [ "$sign" -lt "$copy" ]
 }
+
+@test "the root's ancestors come back as bare names, not as a drawn tree" {
+  # lsblk's inverse mode still draws the tree: "└─nvme0n1p3", "    └─nvme0n1".
+  # `tr -d ' '` removed the spaces and left the box-drawing characters, so no
+  # name here ever equalled a plain disk name. Two guards were built on it —
+  # the one that lets step 80 write an NVRAM entry, and the one that stops a
+  # stale plan from mounting the running system's own filesystems.
+  local body
+  body="$(sed -n '/^disk_root_ancestors/,/^}/p' "${GI_ROOT}/lib/disk.sh")"
+  [[ "$body" == *"lsblk -nslo NAME"* ]]
+  [[ "$body" != *"lsblk -nso NAME"* ]]
+}
+
+@test "and this machine's own disk is recognised as its own" {
+  # Skipped where / is not on a block device, which is what a live ISO and this
+  # suite's container look like — and is exactly the case that hid the defect.
+  local src last
+  src="$(findmnt -rno SOURCE --mountpoint / 2>/dev/null || true)"
+  [[ -n "$src" && -b "$src" ]] || skip "/ is not on a block device here"
+
+  gi_bash 'disk_root_ancestors'
+  [ "$status" -eq 0 ]
+  [ -n "$output" ]
+  # Every line a bare name: no tree character, no leading blank.
+  ! printf '%s\n' "$output" | grep -qP '[^\x00-\x7F]|^\s'
+
+  last="$(printf '%s\n' "$output" | tail -n 1)"
+  gi_bash 'disk_target_carries_this_system "/dev/$1"' "$last"
+  [ "$status" -eq 0 ]
+}
+
+@test "a disk this machine did not boot from is not taken for its own" {
+  gi_bash 'disk_root_ancestors() { printf "vg0-root\nnvme0n1p3\nnvme0n1\n"; }
+    disk_target_carries_this_system /dev/sdz'
+  [ "$status" -ne 0 ]
+  gi_bash 'disk_root_ancestors() { printf "vg0-root\nnvme0n1p3\nnvme0n1\n"; }
+    disk_target_carries_this_system /dev/nvme0n1'
+  [ "$status" -eq 0 ]
+}

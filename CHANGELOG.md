@@ -91,6 +91,21 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **The guard that recognises this machine's own disk could never recognise it.**
+  `disk_root_ancestors` asked `lsblk -nso NAME`, and inverse mode still draws
+  the tree: the names came back as `└─nvme0n1p3` and `    └─nvme0n1`. `tr -d ' '`
+  removed the spaces and left the box-drawing characters, so nothing it
+  returned ever equalled a plain disk name — only the first line, which carries
+  no prefix and is a mapper name, could match anything at all.
+
+  Two guards stand on it, and they fail in opposite directions.
+  `disk_may_write_firmware_state` refused an NVRAM entry and the reboot on a
+  machine legitimately reinstalling itself, which is safe but wrong. The step 50
+  refusal is the one that mattered: it exists to stop a stale plan from
+  activating a volume group and mounting the running system's own filesystems
+  under `/mnt/gentoo`, and it could never fire. `_disk_holding_disks`, four
+  functions down, already explains why list mode is what to ask for.
+
 - **A marked block that is not whole is refused, not swallowed to end of file.**
   `write_block` replaces its own block with an `awk` that starts printing at the
   opening marker and consumes lines until the closing one. With no closing
