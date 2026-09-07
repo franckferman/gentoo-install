@@ -14,7 +14,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 - **musl reaches step 70: a kernel and an initramfs, built on a musl target.**
   The last thing this project had never done. Steps 50, 60 and 70 on an
-  encrypted musl root: `sys-kernel/gentoo-kernel-bin` 6.18.41 installed, dracut
+  encrypted musl root: `sys-kernel/gentoo-kernel-bin` 6.18.41-gentoo-dist-bin installed, dracut
   built the initramfs from the configuration step 70 wrote, and
   `lsinitrd --mod` inside the target lists `crypt`, `crypt-lib` and `dm`. Three
   steps, none failed, 626 seconds.
