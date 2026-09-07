@@ -634,6 +634,67 @@ and is asking for the envelope's passphrase, which is what
 
 ---
 
+## Run 6 — systemd as the init
+
+`--init systemd --crypt luks-passphrase --bootloader uki`, run on 7 September.
+The first time a systemd target had ever been built by this installer, and it
+found three defects, each in a path that only a systemd target reaches.
+
+**Step 80 could not install.** The `uki` variant asked every target for
+`sys-apps/systemd-utils`, which carries the EFI stub a unified kernel image is
+built around. On a systemd target that is not a merge but a blocker:
+
+```
+Conflict: 2 blocks (2 unsatisfied)
+  (sys-apps/systemd-utils-260.1-r1 … ebuild scheduled for merge) pulled in by
+    sys-apps/systemd-utils
+```
+
+Measured in that target afterwards: `sys-apps/systemd-260.1-r2` is installed,
+its `IUSE` carries `boot` and `ukify`, its `USE` carries `kernel-install` and
+not `boot` — so the stub was absent, and it is the flag on the package that is
+*already there* that puts it back. The variant asks systemd on a systemd target
+now, and systemd-utils only on OpenRC.
+
+**Step 90 enabled nothing.** `systemctl --root=<target> enable` needs a
+`systemctl`, and the one it was running is the *host's* — and the host of a
+Gentoo install is the minimal ISO, which is OpenRC and carries none:
+
+```
+[x] systemctl --root=/mnt/gi6sd enable systemd-networkd failed
+[x] systemctl --root=/mnt/gi6sd enable systemd-resolved failed
+```
+
+The install then finished with no network service at all, step 90 said `done`,
+and step 95 said *"nothing was left half-done"* — because every caller of
+`_sys_enable_service` ignores its return value and nothing recorded the
+failure. It asks the target's own `systemctl` now, the way the OpenRC branch
+has always asked the target's `rc-update`, and a service that will not enable
+leaves a to-do behind.
+
+**And the machine could not open its own root.** With both of those fixed the
+install completed, five checks clear — and the boot hung:
+
+```
+dracut-initqueue[404]: Failed to start
+  systemd-cryptsetup@luks\x2d00046e6c…service: Unit … not found.
+[    **] (2 of 2) A start job is running for … /dev/mapper/gentoo (2min 20s / no limit)
+```
+
+A systemd target gets a *systemd* initramfs, and that one does not call
+`cryptsetup`: it starts `systemd-cryptsetup@<name>.service`, generated from
+`rd.luks.uuid=` by `systemd-cryptsetup-generator`. Both the generator and the
+unit come from `sys-apps/systemd` with `USE=cryptsetup`, which a stage3 does
+not carry. Measured in the target: no `cryptsetup` in `USE`, no
+`/usr/lib/systemd/systemd-cryptsetup`, no `systemd-cryptsetup@.service`.
+
+Step 95 had reported `Initramfs … crypt dm` and called it a pass, because the
+dracut *modules* were all present. The modules were never the missing piece,
+and that check does not yet know the difference — which is the next thing to
+fix.
+
+---
+
 ## Run 5 — a stage of your own
 
 ```bash

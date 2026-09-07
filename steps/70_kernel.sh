@@ -993,6 +993,27 @@ kernel_ensure_crypt_packages() {
     *) return 0 ;;
   esac
 
+  # On a systemd target the initramfs is a systemd one, and it does not call
+  # cryptsetup: it starts systemd-cryptsetup@<name>.service, generated from
+  # rd.luks.uuid= by systemd-cryptsetup-generator. Both the generator and the
+  # unit come from sys-apps/systemd with USE=cryptsetup, which a stage3 does
+  # not carry. Measured on the first --init systemd install with encryption:
+  #
+  #   dracut-initqueue[404]: Failed to start
+  #     systemd-cryptsetup@luks\x2d00046e6c…service: Unit … not found.
+  #   [    **] (2 of 2) A start job is running for … /dev/mapper/gentoo
+  #
+  # and the machine waited there for ever. In that target USE carried boot and
+  # not cryptsetup, /usr/lib/systemd/systemd-cryptsetup was absent and so was
+  # systemd-cryptsetup@.service — while step 95 had reported five checks clear,
+  # including "Initramfs … crypt dm", because the dracut *modules* were all
+  # there. The modules were never the missing piece.
+  if [[ "$(target_init)" == "systemd" ]] \
+    && kernel_pkg_installed "$root" "sys-apps/systemd"; then
+    use+=("sys-apps/systemd cryptsetup")
+    optional+=(sys-apps/systemd)
+  fi
+
   local atom
   for atom in "${want[@]}"; do
     if ! kernel_pkg_installed "$root" "$atom"; then

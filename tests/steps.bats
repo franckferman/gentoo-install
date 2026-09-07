@@ -501,3 +501,157 @@ load helper
   [ "$status" -eq 0 ]
   [ "$output" = "/dev/vdz" ]
 }
+
+# --------------------------------------------------------------------------- #
+#  A systemd target already carries systemd                                   #
+# --------------------------------------------------------------------------- #
+# Found by the first --init systemd run. Two never-executed paths, both of
+# which assumed the host or the package set of an OpenRC install.
+
+@test "the unified image asks systemd for its stub, not the package that blocks it" {
+  # sys-apps/systemd-utils and sys-apps/systemd cannot be installed together.
+  # Asking for the first on a target that has the second is a blocker, and the
+  # run said so:
+  #     Conflict: 2 blocks (2 unsatisfied)
+  # Measured in that target: sys-apps/systemd is installed, its IUSE carries
+  # boot, its USE does not — the stub comes back from the package that is
+  # already there.
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+    config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no
+    CFG[init]=systemd
+    boot_load_variant uki >/dev/null 2>&1
+    boot_uki_stub() { return 1; }                       # no stub in the target
+    kernel_pkg_installed() { [[ "$2" == "sys-apps/systemd" ]]; }
+    kernel_write_package_use() { printf "USE %s\n" "$*"; return 0; }
+    kernel_emerge() { printf "EMERGE %s\n" "$2"; return 0; }
+    kernel_in_target() { shift; printf "IN-TARGET %s\n" "$*"; return 0; }
+    boot_uki_packages /mnt/x
+  '
+  [[ "$output" != *"EMERGE sys-apps/systemd-utils"* ]] || {
+    printf 'systemd-utils blocks against the systemd that is already there:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  [[ "$output" == *"USE"*"sys-apps/systemd boot"* ]] || {
+    printf 'the stub comes from the boot flag on sys-apps/systemd: %s\n' "$output" >&2
+    return 1
+  }
+  [[ "$output" == *"IN-TARGET"*"--changed-use"*"sys-apps/systemd"* ]]
+}
+
+@test "and still asks systemd-utils of an OpenRC target" {
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+    config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no
+    CFG[init]=openrc
+    boot_load_variant uki >/dev/null 2>&1
+    boot_uki_stub() { return 1; }
+    kernel_pkg_installed() { return 1; }
+    kernel_write_package_use() { printf "USE %s\n" "$*"; return 0; }
+    kernel_emerge() { printf "EMERGE %s\n" "$2"; return 0; }
+    boot_uki_packages /mnt/x
+  '
+  [[ "$output" == *"EMERGE sys-apps/systemd-utils"* ]] || {
+    printf 'an OpenRC target has no sys-apps/systemd to ask: %s\n' "$output" >&2
+    return 1
+  }
+}
+
+@test "a service is enabled with the systemctl the target carries" {
+  # systemctl --root needs a systemctl, and the host of a Gentoo install is the
+  # minimal ISO, which is OpenRC and has none. Measured: every service on an
+  # --init systemd run came back "systemctl --root=… enable … failed".
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+    config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no; STATE_FILE=""
+    CFG[init]=systemd
+    have() { [[ "$1" != "systemctl" ]]; }          # no systemctl on the host
+    _sys_service_exists() { return 0; }
+    _sys_in_chroot() { shift; printf "IN-TARGET %s\n" "$*"; return 0; }
+    _sys_enable_service /mnt/x systemd-networkd
+  '
+  [ "$status" -eq 0 ] || {
+    printf 'the target has a systemctl even when the host does not: %s\n' "$stderr" >&2
+    return 1
+  }
+  [[ "$output" == *"IN-TARGET systemctl enable systemd-networkd"* ]]
+}
+
+@test "and a service that will not enable leaves something behind to do" {
+  # Every caller ignores the return value — a service is not a reason to stop
+  # an install — so without a to-do, step 95 said "nothing was left half-done"
+  # about a machine with no network service at all.
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+    config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no
+    d="${BATS_TEST_TMPDIR}/j"; rm -rf -- "$d"; mkdir -p -- "$d"
+    CFG[state_dir]="$d"; STATE_DIR="$d"; state_init >/dev/null 2>&1
+    CFG[init]=systemd
+    have() { return 1; }
+    _sys_service_exists() { return 0; }
+    _sys_in_chroot() { return 1; }
+    _SYS_TODO_N=0
+    _sys_enable_service /mnt/x systemd-networkd
+    state_dump | grep "^system\.todo\."
+  '
+  [[ "$output" == *"systemctl enable systemd-networkd"* ]] || {
+    printf 'the failure has to survive the screen it was printed on: %s\n' "$output" >&2
+    return 1
+  }
+}
+
+@test "a systemd initramfs is given the systemd-cryptsetup it will call" {
+  # A systemd target gets a systemd initramfs, and that one does not run
+  # cryptsetup: it starts systemd-cryptsetup@<name>.service, generated from
+  # rd.luks.uuid= . Both the generator and the unit come from
+  # sys-apps/systemd[cryptsetup], which a stage3 does not carry. Measured on
+  # the first such install:
+  #
+  #   Failed to start systemd-cryptsetup@luks\x2d…service: Unit … not found.
+  #   [    **] (2 of 2) A start job is running for … /dev/mapper/gentoo
+  #
+  # for ever, after step 95 had reported five checks clear including
+  # "Initramfs … crypt dm". The dracut modules were never the missing piece.
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+    config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no
+    CFG[init]=systemd; CFG[crypt]=luks-passphrase
+    kernel_ensure_lvm_tools() { return 0; }
+    kernel_pkg_installed() { [[ "$2" == "sys-apps/systemd" ]]; }
+    kernel_write_package_use() { shift; printf "USE %s\n" "$*"; return 0; }
+    kernel_emerge() { shift; printf "EMERGE %s\n" "$*"; return 0; }
+    kernel_in_target() { shift; printf "IN-TARGET %s\n" "$*"; return 0; }
+    kernel_write_dracut_conf() { return 0; }
+    kernel_ensure_crypt_packages /mnt/x
+  '
+  [[ "$output" == *"USE"*"sys-apps/systemd cryptsetup"* ]] || {
+    printf 'without that flag the initramfs has no way to open the container:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  [[ "$output" == *"IN-TARGET"*"sys-apps/systemd"* ]] || {
+    printf 'and the flag has to be applied to the copy already installed: %s\n' \
+      "$output" >&2
+    return 1
+  }
+}
+
+@test "and an OpenRC target is not asked for it" {
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+    config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no
+    CFG[init]=openrc; CFG[crypt]=luks-passphrase
+    kernel_ensure_lvm_tools() { return 0; }
+    kernel_pkg_installed() { return 0; }
+    kernel_write_package_use() { shift; printf "USE %s\n" "$*"; return 0; }
+    kernel_emerge() { shift; printf "EMERGE %s\n" "$*"; return 0; }
+    kernel_in_target() { shift; printf "IN-TARGET %s\n" "$*"; return 0; }
+    kernel_write_dracut_conf() { return 0; }
+    kernel_ensure_crypt_packages /mnt/x
+  '
+  [[ "$output" != *"sys-apps/systemd cryptsetup"* ]] || {
+    printf 'an OpenRC initramfs calls cryptsetup itself: %s\n' "$output" >&2
+    return 1
+  }
+}

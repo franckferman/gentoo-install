@@ -154,6 +154,34 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **`--init systemd` had never been run, and three things were waiting.**
+
+  *The unified kernel image could not be installed.* The `uki` variant asked
+  every target for `sys-apps/systemd-utils`, which on a systemd target is a
+  blocker against the `sys-apps/systemd` already installed — `Conflict: 2
+  blocks (2 unsatisfied)`, and step 80 failed. Measured in that target: systemd
+  has `boot` in `IUSE` and not in `USE`, so the EFI stub is absent and it is
+  the flag on the package already there that puts it back. The variant asks
+  systemd on a systemd target now, systemd-utils only on OpenRC.
+
+  *No service was enabled.* `systemctl --root=<target> enable` needs a
+  `systemctl`, and it was running the **host's** — the host of a Gentoo install
+  being the minimal ISO, which is OpenRC and has none. The install finished
+  with no network service, step 90 said `done`, and step 95 said "nothing was
+  left half-done", because every caller ignores this function's return value
+  and nothing recorded the failure. It asks the target's own `systemctl` now,
+  as the OpenRC branch has always asked the target's `rc-update`, and a failure
+  leaves a to-do behind.
+
+  *And the machine could not open its own root.* A systemd target gets a
+  systemd initramfs, which does not call `cryptsetup`: it starts
+  `systemd-cryptsetup@<name>.service`, generated from `rd.luks.uuid=`. Both the
+  generator and the unit come from `sys-apps/systemd` with `USE=cryptsetup`,
+  which a stage3 does not carry, so the boot hung on
+  `Failed to start systemd-cryptsetup@…: Unit … not found` and waited for
+  `/dev/mapper/gentoo` for ever. Step 70 writes that flag and rebuilds systemd
+  with it when the target is systemd and something is encrypted.
+
 - **`crypt = luks-keyfile-gpg` could not complete a fresh install.** Step 20
   partitions and hands over to step 30 *before* it formats anything, because
   the LUKS header has to exist before a filesystem does. Step 30 then checked

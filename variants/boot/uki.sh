@@ -67,14 +67,6 @@ boot_uki_packages() {
   # Args: $1 = target root.
   local root="$1"
 
-  # The stub comes from systemd-utils, and only with the boot flag — which the
-  # ebuild will not accept without kernel-install beside it. The systemd-boot
-  # variant learned that the hard way; this one is written knowing it.
-  kernel_write_package_use "$root" \
-    "# A unified kernel image is the kernel wrapped in systemd's EFI stub." \
-    "# linuxx64.efi.stub comes from systemd-utils, and only with these flags." \
-    "sys-apps/systemd-utils boot kernel-install" || return 1
-
   if ! kernel_pkg_installed "$root" "sys-kernel/dracut"; then
     kernel_emerge "$root" "sys-kernel/dracut" || return 1
   fi
@@ -82,6 +74,48 @@ boot_uki_packages() {
   if boot_uki_stub "$root" >/dev/null 2>&1; then
     return 0
   fi
+
+  # Which package carries the stub depends on the init, and this asked
+  # systemd-utils of every target. On a systemd one that is a blocker, not a
+  # merge: sys-apps/systemd is already installed and the two cannot coexist.
+  # Measured on an --init systemd run, at step 80:
+  #
+  #     Conflict: 2 blocks (2 unsatisfied)
+  #     (sys-apps/systemd-utils-260.1-r1 … ebuild scheduled for merge) pulled in by
+  #       sys-apps/systemd-utils
+  #
+  # and the step failed. Measured inside that target afterwards:
+  # sys-apps/systemd-260.1-r2 is installed, its IUSE carries boot and ukify,
+  # its USE carries kernel-install and *not* boot — so the stub is absent, and
+  # it is the same flag on the package that is already there that puts it back.
+  if [[ "$(target_init)" == "systemd" ]] \
+    && kernel_pkg_installed "$root" "sys-apps/systemd"; then
+    kernel_write_package_use "$root" \
+      "# A unified kernel image is the kernel wrapped in systemd's EFI stub." \
+      "# On a systemd target that stub comes from sys-apps/systemd itself, with" \
+      "# the boot flag. Asking systemd-utils for it here is a blocker: the two" \
+      "# packages cannot be installed at the same time." \
+      "sys-apps/systemd boot" || return 1
+    log "sys-apps/systemd is installed without the EFI stub; rebuilding it for the boot flag"
+    kernel_in_target "$root" emerge --verbose --changed-use --quiet-build=n \
+      sys-apps/systemd || {
+      err "sys-apps/systemd would not rebuild with the boot flag"
+      err "       linuxx64.efi.stub is what a unified kernel image is built around"
+      err "       bootloader = grub needs none of this"
+      return 1
+    }
+    return 0
+  fi
+
+  # OpenRC. The stub comes from systemd-utils, and only with the boot flag —
+  # which the ebuild will not accept without kernel-install beside it. The
+  # systemd-boot variant learned that the hard way; this one is written knowing
+  # it.
+  kernel_write_package_use "$root" \
+    "# A unified kernel image is the kernel wrapped in systemd's EFI stub." \
+    "# linuxx64.efi.stub comes from systemd-utils, and only with these flags." \
+    "sys-apps/systemd-utils boot kernel-install" || return 1
+
   if ! kernel_pkg_installed "$root" "sys-apps/systemd-utils"; then
     kernel_emerge "$root" "sys-apps/systemd-utils" || return 1
   else

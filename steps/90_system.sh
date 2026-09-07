@@ -1601,12 +1601,28 @@ _sys_enable_service() {
 
   if [[ "$(_sys_init)" == "systemd" ]]; then
     # --root works without a chroot and without a running systemd: it only
-    # creates the symlinks the unit's [Install] section describes.
-    if run_quiet systemctl --root="$root" enable "$name"; then
+    # creates the symlinks the unit's [Install] section describes. It needs a
+    # systemctl to do it with, though, and that one is the *host's* — and the
+    # host of a Gentoo install is the minimal ISO, which is OpenRC and carries
+    # none. Measured on an --init systemd run from this machine, which is
+    # OpenRC too:
+    #
+    #     [x] systemctl --root=/mnt/gi6sd enable systemd-networkd failed
+    #     [x] systemctl --root=/mnt/gi6sd enable systemd-resolved failed
+    #
+    # and the install finished with no service enabled at all. The target has
+    # a systemctl — sys-apps/systemd installs one whatever its USE flags say —
+    # so ask it, exactly as the OpenRC branch asks the target's rc-update.
+    if have systemctl && run_quiet systemctl --root="$root" enable "$name"; then
       ok "service ${name}: enabled"
       return 0
     fi
-    err "systemctl --root=${root} enable ${name} failed"
+    if _sys_in_chroot "$root" systemctl enable "$name"; then
+      ok "service ${name}: enabled in the target"
+      return 0
+    fi
+    err "systemctl enable ${name} failed, on this machine and in ${root}"
+    _sys_todo "enable ${name}: chroot ${root} /bin/bash -lc 'systemctl enable ${name}'"
     return 1
   fi
 
@@ -1615,6 +1631,11 @@ _sys_enable_service() {
     return 0
   fi
   err "rc-update add ${name} ${level} failed inside ${root}"
+  # Every caller of this function ignores its return value — a service that
+  # will not enable is not a reason to stop an install — so the only thing that
+  # carries the failure past this screen is a to-do. Without one, step 95 said
+  # "nothing was left half-done" about a machine with no network service.
+  _sys_todo "enable ${name}: chroot ${root} /bin/bash -lc 'rc-update add ${name} ${level}'"
   return 1
 }
 
