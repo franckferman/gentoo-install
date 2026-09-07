@@ -586,6 +586,54 @@ and should refuse to claim success unless the TPM actually releases the key.
 
 ---
 
+## Run 4b — the key file, read where it was put
+
+`crypt = luks-keyfile-gpg`, `--bootloader uki`, `disk_layout minimal`, run on
+7 September. It is the variant whose whole point is that nothing is typed for
+the container itself: a long random key, wrapped in a symmetric GPG envelope,
+sitting on the ESP, which the initramfs finds and unwraps.
+
+**A fresh install of it could not start at all** until this run. Step 20 hands
+over to step 30 *before* it formats anything, because the LUKS header has to
+exist before a filesystem does — and step 30 then refused because
+`crypt_key_dir` (`/boot/efi`) did not exist:
+
+```
+[x] crypt_key_dir does not exist: /mnt/gentoo/boot/efi
+[x]        it has to be mounted before this step runs — normally the
+[x]        ESP, which step 20 formats and mounts
+```
+
+about an ESP that step 30 itself was three functions away from formatting.
+`_kg_install_key` creates that directory at deploy time, so nothing needed it
+to exist that early. The check is asked once the tree is standing now.
+
+With that out of the way, nine steps, none failed, 1802 seconds. What the boot
+proves is the other half:
+
+```
+BdsDxe: starting Boot0001 "UEFI Misc Device" from PciRoot(0x0)/Pci(0x3,0x0)
+[    0.000000] Linux version 6.18.48-gentoo-dist-bin …
+[    1.397005] dracut: rd.luks.key: keypath='/efi/luks-key.gpg' keydev='UUID=E533-ACCA' luksdev=''
+[    1.894325] dracut: Probing /dev/vda1 for /efi/luks-key.gpg...
+[    1.932230] dracut: Found /efi/luks-key.gpg on /dev/vda1
+[    1.966063] dracut: luksOpen /dev/vda2 luks-ba0cc639-f8f1-4d0e-a046-e0063fabaa7c
+[    1.985388] dracut: Using '/efi/luks-key.gpg' on '/dev/vda1'
+Password (/efi/luks-key.gpg on /dev/vda1 for /dev/vda2) [1/3]:
+```
+
+`keydev='UUID=E533-ACCA'` is the half that was missing for most of this
+project's life. Without it the command line ends at
+`rd.luks.key=/efi/luks-key.gpg`, and dracut looks for that path *inside the
+initramfs*, where the key is not: the machine falls back to the recovery
+passphrase and the file the variant exists to place is never read. Both halves
+are visible above — the path relative to the root of the ESP, and the
+filesystem that carries it — and dracut mounted `/dev/vda1`, found the file,
+and is asking for the envelope's passphrase, which is what
+`crypt_variant_boot_note` says it will do.
+
+---
+
 ## Run 5 — a stage of your own
 
 ```bash

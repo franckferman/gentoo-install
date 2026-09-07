@@ -670,3 +670,87 @@ load helper
   body="$(sed -n '/^crypt_test_key_file/,/^}/p' "${GI_ROOT}/lib/crypt.sh")"
   [[ "$body" == *"--disable-external-tokens"* ]]
 }
+
+# --------------------------------------------------------------------------- #
+#  The key directory is asked about when there is a tree to ask about          #
+# --------------------------------------------------------------------------- #
+# crypt = luks-keyfile-gpg could not complete a plain full run with the
+# defaults. Step 20 partitions and hands over to step 30 *before* it formats
+# anything, because the LUKS header has to exist before a filesystem does — so
+# when step 30 checked that crypt_key_dir (/boot/efi) existed, the ESP was
+# unformatted, the target root unmounted, and the answer could only be no:
+#
+#     [x] crypt_key_dir does not exist: /mnt/gentoo/boot/efi
+#
+# about an ESP that step 30 itself was three functions away from formatting.
+# _kg_install_key creates the directory at deploy time, after the filesystems
+# are made and mounted, so nothing needed it to exist this early.
+
+gi_kg_check() {
+  # Run the variant's check against a target root, with everything it asks of
+  # the outside world answered. Args: $1 = root, $2 = "mounted" or "not".
+  cat <<'EOF'
+  config_init_defaults >/dev/null 2>&1
+  DRY_RUN=no; NON_INTERACTIVE=yes
+  CFG[root]="$1"; CFG[crypt]=luks-keyfile-gpg
+  CRYPT_DEVICE=/dev/loop9p2
+  crypt_require_device() { return 0; }
+  crypt_keyfile_reachable() { return 0; }
+  crypt_already_provisioned() { return 1; }
+  mountpoint() { [[ "$2" == "mounted" || "$3" == "mounted" ]]; }
+EOF
+}
+
+@test "the key directory is not demanded before step 30 has made a filesystem" {
+  local dir
+  dir="$(gi_tmp)/kg1"
+  mkdir -p "$dir"
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+'"$(gi_kg_check)"'
+    mountpoint() { return 1; }   # nothing is mounted yet: step 20 handed over
+    crypt_load_variant luks-keyfile-gpg >/dev/null 2>&1
+    crypt_variant_check
+  ' bash "$dir"
+  [ "$status" -eq 0 ] || {
+    printf 'a fresh encrypted install has no ESP yet, and cannot have one:\n%s\n' \
+      "$stderr" >&2
+    return 1
+  }
+  [[ "$stderr" == *"checked when the key is deployed"* ]] || {
+    printf 'and it has to say why it is not checking now: %s\n' "$stderr" >&2
+    return 1
+  }
+}
+
+@test "and is demanded once the tree is standing" {
+  # A second invocation — --steps 30 against a target step 50 has reattached —
+  # is the case where the question means something.
+  local dir
+  dir="$(gi_tmp)/kg2"
+  mkdir -p "$dir"
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+'"$(gi_kg_check)"'
+    mountpoint() { return 0; }   # the target is mounted; the ESP should be too
+    crypt_load_variant luks-keyfile-gpg >/dev/null 2>&1
+    crypt_variant_check
+  ' bash "$dir"
+  [ "$status" -ne 0 ] || {
+    printf 'with the tree mounted and no /boot/efi in it, this must refuse\n' >&2
+    return 1
+  }
+  [[ "$stderr" == *"crypt_key_dir does not exist"* ]]
+}
+
+@test "a dry run says the check happens on the run that installs" {
+  local dir
+  dir="$(gi_tmp)/kg3"
+  mkdir -p "$dir"
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+'"$(gi_kg_check)"'
+    DRY_RUN=yes
+    crypt_load_variant luks-keyfile-gpg >/dev/null 2>&1
+    crypt_variant_check
+  ' bash "$dir"
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"on the run that installs"* ]]
+}

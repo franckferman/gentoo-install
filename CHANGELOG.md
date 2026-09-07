@@ -12,6 +12,15 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Added
 
+- **The GPG-wrapped key file has been read by an initramfs.** Nine steps, none
+  failed, then a boot: `dracut: rd.luks.key: keypath='/efi/luks-key.gpg'
+  keydev='UUID=E533-ACCA'`, `Found /efi/luks-key.gpg on /dev/vda1`,
+  `Using '/efi/luks-key.gpg' on '/dev/vda1'`. The `keydev=` half is the one
+  restored when the ESP's UUID started being journalled; without it the command
+  line ends at the path, dracut looks for it inside the initramfs, and the
+  machine falls back to the recovery passphrase. `docs/TESTING.md` carries the
+  transcript as run 4b.
+
 - **`systemd-boot` has been booted.** The last of the four, and the last claim
   in this project without a log behind it. On a firmware given a pristine
   variable store, with the install refused an NVRAM entry on purpose, OVMF fell
@@ -144,6 +153,23 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   through a redirection whose errors were discarded.
 
 ### Fixed
+
+- **`crypt = luks-keyfile-gpg` could not complete a fresh install.** Step 20
+  partitions and hands over to step 30 *before* it formats anything, because
+  the LUKS header has to exist before a filesystem does. Step 30 then checked
+  that `crypt_key_dir` (`/boot/efi`) existed and refused:
+
+      [x] crypt_key_dir does not exist: /mnt/gentoo/boot/efi
+      [x]        it has to be mounted before this step runs — normally the
+      [x]        ESP, which step 20 formats and mounts
+
+  about an ESP that step 30 itself was three functions away from formatting.
+  `_kg_install_key` creates that directory at deploy time, after the
+  filesystems are made and mounted, so nothing needed it to exist that early.
+  The comment above the check records the *previous* version of the same
+  mistake — it asked the question of the wrong filesystem — and the fix then
+  changed which path was tested without changing when. It is asked once the
+  target root is mounted now, which is the case a `--steps 30` rerun is.
 
 - **A README transcript showed output the command had stopped producing.** The
   `--dump-config | head -5` block listed `arch`, `assume_yes`, `boot_device`,

@@ -85,18 +85,35 @@ crypt_variant_check() {
   root="$(crypt_target_root)"
   host_dir="${root%/}${dir}"
 
-  if [[ ! -d "$host_dir" ]]; then
-    if [[ "$DRY_RUN" == "yes" ]]; then
-      log "dry-run: ${host_dir} does not exist here; the plan continues anyway"
-    else
-      err "crypt_key_dir does not exist: ${host_dir}"
-      err "       crypt_key_dir is ${dir} in the installed system, which is"
-      err "       ${host_dir} from here"
-      err "       it has to be mounted before this step runs — normally the"
-      err "       ESP, which step 20 formats and mounts"
-      err "       example:  crypt_key_dir = /boot/efi   with --root /mnt/gentoo"
-      return 1
-    fi
+  # And asked only when there is a tree to ask about. On a fresh encrypted
+  # install there is not: step 20 partitions and hands over *before* it formats
+  # anything, because the LUKS header has to exist before a filesystem does. At
+  # this moment the ESP is unformatted, the target root is unmounted, and this
+  # directory cannot exist — it is created by _kg_install_key at deploy time,
+  # after step 30 has made the filesystems and mounted them.
+  #
+  # Demanding it here made crypt = luks-keyfile-gpg impossible on a plain full
+  # run with the defaults:
+  #
+  #     [x] crypt_key_dir does not exist: /mnt/gentoo/boot/efi
+  #
+  # about an ESP that step 30 itself was three functions away from formatting.
+  # The comment above records the previous version of this same mistake: it
+  # asked the question of the wrong filesystem, and the fix changed which path
+  # was tested without changing when.
+  if [[ "$DRY_RUN" == "yes" ]]; then
+    log "dry-run: ${host_dir} is checked on the run that installs"
+  elif ! mountpoint -q -- "${root%/}" 2>/dev/null; then
+    log "${root%/} is not mounted yet: ${dir} is checked when the key is deployed"
+    log "       step 20 hands over before it formats, so the ESP is not there yet"
+  elif [[ ! -d "$host_dir" ]]; then
+    err "crypt_key_dir does not exist: ${host_dir}"
+    err "       crypt_key_dir is ${dir} in the installed system, which is"
+    err "       ${host_dir} from here"
+    err "       the target is mounted, so the ESP should be too — normally by"
+    err "       step 20, or by step 50 on a second invocation"
+    err "       example:  crypt_key_dir = /boot/efi   with --root /mnt/gentoo"
+    return 1
   fi
 
   # A key the initramfs cannot reach is a key that will never be read: it opens

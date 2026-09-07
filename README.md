@@ -105,9 +105,25 @@ signature and the sha256 — and, given an archive with neither, says `nothing
 verified this archive`, names the two ways to fix that, and unpacks it anyway,
 because that is what was asked.
 
-**`luks-keyfile-gpg` has been carried through as well** — the container made, the
-GPG-wrapped key file deployed onto the ESP, and both ways in exercised: the key
-file opens slot 0, the recovery passphrase opens slot 1.
+**`luks-keyfile-gpg` has been installed and booted** — and until 7 September a
+fresh install of it could not start at all. Step 20 hands over to step 30
+before it formats anything, because the LUKS header has to exist before a
+filesystem does, and step 30 then refused because `crypt_key_dir` did not
+exist — about an ESP it was three functions away from formatting itself. With
+that fixed: nine steps, none failed, both ways in exercised (the key file opens
+slot 0, the recovery passphrase opens slot 1), and the machine booted to
+
+```
+dracut: rd.luks.key: keypath='/efi/luks-key.gpg' keydev='UUID=E533-ACCA'
+dracut: Found /efi/luks-key.gpg on /dev/vda1
+dracut: Using '/efi/luks-key.gpg' on '/dev/vda1'
+Password (/efi/luks-key.gpg on /dev/vda1 for /dev/vda2) [1/3]:
+```
+
+`keydev=` is the half that decides this variant. Without it the command line
+ends at `rd.luks.key=/efi/luks-key.gpg` and dracut looks for that path inside
+the initramfs, where the key is not — the machine falls back to the recovery
+passphrase and the file the variant exists to place is never read.
 
 **`luks-tpm` has been run to the end**, inside a VM with a software TPM: the
 installer running in the guest, an LVM layout on an encrypted disk, and then
