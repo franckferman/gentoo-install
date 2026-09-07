@@ -154,6 +154,31 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **The initramfs check now asks a systemd image the question that matters.**
+  It reported `Initramfs … crypt dm` and called it a pass about a machine that
+  waited for `/dev/mapper/gentoo` for ever: a systemd initramfs starts
+  `systemd-cryptsetup@<name>.service`, and dracut ships `71systemd-cryptsetup`
+  and includes it only when `/usr/lib/systemd/systemd-cryptsetup` exists. The
+  module is required now when the image carries the `systemd` module and
+  something is encrypted — asked of the image and not of the setting, because
+  the image is what will look for the unit. Run against the image that hung, it
+  fails with the package and the USE flag beside it.
+
+- **The `package.use` block had one owner and seven writers.** Step 70 asks
+  `sys-apps/systemd` for `cryptsetup` so the initramfs can open the container;
+  the `uki` variant asks the same package for `boot` so the EFI stub exists;
+  `write_block` replaces what it finds, so whichever ran second left the
+  other's flag off — `[ebuild R] sys-apps/systemd USE="… cryptsetup* …
+  -boot* …"`. The block accumulates now, and a line already in it is not
+  repeated, so a rerun is a no-op rather than a growing file.
+
+- **An initramfs older than the packages it is built out of is made again.**
+  systemd came back with `USE=cryptsetup` at 10:16 and the image on disk was
+  still the one from 09:48, without the module that opens the container.
+  Nothing downstream noticed — the kernel was installed and `/boot` held an
+  image, so the build was skipped. Step 70 rebuilds it when a package it is
+  built out of was rebuilt while the step ran.
+
 - **`--init systemd` had never been run, and three things were waiting.**
 
   *The unified kernel image could not be installed.* The `uki` variant asked

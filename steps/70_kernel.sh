@@ -787,6 +787,29 @@ kernel_installed() {
   printf '%s\t%s\t%s\n' "$version" "$image" "$initrd"
 }
 
+kernel_rebuild_stale_initramfs() {
+  # dracut, once, when a package the image is built out of came back changed
+  # while this step ran. Args: $1 = target root.
+  local root="$1" record version image initrd
+  [[ "$KERNEL_INITRAMFS_STALE" == "yes" ]] || return 0
+  if [[ "$DRY_RUN" == "yes" ]]; then
+    log "dry-run: would rebuild the initramfs, a package it is built out of changed"
+    return 0
+  fi
+  record="$(kernel_installed "$root")" || return 0
+  IFS=$'\t' read -r version image initrd <<<"$record"
+  [[ -n "$version" ]] || return 0
+
+  log "a package the initramfs is built out of was rebuilt; making the image again"
+  if ! kernel_in_target "$root" dracut --force --kver "$version"; then
+    warn "dracut would not rebuild the initramfs for ${version}"
+    warn "       the image on disk was made before the packages it is built out of"
+    warn "       chroot ${root} dracut --force --kver ${version}"
+    return 0
+  fi
+  ok "initramfs rebuilt for ${version}"
+}
+
 kernel_verify() {
   # Args: $1 = target root. The proof the step produced something bootable.
   local root="$1" record version image initrd crypt
@@ -880,14 +903,45 @@ kernel_pkg_installed() {
   return 1
 }
 
+# Set when a package the initramfs is built out of has been rebuilt during this
+# step, so that the image is made again from the packages as they now are.
+KERNEL_INITRAMFS_STALE="no"
+
 kernel_write_package_use() {
   # A file of our own under package.use, so a rerun replaces its own work and
   # step 60's file is never touched. Args: $1 = target root, $2.. = lines.
+  #
+  # The block accumulates. Seven places write it — this step twice, the kernel
+  # variant once, the boot variants four times — and write_block replaces what
+  # it finds, so each of them used to erase the last one's lines. That was
+  # harmless while no two of them named the same package, and fatal the moment
+  # two did: this step asks sys-apps/systemd for cryptsetup so the initramfs
+  # can open the container, the uki variant asks the same package for boot so
+  # the EFI stub exists, and whichever ran second left the other's flag off.
+  # Measured on a rerun, in portage's own words:
+  #
+  #   [ebuild   R] sys-apps/systemd USE="… cryptsetup* … -boot* …"
+  #
+  # So what is already in the block is kept, the new lines are added after it,
+  # and a line that is already there is not repeated — which also makes a
+  # second run of the same step a no-op rather than a growing file.
   local root="$1"
   shift
   local target="${root}/etc/portage/package.use/70-gentoo-install-kernel"
+  local open close existing=""
   (($# > 0)) || return 0
-  printf '%s\n' "$@" | write_block "$target" "kernel USE flags"
+
+  open="$(block_open_marker "kernel USE flags")"
+  close="$(block_close_marker "kernel USE flags")"
+  if [[ -f "$target" ]]; then
+    existing="$(awk -v o="$open" -v c="$close" \
+      '$0==c{f=0} f{print} $0==o{f=1}' "$target")"
+  fi
+
+  {
+    [[ -z "$existing" ]] || printf '%s\n' "$existing"
+    printf '%s\n' "$@"
+  } | awk 'NF && !seen[$0]++' | write_block "$target" "kernel USE flags"
 }
 
 kernel_ensure_lvm_tools() {
@@ -1043,6 +1097,16 @@ kernel_ensure_crypt_packages() {
     if ! kernel_in_target "$root" emerge --verbose --changed-use --quiet-build=n \
       "${spare[@]}"; then
       _kernel_warn_no_sealing "${spare[*]}"
+    else
+      # A package the initramfs is built out of has just been rebuilt, and the
+      # image on disk was made before it. Nothing downstream notices: the
+      # kernel is installed, /boot holds an image, and this step skips the
+      # build. Measured on a systemd target — sys-apps/systemd came back with
+      # USE=cryptsetup at 10:16 and /boot/initramfs-….img was still the one
+      # from 09:48, without the systemd-cryptsetup dracut module in it, which
+      # is the module that opens the container. The image has to be made again
+      # from the packages as they are now.
+      KERNEL_INITRAMFS_STALE="yes"
     fi
   fi
 
@@ -1149,5 +1213,6 @@ step_70_kernel() {
   kernel_load_variant "$variant" || return 1
   "$fn" "$root" || return 1
 
+  kernel_rebuild_stale_initramfs "$root" || return 1
   kernel_verify "$root"
 }

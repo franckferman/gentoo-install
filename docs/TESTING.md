@@ -689,9 +689,54 @@ not carry. Measured in the target: no `cryptsetup` in `USE`, no
 `/usr/lib/systemd/systemd-cryptsetup`, no `systemd-cryptsetup@.service`.
 
 Step 95 had reported `Initramfs … crypt dm` and called it a pass, because the
-dracut *modules* were all present. The modules were never the missing piece,
-and that check does not yet know the difference — which is the next thing to
-fix.
+dracut *modules* were all present. The modules were never the missing piece.
+
+**The check knows the difference now**, and finding out cost two more defects.
+dracut ships `71systemd-cryptsetup` and includes it only when
+`/usr/lib/systemd/systemd-cryptsetup` exists, so the question to ask of a
+systemd image is whether that module is in it — asked of the image, not of the
+setting, because an image carrying the `systemd` module is the one that will
+look for the unit. Run against the very image that hung:
+
+```
+2/ 5  [FAIL] Initramfs                1 of 3 module(s) missing
+      systemd-cryptsetup sys-apps/systemd, with the cryptsetup USE flag
+```
+
+Then, fixing it, two things in the way:
+
+- **The `package.use` block had one owner and seven writers.** Step 70 asks
+  `sys-apps/systemd` for `cryptsetup`; the `uki` variant asks the same package
+  for `boot`; `write_block` replaces what it finds, so whichever ran second
+  left the other's flag off. Portage said it plainly on a rerun:
+  `[ebuild R] sys-apps/systemd USE="… cryptsetup* … -boot* …"`. The block
+  accumulates now, and a line already in it is not repeated.
+- **The image was older than the packages it is built out of.** systemd came
+  back with `USE=cryptsetup` at 10:16 and `/boot/initramfs-….img` was still
+  the one from 09:48. Nothing downstream noticed: the kernel was installed,
+  `/boot` held an image, and the build was skipped. Step 70 makes the image
+  again when a package it is built out of was rebuilt while the step ran.
+
+With all three in place, on the same disk:
+
+```
+[*] a package the initramfs is built out of was rebuilt; making the image again
+[+] initramfs rebuilt for 6.18.48-gentoo-dist-bin
+   2/ 5  [PASS] Initramfs   …/boot/initramfs-6.18.48-gentoo-dist-bin.img, crypt dm systemd-cryptsetup
+```
+
+and the boot that had waited for `/dev/mapper/gentoo` for ever:
+
+```
+systemd[1]: Created slice Slice /system/systemd-cryptsetup.
+[  OK  ] Created slice Slice /system/systemd-cryptsetup.
+Please enter passphrase for disk root (luks-00046e6c-…): (press TAB for no echo)
+```
+
+One thing this run leaves behind, older than any of it: the kernel command
+line reaches the kernel **twice**, identically, on the `uki` path — visible in
+the first boot of this disk as well as the last. Harmless as long as the two
+copies agree, which is not a property anything here enforces.
 
 ---
 

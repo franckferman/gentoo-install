@@ -655,3 +655,145 @@ load helper
     return 1
   }
 }
+
+@test "the package.use block accumulates instead of erasing the last writer" {
+  # Seven places write this one block. While no two of them named the same
+  # package, replacing it was harmless; the moment two did it was fatal. Step
+  # 70 asks sys-apps/systemd for cryptsetup so the initramfs can open the
+  # container, the uki variant asks the same package for boot so the EFI stub
+  # exists, and whichever ran second left the other's flag off:
+  #     [ebuild R] sys-apps/systemd USE="… cryptsetup* … -boot* …"
+  local dir
+  dir="$(gi_tmp)/pu"
+  mkdir -p "${dir}/etc/portage/package.use"
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+    DRY_RUN=no; ON_CONFLICT=overwrite; NON_INTERACTIVE=yes
+    kernel_write_package_use "$1" "# from step 70" "sys-apps/systemd cryptsetup"
+    kernel_write_package_use "$1" "# from the uki variant" "sys-apps/systemd boot"
+    cat "$1/etc/portage/package.use/70-gentoo-install-kernel"
+  ' bash "$dir"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sys-apps/systemd cryptsetup"* ]] || {
+    printf 'the first writer lost its line:\n%s\n' "$output" >&2
+    return 1
+  }
+  [[ "$output" == *"sys-apps/systemd boot"* ]] || {
+    printf 'the second writer lost its line:\n%s\n' "$output" >&2
+    return 1
+  }
+}
+
+@test "and writing the same line twice does not grow the block" {
+  local dir
+  dir="$(gi_tmp)/pu2"
+  mkdir -p "${dir}/etc/portage/package.use"
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+    DRY_RUN=no; ON_CONFLICT=overwrite; NON_INTERACTIVE=yes
+    kernel_write_package_use "$1" "sys-apps/systemd cryptsetup"
+    kernel_write_package_use "$1" "sys-apps/systemd cryptsetup"
+    grep -c "^sys-apps/systemd cryptsetup$" \
+      "$1/etc/portage/package.use/70-gentoo-install-kernel"
+  ' bash "$dir"
+  [ "$output" = "1" ] || {
+    printf 'a rerun must be a no-op, not a growing file: %s\n' "$output" >&2
+    return 1
+  }
+}
+
+@test "a systemd initramfs is checked for the unit it will actually start" {
+  # The image that hung held crypt, crypt-lib, dm and systemd — every module
+  # this check asked for — and had no systemd-cryptsetup in it, which is what
+  # a systemd initramfs starts to open a container. It reported PASS.
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+    _fin_crypt() { printf "passphrase\n"; }
+    _fin_uses_lvm() { return 1; }
+    _FIN_KINITRD=/boot/initramfs.img
+    _FIN_KVERSION=6.18.48
+    _FIN_INITRD_METHOD=lsinitrd
+    _FIN_INITRD_PAYLOAD="crypt
+crypt-lib
+dm
+systemd"
+    _fin_size_kib() { printf "20000\n"; }
+    _fin_read_initrd() { return 0; }
+    _fin_check_initramfs /mnt/x
+  '
+  [[ "$stderr" == *"systemd-cryptsetup"* ]] || {
+    printf 'the modules were never the missing piece: %s\n' "$stderr" >&2
+    return 1
+  }
+  [[ "$stderr" == *"FAIL"* ]] || {
+    printf 'and an image that cannot open the root is not a pass: %s\n' "$stderr" >&2
+    return 1
+  }
+}
+
+@test "an image without the systemd module is not asked for it" {
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+    _fin_crypt() { printf "passphrase\n"; }
+    _fin_uses_lvm() { return 1; }
+    _FIN_KINITRD=/boot/initramfs.img
+    _FIN_KVERSION=6.18.48
+    _FIN_INITRD_METHOD=lsinitrd
+    _FIN_INITRD_PAYLOAD="crypt
+crypt-lib
+dm"
+    _fin_size_kib() { printf "20000\n"; }
+    _fin_read_initrd() { return 0; }
+    _fin_check_initramfs /mnt/x
+  '
+  [[ "$stderr" != *"systemd-cryptsetup"* ]] || {
+    printf 'an OpenRC image calls cryptsetup itself: %s\n' "$stderr" >&2
+    return 1
+  }
+  [[ "$stderr" == *"PASS"* ]]
+}
+
+@test "an initramfs older than the packages it is built out of is made again" {
+  # Measured on a systemd target: sys-apps/systemd came back with
+  # USE=cryptsetup at 10:16 and /boot/initramfs-….img was still the one from
+  # 09:48, without the systemd-cryptsetup module in it. Nothing downstream
+  # noticed — the kernel was installed and /boot held an image, so the build
+  # was skipped — and the machine could not open its own root.
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+    DRY_RUN=no
+    KERNEL_INITRAMFS_STALE=yes
+    kernel_installed() { printf "6.18.48\t/boot/kernel\t/boot/initramfs.img\n"; }
+    kernel_in_target() { shift; printf "IN-TARGET %s\n" "$*"; return 0; }
+    kernel_rebuild_stale_initramfs /mnt/x
+  '
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"IN-TARGET dracut --force --kver 6.18.48"* ]] || {
+    printf 'the image has to be made again from the packages as they now are: %s\n' \
+      "$output" >&2
+    return 1
+  }
+}
+
+@test "and an initramfs nothing changed under is left alone" {
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+    DRY_RUN=no
+    KERNEL_INITRAMFS_STALE=no
+    kernel_installed() { printf "6.18.48\t/boot/kernel\t/boot/initramfs.img\n"; }
+    kernel_in_target() { shift; printf "IN-TARGET %s\n" "$*"; return 0; }
+    kernel_rebuild_stale_initramfs /mnt/x
+  '
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"IN-TARGET"* ]] || {
+    printf 'rebuilding an image nothing changed under costs minutes: %s\n' "$output" >&2
+    return 1
+  }
+}
+
+@test "step 70 asks that question before it verifies" {
+  gi_bash '
+    body="$(declare -f step_70_kernel)"
+    [[ "$body" == *kernel_rebuild_stale_initramfs* ]] || exit 1
+    # and before kernel_verify, which is what reads the image back
+    [[ "${body%%kernel_verify*}" == *kernel_rebuild_stale_initramfs* ]] || exit 1
+  '
+  [ "$status" -eq 0 ] || {
+    printf 'the image is remade before it is checked, or the check reads the old one\n' >&2
+    return 1
+  }
+}

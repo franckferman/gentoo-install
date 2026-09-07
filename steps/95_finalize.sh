@@ -273,6 +273,7 @@ _fin_module_package() {
   # costs a web search, which is what these verdicts exist to save.
   case "$1" in
     clevis | clevis-pin-tpm2) printf 'app-crypt/clevis (with the tpm2 USE flag)\n' ;;
+    systemd-cryptsetup) printf 'sys-apps/systemd, with the cryptsetup USE flag\n' ;;
     crypt-gpg) printf 'sys-kernel/dracut, and app-crypt/gnupg in the target\n' ;;
     crypt | dm | lvm) printf 'sys-kernel/dracut\n' ;;
     *) printf 'provider unknown to gentoo-install\n' ;;
@@ -449,6 +450,7 @@ _fin_module_evidence() {
     clevis) grep -qE '(^|/)clevis(-[a-z0-9-]+)*$' <<<"$list" ;;
     clevis-pin-tpm2) grep -qE 'clevis-(decrypt|encrypt)-tpm2$' <<<"$list" ;;
     crypt-gpg) grep -qE '(^|/)gpg$|crypt-gpg' <<<"$list" ;;
+    systemd-cryptsetup) grep -qE 'systemd-cryptsetup' <<<"$list" ;;
     *) return 2 ;;
   esac
 }
@@ -579,6 +581,28 @@ _fin_check_initramfs() {
   fi
 
   mapfile -t present <<<"$_FIN_INITRD_PAYLOAD"
+
+  # A systemd initramfs does not call cryptsetup. It starts
+  # systemd-cryptsetup@<name>.service, generated from rd.luks.uuid= by
+  # systemd-cryptsetup-generator, and dracut ships that as a module of its own
+  # — 71systemd-cryptsetup — which it includes only when
+  # /usr/lib/systemd/systemd-cryptsetup exists. That binary needs
+  # sys-apps/systemd[cryptsetup], a flag no stage3 carries.
+  #
+  # Measured on the first --init systemd install this project ever made: the
+  # image held crypt, crypt-lib, dm and systemd, every module this check asked
+  # for was present, it reported PASS — and the machine waited for
+  # /dev/mapper/gentoo for ever behind
+  #
+  #     Failed to start systemd-cryptsetup@luks\x2d…service: Unit … not found.
+  #
+  # The modules were never the missing piece. Asked of the image rather than of
+  # the setting, because an image carrying the systemd module is the one that
+  # will look for that unit, whatever the configuration says.
+  if [[ "$crypt" != "none" && "$_FIN_INITRD_METHOD" == "lsinitrd" ]] \
+    && printf '%s\n' "${present[@]}" | grep -qxF -- "systemd"; then
+    wanted+=(systemd-cryptsetup)
+  fi
 
   for module in "${wanted[@]}"; do
     if [[ "$_FIN_INITRD_METHOD" == "lsinitrd" ]]; then
