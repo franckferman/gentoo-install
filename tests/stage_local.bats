@@ -98,3 +98,51 @@ load helper
   gi_bash 'STATE_FILE="$1/state/journal"; _stage_assert_target_mounted "$1/plain"' "$dir"
   [ "$status" -eq 0 ]
 }
+
+@test "the wget fallback tells a 404 from a 503 and from a broken network" {
+  # wget's exit status separates them — 8 is "the server answered with an
+  # error", 4 is a network failure — and the code inside that answer decides.
+  # This used to grep wget's words for "404 ", which --quiet had silenced and
+  # which a French locale writes with a non-breaking space; every 404 on a
+  # wget-only machine came out transient and was retried, and the message
+  # naming --arch, --init and --flavour was never printed.
+  local case_ verdict
+  # The two halves of the defect, and the cases that must keep working.
+  # An empty message is what --quiet produced: the classification had nothing
+  # to read and every 404 became transient. The second case carries the
+  # non-breaking space a French wget puts after the number, which the pattern
+  # looking for "404 " could not have matched even unsilenced.
+  for case_ in "8||permanent" \
+    "8|erreur 404\u00a0: Not Found|permanent" \
+    "8|erreur 503 : SERVICE UNAVAILABLE|transient" \
+    "4|unable to resolve host address|transient" \
+    "0||ok"; do
+    run --separate-stderr bash -c '
+      source "$GI_ENTRY"
+      config_init_defaults >/dev/null 2>&1
+      DRY_RUN=no
+      WGET_RC="$1"; WGET_MSG="$2"
+      have() { [[ "$1" == "wget" ]]; }
+      wget() { [[ -n "$WGET_MSG" ]] && printf "%s\n" "$WGET_MSG" >&2; return "$WGET_RC"; }
+      rc=0; _stage_http_get url /dev/null no >/dev/null 2>&1 || rc=$?
+      case $rc in
+        0) printf "ok\n" ;;
+        1) printf "transient\n" ;;
+        2) printf "permanent\n" ;;
+        3) printf "range\n" ;;
+      esac' bash "${case_%%|*}" "$(printf '%b' "$(printf '%s' "$case_" | cut -d'|' -f2)")"
+    verdict="${case_##*|}"
+    [ "$output" = "$verdict" ] || {
+      printf 'wget exit %s said %s, expected %s\n' "${case_%%|*}" "$output" "$verdict" >&2
+      return 1
+    }
+  done
+}
+
+@test "the wget fallback asks for the line that carries the code" {
+  # --quiet silences the very evidence the classification depends on.
+  local body
+  body="$(sed -n '/^_stage_http_get/,/^}/p' "${GI_ROOT}/lib/stage.sh")"
+  [[ "$body" == *"wget --no-verbose"* ]]
+  [[ "$body" != *"wget --quiet"* ]]
+}

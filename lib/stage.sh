@@ -535,18 +535,33 @@ _stage_http_get() {
     cmd+=(--write-out '%{http_code}' --output "$dest" -- "$url")
     code="$("${cmd[@]}" 2>"$err_file")" || rc=$?
   elif have wget; then
-    cmd=(wget --quiet --tries=1 --timeout="$_STAGE_CONNECT")
+    # --no-verbose and not --quiet: stderr goes to a file that is only shown
+    # when something failed, so the one line wget prints costs nothing — and
+    # it is the line that carries the HTTP code.
+    cmd=(wget --no-verbose --tries=1 --timeout="$_STAGE_CONNECT")
     if [[ "$resume" == "yes" ]]; then
       cmd+=(--continue)
     fi
     cmd+=(-O "$dest" -- "$url")
     "${cmd[@]}" 2>"$err_file" || rc=$?
-    # wget's statuses do not separate "gone" from "try again", so the message
-    # it printed is the only evidence there is.
+    # wget's exit status does separate "gone" from "try again", contrary to
+    # what this said: 8 is "the server answered with an error", 4 is a network
+    # failure. Which error decides between the two, so the code is read as a
+    # number and never from wget's words — those are translated, and on a
+    # French locale a 404 arrives followed by a non-breaking space, which the
+    # pattern that looked for "404 " could never have matched.
+    #
+    # It was moot anyway: --quiet had silenced the very line that pattern
+    # searched, so every 404 on a wget-only machine came out "transient" and
+    # was retried, and the operator never saw the message that names --arch,
+    # --init and --flavour as the thing to check.
     if ((rc != 0)); then
-      if grep -qE '40[0-9] |41[0-9] |ERROR 4' "$err_file"; then
+      if ((rc == 8)); then
+        code="$(grep -oE '\b[45][0-9]{2}\b' "$err_file" | head -n 1)"
+        # The server answered and the code could not be read: stopping and
+        # showing what it did say beats retrying in silence.
+        code="${code:-400}"
         rc=22
-        code="404"
       else
         rc=7
       fi

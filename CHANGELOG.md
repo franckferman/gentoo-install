@@ -99,6 +99,20 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **On a machine with only `wget`, a 404 was retried instead of reported.** The
+  fallback downloader ran `wget --quiet` and then searched wget's message for
+  `404 ` to tell "gone" from "try again" — but `--quiet` silences that very
+  line, so every permanent failure came out transient, was retried through the
+  backoff, and the operator never saw the message that names `--arch`, `--init`
+  and `--flavour` as the thing to check. The comment above it said "wget's
+  statuses do not separate gone from try again"; they do — 8 is "the server
+  answered with an error", 4 is a network failure. The code is now read as a
+  number from a line `--no-verbose` keeps, and never from wget's words, which
+  are translated: a French wget writes the 404 followed by a non-breaking
+  space, which the old pattern could not have matched even unsilenced.
+  Verified against the real mirror through the wget path: 404 permanent, 503
+  transient, unreachable host transient, success ok.
+
 - **The key handed to the sealing side says when it is not in RAM.**
   `crypt_secure_tmpdir` asks which of `/run`, `/dev/shm` and `/tmp` is in RAM
   and warns out loud when none is — *"key material will touch a persistent
