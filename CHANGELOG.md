@@ -12,6 +12,13 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Added
 
+- **musl reaches step 70: a kernel and an initramfs, built on a musl target.**
+  The last thing this project had never done. Steps 50, 60 and 70 on an
+  encrypted musl root: `sys-kernel/gentoo-kernel-bin` 6.18.41 installed, dracut
+  built the initramfs from the configuration step 70 wrote, and
+  `lsinitrd --mod` inside the target lists `crypt`, `crypt-lib` and `dm`. Three
+  steps, none failed, 626 seconds.
+
 - **The three variants nothing had ever run are under test.**
   `kernel/genkernel`, `kernel/manual` and the removable path of `boot/efistub`
   had no test naming them. Eight now do, and five fail with the corresponding
@@ -83,6 +90,17 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   without a word. It measures them now and says which ones bind nothing.
 
 ### Fixed
+
+- **An initramfs that cannot be read is not an initramfs missing its crypt
+  module.** The check ran the *host's* `lsinitrd` on the target's image — the
+  third site in this repository to ask the wrong machine for a tool that lives
+  in the target — and read an empty listing as "the module is absent". It is
+  not: it is "the image could not be read", which is what `lsinitrd` returns for
+  a file another process is still writing, an initramfs being copied onto the
+  ESP for instance. Watched on the musl run: it warned that the crypt module was
+  missing from an image that carried it, as `lsinitrd --mod` said plainly a
+  minute later. Step 95 already knows this one — *"'this file is not an
+  initramfs' turns into 'every module is missing'"* — and now step 70 does too.
 
 - **A fresh target is no longer told its machine will not boot.** dracut is not
   in a stage3, so on a target that has just been unpacked its module directory

@@ -385,3 +385,35 @@ load helper
   [[ "$stderr" == *"modules present in the target"* ]]
   [[ "$stderr" != *"will not open its container"* ]]
 }
+
+@test "an unreadable initramfs is not reported as one missing the crypt module" {
+  # lsinitrd returns nothing for a file another process is still writing — an
+  # initramfs being copied onto the ESP, for instance. Watched on a musl
+  # install: the run warned that the crypt module was missing from an image
+  # that carried it, as lsinitrd said plainly a minute later.
+  gi_bash 'chroot() { return 1; }
+    have() { return 1; }
+    kernel_report_crypt_module /mnt/nowhere /boot/initramfs.img'
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"could not be read here"* ]]
+  [[ "$stderr" != *"is not in"* ]]
+}
+
+@test "a module list without crypt is reported, and one with it is not" {
+  gi_bash 'chroot() { printf "dracut modules:\nbash\ndm\n"; }
+    kernel_report_crypt_module /mnt/nowhere /boot/initramfs.img'
+  [[ "$stderr" == *"crypt module is not in"* ]]
+
+  gi_bash 'chroot() { printf "dracut modules:\nbash\ncrypt\ndm\n"; }
+    kernel_report_crypt_module /mnt/nowhere /boot/initramfs.img'
+  [[ "$stderr" == *"carries the crypt module"* ]]
+  [[ "$stderr" != *"is not in"* ]]
+}
+
+@test "the image is read in the target before the machine running the installer" {
+  local body
+  body="$(sed -n '/^kernel_report_crypt_module/,/^}/p' "${GI_ROOT}/steps/70_kernel.sh")"
+  [[ "$body" == *'chroot "$root" lsinitrd'* ]]
+  # The host is the fallback, and only when the target answered nothing.
+  [[ "$body" == *'((${#carried[@]} == 0)) && have lsinitrd'* ]]
+}

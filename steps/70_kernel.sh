@@ -490,6 +490,57 @@ kernel_initramfs_missing_modules() {
   printf '%s\n' "${missing[*]}"
 }
 
+kernel_report_crypt_module() {
+  # The one check that answers "will it open the container": ask the image
+  # itself which modules it carries, rather than trusting the configuration.
+  #
+  # Two things it used to get wrong, and both were already written down
+  # elsewhere in this repository.
+  #
+  # It asked `have lsinitrd` of the host and ran the host's copy. lsinitrd
+  # comes from dracut, which is installed in the target and not on the live
+  # medium — kernel_initramfs_missing_modules says exactly that, forty lines
+  # up, and runs it in the target. On a medium without it the check was skipped
+  # in silence.
+  #
+  # And it read an empty listing as "the module is absent". It is not: it is
+  # "the image could not be read", which is what lsinitrd returns for a file
+  # another process is still writing — an initramfs being copied onto the ESP,
+  # for instance. Watched on a musl install: the run warned that the crypt
+  # module was missing from an image that carried it, as `lsinitrd --mod` said
+  # plainly a minute later. Step 95 knows this one too: "'this file is not an
+  # initramfs' turns into 'every module is missing' and a FAIL that names five
+  # packages the operator does not need."
+  #
+  # Args: $1 = target root, $2 = the initramfs as the target sees it.
+  local root="${1%/}" initrd="$2"
+  local -a carried=()
+
+  if [[ -n "$root" && "$root" != "/" ]]; then
+    mapfile -t carried < <(chroot "$root" lsinitrd "$initrd" --mod 2>/dev/null)
+  fi
+  if ((${#carried[@]} == 0)) && have lsinitrd; then
+    mapfile -t carried < <(lsinitrd "${root}${initrd}" --mod 2>/dev/null)
+  fi
+
+  if ((${#carried[@]} == 0)); then
+    skip "the modules in ${initrd} could not be read here"
+    skip "       chroot ${root} lsinitrd ${initrd} --mod lists them"
+    skip "       step 95 asks the same question of the machine as it stands"
+    return 0
+  fi
+
+  if printf '%s\n' "${carried[@]}" | grep -qx "crypt"; then
+    ok "initramfs carries the crypt module"
+    return 0
+  fi
+
+  warn "the crypt module is not in ${initrd}"
+  warn "       lsinitrd said what is there, and crypt was not among it"
+  warn "       a machine whose initramfs cannot open the container stops at a dracut prompt"
+  return 0
+}
+
 kernel_dracut_prune_modules() {
   # Drop the modules that are not in the target, and say what each one costs.
   #
@@ -762,16 +813,8 @@ kernel_verify() {
     fi
   else
     ok "initramfs: ${initrd}"
-    if [[ "$crypt" != "none" ]] && have lsinitrd; then
-      # The one check that answers "will it open the container": ask the image
-      # itself which modules it carries, rather than trusting the config.
-      if lsinitrd "${root}${initrd}" --mod 2>/dev/null | grep -qx "crypt"; then
-        ok "initramfs carries the crypt module"
-      else
-        warn "the crypt module is not visible in ${initrd}"
-        warn "       lsinitrd ${root}${initrd} --mod lists what is there"
-        warn "       a machine whose initramfs cannot open the container stops at a dracut prompt"
-      fi
+    if [[ "$crypt" != "none" ]]; then
+      kernel_report_crypt_module "$root" "$initrd"
     fi
   fi
 
