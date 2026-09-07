@@ -663,3 +663,99 @@ GI_INTERNAL_TOKENS='trinity|cagip|ca-gip|matric|gundabad|thrain|keepass|gps_'
     return 1
   fi
 }
+
+@test "every transcript in the README is what the command still prints" {
+  # The README shows what this installer says, in ```console blocks with a
+  # `$ ./gentoo-install.sh …` line at the top. Those are claims about the
+  # program, and they drift silently: the --dump-config example listed arch,
+  # assume_yes, boot_device, boot_disk, boot_label, which stopped being the
+  # first five settings the day `accounts` and `accounts_file` were declared.
+  # Nobody reruns a transcript.
+  #
+  # Blocks that name a file the repository does not carry are skipped and
+  # counted: they show a run against something the reader supplies.
+  local block cmd expected actual checked=0 skipped=0 bad=""
+  local tmp="${BATS_TEST_TMPDIR}/blocks"
+  mkdir -p "$tmp"
+
+  awk -v dir="$tmp" '
+    /^```console/ { n++; inb = 1; next }
+    /^```/        { inb = 0; next }
+    inb           { print > (dir "/" n) }
+  ' "${GI_ROOT}/README.md"
+
+  for block in "$tmp"/*; do
+    [[ -f "$block" ]] || continue
+    cmd="$(head -n 1 "$block")"
+    [[ "$cmd" == '$ ./gentoo-install.sh '* ]] || continue
+    cmd="${cmd#$ }"
+
+    # A --config that names a file the repo does not have is the reader's own.
+    if [[ "$cmd" == *--config* ]]; then
+      local named
+      named="$(printf '%s\n' "$cmd" | grep -oE -- '--config +[^ ]+' | awk '{print $2}')"
+      if [[ ! -e "${GI_ROOT}/${named}" ]]; then
+        skipped=$((skipped + 1))
+        continue
+      fi
+    fi
+
+    expected="$(tail -n +2 "$block")"
+    actual="$(cd "$GI_ROOT" && eval "$cmd" 2>&1 | sed 's/\x1b\[[0-9;]*m//g')"
+    checked=$((checked + 1))
+
+    # The block has to be a prefix of what the command prints: a transcript may
+    # stop early, it may not say something the program does not.
+    local head_of_actual
+    head_of_actual="$(printf '%s\n' "$actual" | head -n "$(printf '%s\n' "$expected" | wc -l)")"
+    if [[ "$head_of_actual" != "$expected" ]]; then
+      bad+="  ${cmd}"$'\n'
+      bad+="$(diff -u --label README --label 'what it prints now' \
+        <(printf '%s\n' "$expected") <(printf '%s\n' "$head_of_actual") || true)"$'\n'
+    fi
+  done
+
+  ((checked > 0)) || {
+    printf 'no README transcript was checked; the block scan found nothing.\n' >&2
+    return 1
+  }
+  [[ -z "$bad" ]] || {
+    printf 'README transcripts that no longer match:\n%s\n' "$bad" >&2
+    return 1
+  }
+}
+
+@test "every PCR value the README shows is one the validator accepts" {
+  # The table has a name in one column and its registers in the other, and
+  # three of its four rows print a list an operator can type. The fourth said
+  # `0-7`, which reads like the same kind of value and is not one:
+  #
+  #     [x] Invalid PCR list: 0-7
+  #
+  # A column that is a value three times and a description once is a column
+  # that will be typed. Both halves of every row are checked here.
+  local name registers bad=""
+  while IFS='|' read -r _ name registers _; do
+    name="$(printf '%s' "$name" | tr -d ' `')"
+    registers="$(printf '%s' "$registers" | tr -d ' `')"
+    [[ -n "$name" && -n "$registers" ]] || continue
+    [[ "$name" != "name" ]] || continue
+
+    # The name has to be one the code knows, and it has to expand to exactly
+    # the registers the table prints beside it.
+    local expanded
+    expanded="$(gi_capture 'config_init_defaults >/dev/null 2>&1; crypt_pcr_named "$1"' "$name")"
+    [[ "$expanded" == "$registers" ]] \
+      || bad+="  ${name}: the table says ${registers}, the code says ${expanded}"$'\n'
+
+    # And the registers, typed as they are printed, have to be accepted.
+    gi_bash 'config_init_defaults >/dev/null 2>&1; crypt_validate_pcrs "$1"' "$registers"
+    [ "$status" -eq 0 ] \
+      || bad+="  ${registers}: refused when typed as crypt_pcrs"$'\n'
+  done < <(grep -E '^\| `[a-z+]+` \| `[0-9,-]+` \|' "${GI_ROOT}/README.md")
+
+  [[ -z "$bad" ]] || {
+    printf 'the PCR table does not match the code:\n%s\n' "$bad" >&2
+    return 1
+  }
+}

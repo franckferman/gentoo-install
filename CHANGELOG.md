@@ -145,6 +145,24 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **A README transcript showed output the command had stopped producing.** The
+  `--dump-config | head -5` block listed `arch`, `assume_yes`, `boot_device`,
+  `boot_disk`, `boot_label` — which stopped being the first five settings the
+  day `accounts` and `accounts_file` were declared, since both sort ahead of
+  them. It is presented as a `console` block with a `$` prompt, so it reads as
+  something that was run. Nobody reruns a transcript, so a test does: every
+  `console` block in the README whose first line is a `$ ./gentoo-install.sh …`
+  is executed and its lines are required to be a prefix of what comes back.
+  Blocks naming a file the repository does not carry are skipped and counted.
+
+- **The PCR table offered a value the validator refuses.** Three of its four
+  rows print a register list an operator can type; the fourth said `0-7`, which
+  reads like the same kind of value and is not one — `crypt_pcrs = 0-7` is
+  answered with *"Invalid PCR list: 0-7"*. It now prints `0,1,2,3,4,5,6,7`,
+  which is exactly what the code expands `strict` to. A test walks the table
+  and requires both halves of every row: the name must expand to the registers
+  printed beside it, and those registers must be accepted when typed.
+
 - **A verifier that reads the NVRAM of the machine it runs on is not a
   verifier.** Found by the run the previous fix finally made safe. Step 80
   installed `systemd-boot` to a loop image, was refused its variables, wrote no

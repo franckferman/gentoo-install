@@ -128,7 +128,7 @@ There is not one PCR policy, and `crypt_pcrs` takes a name as well as a list:
 | `firmware` | `0,2,3,6` | the default — firmware code, option ROMs, platform events |
 | `secureboot` | `7` | the Secure Boot policy state alone |
 | `firmware+secureboot` | `0,2,3,6,7` | both; reseal when either changes |
-| `strict` | `0-7` | adds the boot binary — expect to reseal after every kernel |
+| `strict` | `0,1,2,3,4,5,6,7` | adds the boot binary — expect to reseal after every kernel |
 
 Registers 2, 3 and 6 are empty on a good deal of consumer firmware: they hold
 the value of a register extended with `EV_SEPARATOR` and nothing else, so
@@ -745,11 +745,11 @@ the authoritative set, with each value and where it came from:
 
 ```console
 $ ./gentoo-install.sh --dump-config | head -5
+accounts                 =                              # default
+accounts_file            =                              # default
 arch                     = amd64                        # default
 assume_yes               = no                           # default
 boot_device              =                              # default
-boot_disk                =                              # default
-boot_label               =                              # default
 ```
 
 A key that is not in that list is refused — in a `.conf` on the line that
