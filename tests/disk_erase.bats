@@ -132,3 +132,32 @@ load helper
   spec="$(grep -E '^var:/var:' "${GI_ROOT}/variants/layout/desktop.sh")"
   [[ "$spec" == *"/6G/"* ]]
 }
+
+@test "a volume group is judged confined only when every PV is on the target" {
+  # disk_release deactivates the whole group it finds through an LV on the
+  # target. Proved on two loop devices: releasing the first took down a
+  # logical volume living entirely on the second, and the run said nothing.
+  #
+  # Both answers in one snippet, and printed rather than returned: a test that
+  # only checks a non-zero status passes just as well when the function has
+  # been deleted, which is how a guard comes back without anything noticing.
+  gi_bash 'config_init_defaults >/dev/null 2>&1
+    _disk_holding_disks() { case "$1" in *sdb*) printf "sdb\n" ;; *sdc*) printf "sdc\n" ;; esac; }
+    vgs() { printf "  /dev/sdb1\n  /dev/sdc1\n"; }
+    _disk_vg_is_confined vg_data /dev/sdb && printf "spanning=allowed " || printf "spanning=refused "
+    vgs() { printf "  /dev/sdb1\n  /dev/sdb2\n"; }
+    _disk_vg_is_confined vg0 /dev/sdb && printf "confined=allowed\n" || printf "confined=refused\n"'
+  [ "$status" -eq 0 ]
+  [ "$output" = "spanning=refused confined=allowed" ]
+}
+
+@test "releasing a disk asks whether the group stays on it" {
+  # Every write in lib/disk.sh goes through _disk_assert_target. vgchange is
+  # not a write to a device, so it never did.
+  local body
+  body="$(sed -n '/^disk_release/,/^}/p' "${GI_ROOT}/lib/disk.sh")"
+  [[ "$body" == *"_disk_vg_is_confined"* ]]
+  [[ "$body" == *"reaches past"* ]]
+  # And it refuses rather than deactivating half a group.
+  [[ "$body" == *"takes down volumes on a disk nobody confirmed"* ]]
+}

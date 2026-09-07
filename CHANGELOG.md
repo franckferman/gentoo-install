@@ -91,6 +91,17 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **Releasing a disk no longer deactivates volumes on another one.**
+  `disk_release` frees the holders of the target so that `sgdisk` cannot fail on
+  a busy device, and it finds the volume group through a logical volume on that
+  target — then deactivates the whole group. A group spanning a second disk was
+  deactivated there too. Proved on two loop devices: releasing the first took
+  down a logical volume living entirely on the second, and the run said nothing.
+  Every write in `lib/disk.sh` passes through `_disk_assert_target`; `vgchange`
+  is not a write to a device, so it never did. The group's physical volumes are
+  now checked against the confirmed disk, and one that reaches past it stops the
+  run rather than half-deactivating something nobody named.
+
 - **The guard that recognises this machine's own disk could never recognise it.**
   `disk_root_ancestors` asked `lsblk -nso NAME`, and inverse mode still draws
   the tree: the names came back as `└─nvme0n1p3` and `    └─nvme0n1`. `tr -d ' '`

@@ -1322,6 +1322,28 @@ disk_require_tools() {
 # --------------------------------------------------------------------------- #
 #  Release, wipe, partition                                                   #
 # --------------------------------------------------------------------------- #
+_disk_vg_is_confined() {
+  # Is every physical volume of this group on the disk we were told to erase?
+  #
+  # disk_release deactivates the whole group it finds through an LV on the
+  # target, and a group that spans another disk is deactivated there too.
+  # Proved on two loop devices: releasing the first took down a logical volume
+  # living entirely on the second, and the run said nothing. Every write in
+  # this file goes through _disk_assert_target; vgchange is not a write to a
+  # device, so it never did.
+  # Args: $1 = volume group, $2 = the disk being released (/dev/sdb).
+  local vg="$1" target="$2" pv holder
+  while read -r pv; do
+    [[ -n "$pv" ]] || continue
+    while read -r holder; do
+      [[ -n "$holder" ]] || continue
+      [[ "/dev/${holder}" == "$target" ]] && continue
+      return 1
+    done < <(_disk_holding_disks "$pv")
+  done < <(vgs --noheadings -o pv_name "$vg" 2>/dev/null | tr -d ' ')
+  return 0
+}
+
 disk_release() {
   # Free every holder so that sgdisk cannot fail on a busy device and leave
   # the disk half-erased. The stack comes down from the top: mounts, then
@@ -1356,6 +1378,13 @@ disk_release() {
     [[ -n "$vg" ]] || continue
     if [[ " ${seen[*]-} " == *" ${vg} "* ]]; then continue; fi
     seen+=("$vg")
+    if ! _disk_vg_is_confined "$vg" "$device"; then
+      err "volume group ${vg} reaches past ${device}"
+      err "       deactivating it takes down volumes on a disk nobody confirmed"
+      err "       vgs -o vg_name,pv_name ${vg}   shows where it lives"
+      err "       move those volumes or split the group before erasing this disk"
+      return 1
+    fi
     run_quiet vgchange -an "$vg" || warn "vgchange -an ${vg} failed"
   done < <(lsblk -lno NAME,TYPE "$device" 2>/dev/null | awk '$2 == "lvm" { print $1 }')
 
