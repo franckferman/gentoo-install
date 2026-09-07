@@ -405,6 +405,24 @@ kernel_check_dracut_modules() {
   local list
   list="$(kernel_dracut_modules)" || return 1
   [[ -n "$list" ]] || return 0
+
+  # dracut is not in a stage3, so on a fresh target its module directory does
+  # not exist and *every* module it provides is missing. This said so anyway,
+  # and ended on "the machine will not open its container" — on every
+  # encrypted install, a minute before emerging the package that brings them
+  # and building a correct initramfs. A warning nobody should act on is what
+  # teaches an operator to skip the ones that matter, and this project has
+  # written that down once already, about the NVRAM entry in step 95.
+  #
+  # kernel_dracut_prune_modules takes the same reading a few lines down and
+  # says it plainly: "not there yet" is not "not coming". What actually gets
+  # built is checked afterwards, against the image itself, by
+  # kernel_initramfs_missing_modules and again by step 95.
+  if [[ ! -d "${root%/}/usr/lib/dracut/modules.d" ]]; then
+    skip "dracut is not in the target yet; its modules are checked once it is"
+    return 0
+  fi
+
   read -r -a wanted <<<"$list"
 
   for module in "${wanted[@]}"; do

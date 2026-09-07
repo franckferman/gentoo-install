@@ -344,3 +344,44 @@ load helper
   body="$(sed -n '/^portage_write_make_conf/,/^}/p' "${GI_ROOT}/steps/60_portage.sh")"
   [[ "$body" == *"portage_say_hardware_source"* ]]
 }
+
+@test "a target without dracut is not told its machine will not boot" {
+  # dracut is not in a stage3, so on a fresh target its module directory does
+  # not exist and every module it provides is "missing". The check said so
+  # anyway and ended on "the machine will not open its container" — on every
+  # encrypted install, a minute before emerging the package that brings them.
+  local dir
+  dir="$(gi_tmp)/nodracut"
+  mkdir -p "$dir"
+  gi_bash 'config_init_defaults >/dev/null 2>&1
+    CFG[crypt]=luks-passphrase; CFG[disk_lvm]=no
+    kernel_check_dracut_modules "$1"' "$dir"
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"not in the target yet"* ]]
+  [[ "$stderr" != *"will not open its container"* ]]
+}
+
+@test "a target with dracut and no crypt module is told exactly that" {
+  local dir
+  dir="$(gi_tmp)/halfdracut"
+  mkdir -p "${dir}/usr/lib/dracut/modules.d/90dm"
+  gi_bash 'config_init_defaults >/dev/null 2>&1
+    CFG[crypt]=luks-passphrase; CFG[disk_lvm]=no
+    kernel_check_dracut_modules "$1"' "$dir"
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"crypt"* ]]
+  [[ "$stderr" == *"will not open its container"* ]]
+}
+
+@test "a target carrying every module it was asked for says so" {
+  local dir
+  dir="$(gi_tmp)/fulldracut"
+  mkdir -p "${dir}/usr/lib/dracut/modules.d/90crypt" \
+    "${dir}/usr/lib/dracut/modules.d/90dm"
+  gi_bash 'config_init_defaults >/dev/null 2>&1
+    CFG[crypt]=luks-passphrase; CFG[disk_lvm]=no
+    kernel_check_dracut_modules "$1"' "$dir"
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"modules present in the target"* ]]
+  [[ "$stderr" != *"will not open its container"* ]]
+}

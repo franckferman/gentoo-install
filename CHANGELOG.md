@@ -84,6 +84,18 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **A fresh target is no longer told its machine will not boot.** dracut is not
+  in a stage3, so on a target that has just been unpacked its module directory
+  does not exist and every module it provides reads as missing. The check said
+  so anyway and ended on *"the initramfs will build without them and the machine
+  will not open its container"* — on every encrypted install, a minute before
+  emerging the package that brings those modules and building a correct
+  initramfs. A warning nobody should act on is what teaches an operator to skip
+  the ones that matter, which this project has written down once already about
+  the NVRAM entry in step 95. `kernel_dracut_prune_modules` takes the same
+  reading a few lines down and says it plainly — "not there yet" is not "not
+  coming" — and what gets built is checked afterwards against the image itself.
+
 - **A layout's one-line description no longer claims a topology the plan can
   override.** `server` and `desktop` began theirs with "LVM;", and `disk_lvm`
   overrides what a layout asks for — so `--disk-layout server --disk-lvm no`
