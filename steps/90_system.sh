@@ -496,7 +496,7 @@ _sys_timezone() {
 #  Locales                                                                    #
 # --------------------------------------------------------------------------- #
 _sys_locale_lines() {
-  # One "<locale> <charmap>" per line. CFG[locale] is a comma-separated list
+  # One "<locale> <charmap>" per line. CFG[locales] is a comma-separated list
   # of full entries; CFG[locale] names the one that becomes LANG.
   local primary="$1" extra entry
   extra="$(_sys_cfg "" locales)"
@@ -1700,6 +1700,31 @@ _sys_sshd_check() {
   chroot "$root" /usr/sbin/sshd -t >/dev/null 2>&1
 }
 
+_sys_sshd_account() {
+  # Whose authorized_keys the key belongs in. A returned value, so stdout.
+  #
+  # The account list first. `accounts` supersedes `user` — _sys_accounts_records
+  # says so out loud and then refuses to merge the two — so reading CFG[user]
+  # here meant that the documented way of declaring accounts silently switched
+  # off the ssh-key half of this part. Measured on a throwaway tree:
+  # accounts = "alice:wheel:/bin/bash:sudo" with ssh_key set installed the key
+  # nowhere at all, left PasswordAuthentication yes, and warned "no authorized
+  # key was supplied" about a key that had been supplied.
+  #
+  # The first account, which is the same one _sys_accounts records as
+  # system.user and the same one step 95 and the README already read.
+  # Args: $1 = root.
+  local root="$1"
+  if _sys_accounts_load "$root" && ((${#_SYS_ACC_NAME[@]} > 0)); then
+    if ((${#_SYS_ACC_NAME[@]} > 1)); then
+      log "sshd: the key goes to ${_SYS_ACC_NAME[0]}, the first account of the list"
+    fi
+    printf '%s\n' "${_SYS_ACC_NAME[0]}"
+    return 0
+  fi
+  _sys_cfg "" user
+}
+
 _sys_sshd() {
   local root="$1" key user home passwords="yes"
   # Split: same reason -- this would name the HOST sshd_config (SC2318).
@@ -1712,7 +1737,25 @@ _sys_sshd() {
   fi
 
   key="$(_sys_cfg "" ssh_key)"
-  user="$(_sys_cfg "" user)"
+  user="$(_sys_sshd_account "$root")"
+
+  # A key in the home of an account that does not exist is not a way in: the
+  # directory is created by root, chown fails because there is no such user,
+  # and sshd would refuse to read it under StrictModes anyway. Turning password
+  # authentication off on the strength of it is how a machine ends up with sshd
+  # running and nothing able to log into it.
+  # Asked only when the tree can answer: _sys_account_exists returns false both
+  # for "no such account" and for "no readable /etc/passwd", and refusing on the
+  # second would be refusing on ignorance.
+  if [[ -n "$key" && -n "$user" && "$DRY_RUN" != "yes" ]] \
+    && _sys_tree_readable "$root" && [[ -r "${root}/etc/passwd" ]] \
+    && ! _sys_account_exists "$root" "$user"; then
+    warn "sshd: no account named ${user} in the target, so the key was not installed"
+    warn "       a key under /home/${user} belongs to nobody and sshd will not read it"
+    warn "       password authentication stays on rather than leaving no way in"
+    _sys_todo "create ${user}, then install the key: chroot ${root} /bin/bash -lc 'useradd -m ${user}'"
+    key=""
+  fi
 
   if [[ -n "$key" && -n "$user" ]]; then
     home="${root}/home/${user}"

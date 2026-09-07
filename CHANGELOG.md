@@ -114,6 +114,27 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **The ssh key goes to the account the list names.** `accounts` supersedes
+  `user` — `_sys_accounts_records` says so out loud and then refuses to merge
+  the two — but `_sys_sshd` read `CFG[user]` anyway. So the documented way of
+  declaring an account silently switched off the ssh-key half of the sshd part.
+  Measured on a throwaway tree: with
+  `accounts = "alice:wheel:/bin/bash:sudo"` and `ssh_key` set, the key was
+  installed **nowhere**, `PasswordAuthentication` stayed **yes**, and the run
+  warned *"no authorized key was supplied"* about a key that had been supplied.
+  The key now follows the first account of the list — the same one
+  `_sys_accounts` already records as `system.user` — and falls back to
+  `CFG[user]` for configurations written before the list existed.
+
+- **A key in the home of an account that does not exist is not a way in.** The
+  directory would be created by root, `chown` would fail because there is no
+  such user, and sshd would refuse to read it under `StrictModes` — and
+  password authentication would have been turned off on the strength of it,
+  leaving sshd running with nothing able to log in. The key is not installed in
+  that case, passwords stay on, and the reason is said. Asked only when
+  `/etc/passwd` is readable: refusing on an unreadable tree would be refusing
+  on ignorance.
+
 - **The closing screen reads the names the steps actually write.** The recap
   asked the journal for `disk.filesystem` and `disk.vg` — two of the four names
   step 20's own comment lists as the wrong ones, next to the note that they are

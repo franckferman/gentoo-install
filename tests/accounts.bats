@@ -411,6 +411,7 @@ gi_root_lock() {
   local dir
   dir="$(gi_tmp)/sshkey"
   mkdir -p "${dir}/home/alice" "${dir}/etc/ssh"
+  printf 'alice:x:1000:1000::/home/alice:/bin/bash\n' >"${dir}/etc/passwd"
   gi_bash 'config_init_defaults >/dev/null 2>&1
     DRY_RUN=no; STATE_FILE=""; NON_INTERACTIVE=yes
     CFG[sshd]=yes; CFG[user]=alice
@@ -422,6 +423,106 @@ gi_root_lock() {
   [ "$status" -eq 0 ]
   grep -q 'ssh-ed25519 AAAAC3Nz' "${dir}/home/alice/.ssh/authorized_keys"
   [[ "$stderr" != *"sshd will accept passwords"* ]]
+}
+
+@test "the key goes to the account the list names, not to the setting it replaced" {
+  # accounts supersedes user — _sys_accounts_records says so out loud and then
+  # refuses to merge them — but _sys_sshd read CFG[user] anyway. So the
+  # documented way of declaring an account silently switched off the ssh-key
+  # half of this part: no key was installed anywhere, password authentication
+  # stayed on, and the run warned "no authorized key was supplied" about a key
+  # that had been supplied.
+  local dir
+  dir="$(gi_tmp)/sshacc"
+  mkdir -p "${dir}/home/alice" "${dir}/etc/ssh" "${dir}/bin"
+  : >"${dir}/bin/bash"
+  printf 'alice:x:1000:1000::/home/alice:/bin/bash\n' >"${dir}/etc/passwd"
+  printf 'wheel:x:10:\n' >"${dir}/etc/group"
+  gi_bash 'config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no; STATE_FILE=""; NON_INTERACTIVE=yes
+    CFG[sshd]=yes; CFG[user]=""
+    CFG[accounts]="alice:wheel:/bin/bash:sudo"
+    CFG[ssh_key]="ssh-ed25519 AAAAC3Nz test@example"
+    _sys_in_chroot() { return 0; }
+    run_cmd() { "$@"; }
+    chroot() { return 0; }
+    _sys_sshd "$1"' "$dir"
+  [ "$status" -eq 0 ]
+  grep -q 'ssh-ed25519 AAAAC3Nz' "${dir}/home/alice/.ssh/authorized_keys" || {
+    printf 'the key was supplied and the account list names alice\n' >&2
+    printf 'stderr: %s\n' "$stderr" >&2
+    return 1
+  }
+  grep -q '^PasswordAuthentication no$' \
+    "${dir}/etc/ssh/sshd_config.d/10-gentoo-install.conf" || {
+    printf 'with a key installed, sshd must stop taking passwords\n' >&2
+    return 1
+  }
+}
+
+@test "a key for an account the target does not have is not a way in" {
+  # The directory would be created by root, chown would fail because there is
+  # no such user, and sshd would refuse to read it under StrictModes. Turning
+  # password authentication off on the strength of it leaves sshd running with
+  # nothing able to log in.
+  local dir
+  dir="$(gi_tmp)/sshghost"
+  mkdir -p "${dir}/etc/ssh" "${dir}/home" "${dir}/bin"
+  : >"${dir}/bin/bash"
+  printf 'root:x:0:0:root:/root:/bin/bash\n' >"${dir}/etc/passwd"
+  printf 'wheel:x:10:\n' >"${dir}/etc/group"
+  gi_bash 'config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no; STATE_FILE=""; NON_INTERACTIVE=yes
+    CFG[sshd]=yes; CFG[user]=""
+    CFG[accounts]="alice:wheel:/bin/bash:sudo"
+    CFG[ssh_key]="ssh-ed25519 AAAAC3Nz test@example"
+    _sys_in_chroot() { return 0; }
+    run_cmd() { "$@"; }
+    chroot() { return 0; }
+    _sys_sshd "$1"' "$dir"
+  [ "$status" -eq 0 ]
+  [[ ! -e "${dir}/home/alice/.ssh/authorized_keys" ]] || {
+    printf 'a key was installed into the home of an account that does not exist\n' >&2
+    return 1
+  }
+  grep -q '^PasswordAuthentication yes$' \
+    "${dir}/etc/ssh/sshd_config.d/10-gentoo-install.conf" || {
+    printf 'without a usable key, password authentication is the only way in\n' >&2
+    return 1
+  }
+  [[ "$stderr" == *"no account named alice in the target"* ]]
+}
+
+@test "an accounts list that declares nobody falls back instead of crashing" {
+  # `accounts` set to nothing but a comment parses to zero records. Reading
+  # ${_SYS_ACC_NAME[0]} there is an unbound variable under set -u, which is a
+  # step that dies rather than a step that answers.
+  local dir
+  dir="$(gi_tmp)/sshempty"
+  mkdir -p "${dir}/etc"
+  printf 'bob:x:1000:1000::/home/bob:/bin/sh\n' >"${dir}/etc/passwd"
+  gi_bash 'config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no; STATE_FILE=""; NON_INTERACTIVE=yes
+    CFG[accounts]="# nobody"; CFG[accounts_file]=""; CFG[user]=bob
+    _sys_sshd_account "$1"' "$dir"
+  [ "$status" -eq 0 ] || {
+    printf 'a list of no accounts must fall back, not fail: %s\n' "$stderr" >&2
+    return 1
+  }
+  [ "$output" = "bob" ]
+}
+
+@test "with no account list at all, the ssh key still follows the old setting" {
+  local dir
+  dir="$(gi_tmp)/sshlegacy"
+  mkdir -p "${dir}/etc"
+  printf 'bob:x:1000:1000::/home/bob:/bin/sh\n' >"${dir}/etc/passwd"
+  gi_bash 'config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no; STATE_FILE=""; NON_INTERACTIVE=yes
+    CFG[accounts]=""; CFG[accounts_file]=""; CFG[user]=bob
+    _sys_sshd_account "$1"' "$dir"
+  [ "$status" -eq 0 ]
+  [ "$output" = "bob" ]
 }
 
 @test "more than one locale can be asked for, in any script" {
