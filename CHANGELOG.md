@@ -91,6 +91,17 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **The key handed to the sealing side says when it is not in RAM.**
+  `crypt_secure_tmpdir` asks which of `/run`, `/dev/shm` and `/tmp` is in RAM
+  and warns out loud when none is — *"key material will touch a persistent
+  filesystem while this runs; it is deleted afterwards, and deleted is not
+  erased"*. The one directory it never sees is the copy the sealing side reads:
+  that has to sit at a path both sides agree on, so it is placed by name rather
+  than chosen, and it was never asked about. Measured with `/run` unbound in the
+  target: the LUKS key landed on ext4 in the clear and nothing was said. It
+  warns now, like its sibling, and names what puts it right — step 50 binds
+  `/run` into the target.
+
 - **Disk verification says what each mountpoint carries, not merely that
   something is there.** `disk_verify` checked that the planned device exists,
   that *something* is mounted at each target, and that the planned device holds

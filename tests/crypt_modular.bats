@@ -594,3 +594,40 @@ load helper
     SLOTS="1:recovery-passphrase 7:tpm2"     ; printf "[%s]\n" "$(_lt_recorded_tpm_slot)"'
   [ "$output" = "[][][7]" ]
 }
+
+@test "a key placed where the target can read it says when that is not RAM" {
+  # crypt_secure_tmpdir asks which of /run, /dev/shm and /tmp is in RAM and
+  # says out loud when none is. The one directory it never sees is the copy
+  # the sealing side reads: that has to sit at a path both sides agree on, so
+  # it is placed by name rather than chosen — and never asked about. Measured
+  # with /run unbound: the key landed on ext4 in the clear and nothing was said.
+  local dir
+  dir="$(gi_tmp)/persistent"
+  mkdir -p "$dir"
+  gi_bash 'have() { [[ "$1" == "findmnt" ]]; }
+    findmnt() { printf "ext4\n"; }
+    crypt_warn_if_persistent "$1"' "$dir"
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"is ext4, not RAM"* ]]
+  [[ "$stderr" == *"removed is not erased"* ]]
+  [[ "$stderr" == *"--steps 50,75"* ]]
+}
+
+@test "and says nothing when it is" {
+  local dir
+  dir="$(gi_tmp)/ram"
+  mkdir -p "$dir"
+  gi_bash 'have() { [[ "$1" == "findmnt" ]]; }
+    findmnt() { printf "tmpfs\n"; }
+    crypt_warn_if_persistent "$1"' "$dir"
+  [ "$status" -eq 0 ]
+  [ -z "$stderr" ]
+}
+
+@test "the copy for the sealing side is asked about before it is written" {
+  local body
+  body="$(sed -n '/^crypt_key_for_target/,/^}/p' "${GI_ROOT}/lib/crypt.sh")"
+  [[ "$body" == *"crypt_warn_if_persistent"* ]]
+  # And still registered like every other secret, so the trap removes it.
+  [[ "$body" == *"crypt_secret_file copy seal"* ]]
+}

@@ -1093,6 +1093,36 @@ crypt_clevis_verify_seal() {
 
 CRYPT_KEY_IN_TARGET=""
 
+crypt_warn_if_persistent() {
+  # Is this directory in RAM?
+  #
+  # crypt_secure_tmpdir asks exactly this of the three candidates it picks
+  # between, and says out loud when the answer is no: "key material will touch
+  # a persistent filesystem while this runs — it is deleted afterwards, and
+  # deleted is not erased". The one directory it never sees is the one below:
+  # the copy the sealing side reads has to sit at a path both sides agree on,
+  # so it is placed by name rather than chosen — and, until now, never asked
+  # about. Measured with /run unbound: the key landed on ext4 in the clear and
+  # nothing was said.
+  #
+  # It warns rather than refuses, like its sibling, and names what puts it
+  # right. Args: $1 = directory.
+  local dir="$1" fstype=""
+  if have findmnt; then
+    fstype="$(findmnt -no FSTYPE --target "$dir" 2>/dev/null || true)"
+  elif have stat; then
+    fstype="$(stat -f -c %T -- "$dir" 2>/dev/null || true)"
+  fi
+  [[ "$fstype" == "tmpfs" || "$fstype" == "ramfs" ]] && return 0
+
+  warn "${dir} is ${fstype:-a filesystem this cannot name}, not RAM"
+  warn "       the key the TPM is about to seal will touch a persistent disk"
+  warn "       it is removed afterwards, and removed is not erased"
+  warn "       step 50 binds /run into the target, which is where this belongs"
+  warn "       example:  ./gentoo-install.sh --steps 50,75"
+  return 0
+}
+
 crypt_key_for_target() {
   # Name a key file as the sealing side sees it, in CRYPT_KEY_IN_TARGET.
   #
@@ -1115,6 +1145,7 @@ crypt_key_for_target() {
   # Copied, never moved, and registered like every other secret, so the same
   # trap removes it.
   root="$(chroot_target)"
+  crypt_warn_if_persistent "${root}/run"
   crypt_secret_file copy seal "${root}/run" || return 1
   cat -- "$path" >"$copy" || {
     err "cannot copy the key where the target can read it: ${copy}"
