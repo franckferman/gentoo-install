@@ -247,3 +247,116 @@ load helper
     disk_target_carries_this_system /dev/nvme0n1'
   [ "$status" -eq 0 ]
 }
+
+# --------------------------------------------------------------------------- #
+#  The two loaders that write their own NVRAM entry                           #
+# --------------------------------------------------------------------------- #
+# The guard above was added after the accident and wired into one path: the
+# efistub variant, which calls efibootmgr through boot_create_entry. grub and
+# systemd-boot do not call efibootmgr at all — grub-install and bootctl install
+# write the entry themselves, through the efivarfs they find in the chroot. And
+# step 50 binds this machine's /sys into the target, so on a UEFI host that
+# efivarfs is this machine's. Measured before the fix: with the target a loop
+# device, disk_may_write_firmware_state answered NO and both installers were
+# run with no flag to stop them.
+
+gi_boot_dry() {
+  # A target tree and a dry run, so that what would be executed is printed
+  # rather than run. Args: $1 = tree, $2 = snippet.
+  cat <<'EOF'
+  config_init_defaults >/dev/null 2>&1
+  DRY_RUN=yes
+  CFG[root]="$1"; CFG[disk_esp_mount]=/boot
+  CFG[boot_label]=gentoo; CFG[boot_disk]=/dev/loop0
+EOF
+}
+
+@test "grub-install is not allowed to write an entry for a disk that is not this machine's" {
+  local dir
+  dir="$(gi_tmp)/g1"
+  mkdir -p "${dir}/boot"
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+'"$(gi_boot_dry)"'
+    disk_on_live_medium() { return 1; }
+    disk_target_carries_this_system() { return 1; }
+    boot_load_variant grub >/dev/null 2>&1
+    boot_grub_run_install "$1" uefi
+  ' bash "$dir"
+  [[ "$output$stderr" == *"grub-install"*"--no-nvram"* ]] || {
+    printf 'grub-install would have written this machine NVRAM entry:\n%s\n%s\n' \
+      "$output" "$stderr" >&2
+    return 1
+  }
+}
+
+@test "and it still writes one when the target is the machine being installed" {
+  local dir
+  dir="$(gi_tmp)/g2"
+  mkdir -p "${dir}/boot"
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+'"$(gi_boot_dry)"'
+    disk_on_live_medium() { return 0; }
+    boot_load_variant grub >/dev/null 2>&1
+    boot_grub_run_install "$1" uefi
+  ' bash "$dir"
+  [[ "$output$stderr" == *"grub-install"* ]]
+  [[ "$output$stderr" != *"--no-nvram"* ]] || {
+    printf 'a live medium may write the entry; that is the permitted case:\n%s\n' \
+      "$output$stderr" >&2
+    return 1
+  }
+}
+
+@test "bootctl install is refused its variables for a disk that is not this machine's" {
+  # Its own guard asked a different question — "is there an efivarfs in the
+  # chroot" — which on a UEFI host answers yes about this machine's own.
+  local dir
+  dir="$(gi_tmp)/s1"
+  mkdir -p "${dir}/boot" "${dir}/sys/firmware/efi/efivars"
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+'"$(gi_boot_dry)"'
+    disk_on_live_medium() { return 1; }
+    disk_target_carries_this_system() { return 1; }
+    boot_load_variant systemd-boot >/dev/null 2>&1
+    boot_systemd_boot_run_install "$1"
+  ' bash "$dir"
+  [[ "$output$stderr" == *"bootctl"*"--no-variables"* ]] || {
+    printf 'bootctl would have written this machine NVRAM entry:\n%s\n%s\n' \
+      "$output" "$stderr" >&2
+    return 1
+  }
+}
+
+@test "bootctl still writes them when the target is the machine being installed" {
+  local dir
+  dir="$(gi_tmp)/s2"
+  mkdir -p "${dir}/boot" "${dir}/sys/firmware/efi/efivars"
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+'"$(gi_boot_dry)"'
+    disk_on_live_medium() { return 0; }
+    boot_load_variant systemd-boot >/dev/null 2>&1
+    boot_systemd_boot_run_install "$1"
+  ' bash "$dir"
+  [[ "$output$stderr" == *"bootctl"* ]]
+  [[ "$output$stderr" != *"--no-variables"* ]]
+}
+
+@test "every bootloader that can write firmware state asks the same question" {
+  # Three of the four write an NVRAM entry: efistub through efibootmgr, grub
+  # through grub-install, systemd-boot through bootctl. uki writes none by
+  # design. Each of the three must reach disk_may_write_firmware_state, and a
+  # fourth way of writing one added without it is what this refuses.
+  local missing="" file
+  for file in "${GI_ROOT}/variants/boot/grub.sh" \
+    "${GI_ROOT}/variants/boot/systemd-boot.sh"; do
+    grep -q 'disk_may_write_firmware_state' "$file" || missing+=" $(basename -- "$file")"
+  done
+  # efistub asks it through boot_create_entry, which is where step 80 keeps it.
+  grep -q 'boot_create_entry' "${GI_ROOT}/variants/boot/efistub.sh" \
+    || missing+=" efistub.sh"
+  [[ -z "$missing" ]] || {
+    printf 'these bootloaders write firmware state without asking whether they may:%s\n' \
+      "$missing" >&2
+    return 1
+  }
+}

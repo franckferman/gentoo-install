@@ -145,7 +145,7 @@ boot_grub_removable() {
 
 boot_grub_run_install() {
   # Args: $1 = target root, $2 = firmware.
-  local root="$1" firmware="$2" esp_mount label disk
+  local root="$1" firmware="$2" esp_mount label disk nvram="yes"
   local -a argv=()
 
   label="$(boot_label)"
@@ -165,6 +165,27 @@ boot_grub_run_install() {
       # entry. It is also the path another operating system's installer uses,
       # so writing it replaces whatever was there.
       argv+=(--removable)
+    fi
+
+    # grub-install writes an NVRAM entry itself, through the efivarfs it finds
+    # in the chroot — and step 50 binds this machine's /sys into the target, so
+    # on a UEFI host that efivarfs is this machine's. The question of whether
+    # firmware state may be touched at all is disk_may_write_firmware_state's,
+    # and it is asked here for the same reason step 80 asks it before running
+    # efibootmgr: an install to a loop image, on a working machine, replaced
+    # that machine's own entry with a pointer to the loop device's ESP, and it
+    # took a live USB to come back. The efistub path was routed through the
+    # guard when that happened; grub and systemd-boot write their entries
+    # through their own installers and were not.
+    if ! disk_may_write_firmware_state "$(boot_disk)"; then
+      warn "not letting grub-install write an NVRAM entry: $(boot_disk) is not the"
+      warn "       disk this machine booted from, and this is not a live medium"
+      warn "       the entry would name a disk the firmware may not find, over the"
+      warn "       label this machine already uses"
+      log "       write it yourself once the target is the machine being booted:"
+      log "         grub-install --target=x86_64-efi --efi-directory=${esp_mount} --bootloader-id=${label}"
+      argv+=(--no-nvram)
+      nvram="no"
     fi
   else
     disk="$(boot_disk)"
@@ -191,6 +212,14 @@ boot_grub_run_install() {
     return 1
   }
   ok "grub-install finished"
+
+  # Without an entry the firmware has one way left to find a loader: the
+  # removable path. Leaving the target with neither is how an install that
+  # reported success produces a disk that drops straight to PXE.
+  if [[ "$nvram" == "no" ]] && ! boot_grub_removable; then
+    boot_install_removable_fallback "${root%/}${esp_mount}" \
+      "/EFI/${label}/grubx64.efi" || return 1
+  fi
 }
 
 boot_grub_script_checker() {

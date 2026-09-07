@@ -331,11 +331,39 @@ boot_systemd_boot_run_install() {
 
   argv=(bootctl "--esp-path=${esp_mount}" install)
 
+  # Two different reasons to install without variables, and they were one.
+  #
+  # The first is "bootctl cannot": no efivarfs in the chroot, so there is
+  # nothing to write through.
+  #
+  # The second is "bootctl must not", and it was missing. Step 50 binds this
+  # machine's /sys into the target, so on a UEFI host the efivarfs bootctl
+  # finds in the chroot is *this machine's* — the check above passes and the
+  # entry lands in the NVRAM of the machine running the installer. That is the
+  # accident disk_may_write_firmware_state was written against, in its own
+  # words: "An install to a loop image, run on a working machine, replaced that
+  # machine's own 'gentoo' NVRAM entry with one pointing at the loop device's
+  # ESP; the installer then rebooted, and the firmware found nothing to boot."
+  # The efistub path was routed through that guard when it happened. This one
+  # writes its entry through bootctl rather than efibootmgr, and was not.
+  #
+  # Nothing is lost by refusing: bootctl install writes \EFI\BOOT\BOOTX64.EFI
+  # as well as its own directory, so the disk still boots on a firmware with no
+  # entry for it — which is the firmware it will meet.
   if [[ ! -d "${root%/}/sys/firmware/efi/efivars" && "$DRY_RUN" != "yes" ]]; then
     warn "no efivarfs at ${root%/}/sys/firmware/efi/efivars; installing with --no-variables"
     warn "       bootctl cannot write a boot entry from a chroot that does not carry it"
     warn "       mount -t efivarfs none ${root%/}/sys/firmware/efi/efivars makes it writable"
     warn "       without an entry the firmware still finds \\EFI\\BOOT\\BOOTX64.EFI, which bootctl installs too"
+    argv+=(--no-variables)
+  elif ! disk_may_write_firmware_state "$(boot_disk)"; then
+    warn "installing with --no-variables: $(boot_disk) is not the disk this machine"
+    warn "       booted from, and this is not a live medium — the efivarfs in the"
+    warn "       chroot is this machine's own, and the entry would replace its"
+    warn "       label with a pointer to a disk the firmware may not find"
+    warn "       \\EFI\\BOOT\\BOOTX64.EFI is written either way, and needs no entry"
+    log "       write it yourself once the target is the machine being booted:"
+    log "         bootctl --esp-path=${esp_mount} install"
     argv+=(--no-variables)
   fi
 

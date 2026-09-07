@@ -134,6 +134,33 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **Two of the four bootloaders could still write this machine's NVRAM.** The
+  guard `disk_may_write_firmware_state()` exists because of one accident, and
+  its own comment describes it: *"An install to a loop image, run on a working
+  machine, replaced that machine's own 'gentoo' NVRAM entry with one pointing
+  at the loop device's ESP; the installer then rebooted, and the firmware found
+  nothing to boot."* When it was written it was wired into the path that
+  caused the accident — `efistub`, which calls `efibootmgr` through
+  `boot_create_entry`. `grub` and `systemd-boot` do not call `efibootmgr` at
+  all: `grub-install` and `bootctl install` write the entry themselves, through
+  the efivarfs they find in the chroot — and step 50 binds the host's `/sys`
+  into the target, so on a UEFI host that efivarfs is the host's own.
+
+  Measured on this machine, with the target a loop device:
+  `disk_may_write_firmware_state /dev/loop0` answers **no**, `/sys/firmware/efi/efivars`
+  holds 117 entries, and the two commands that would have run were
+
+      chroot <target> grub-install --target=x86_64-efi --efi-directory=/efi --bootloader-id=gentoo
+      chroot <target> bootctl --esp-path=/efi install
+
+  with nothing to stop either. `systemd-boot`'s only guard asked a different
+  question — *is there an efivarfs in the chroot* — which answers yes about the
+  wrong machine's; `grub` asked nothing. Both ask the guard now, and add
+  `--no-nvram` / `--no-variables` when the answer is no, saying which disk and
+  why. Nothing is lost: `bootctl` writes `\EFI\BOOT\BOOTX64.EFI` itself, and
+  grub gets the same removable fallback step 80 already writes for `efistub`.
+  A test refuses a bootloader that writes firmware state without asking.
+
 - **The project page, the README and `docs/TESTING.md` said a bootloader had
   been booted that never has.** All three claimed `systemd-boot` — the page "as
   far as the passphrase prompt", the README "`bootctl` installed, the loader
