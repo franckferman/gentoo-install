@@ -535,6 +535,48 @@ resolve_conflict() {
 block_open_marker() { printf '# >>> gentoo-install: %s >>>' "$1"; }
 block_close_marker() { printf '# <<< gentoo-install: %s <<<' "$1"; }
 
+_core_block_shape() {
+  # Is the file's copy of this block whole? Refuses rather than guesses.
+  #
+  # The replacement is an awk that starts printing the new block at the open
+  # marker and swallows every line until the close marker. With no close
+  # marker it swallows to end of file: a make.conf whose closing line an
+  # operator or an etc-update merge had removed came back four lines shorter,
+  # its USE, ACCEPT_LICENSE, VIDEO_CARDS and GRUB_PLATFORMS gone, and the run
+  # said "block written". The contract of this writer is "a rerun replaces its
+  # own block and nothing else"; the one state where that matters is the one
+  # where it did not hold.
+  #
+  # Nothing is repaired here. Where our block ends is exactly what the file no
+  # longer says, so the lines after the opening marker may be ours or may be
+  # the operator's, and a writer that picks one is a writer that eats the
+  # other.
+  # Args: $1 = target, $2 = open marker, $3 = close marker.
+  local target="$1" open="$2" close="$3" opens closes
+  opens="$(grep -cxF -- "$open" "$target" 2>/dev/null || true)"
+  closes="$(grep -cxF -- "$close" "$target" 2>/dev/null || true)"
+  [[ "$opens" == "$closes" ]] && ((opens <= 1)) && return 0
+
+  err "${target}: the marked block is not whole"
+  err "       opening markers: ${opens}, closing markers: ${closes}"
+  err "       one of each, or neither, is what this writer can replace"
+  if ((opens > closes)); then
+    err "       without the closing line nothing says where the block ends,"
+    err "       and everything after the opening one would be taken for it"
+  elif ((closes > opens)); then
+    err "       a closing line with nothing opening it is left over from an"
+    err "       edit or a merge; this writer would append a second block"
+  else
+    err "       two blocks with the same tag: only one can be this run's"
+  fi
+  err "       the markers read:"
+  err "         ${open}"
+  err "         ${close}"
+  err "       put them right, or move the file aside and let this write a new one"
+  WRITE_RESULT="failed"
+  return 1
+}
+
 write_block() {
   # Manage one marked block inside a file we do not own. A rerun replaces its
   # own block and nothing else, so hand edits elsewhere in the file survive.
@@ -551,6 +593,10 @@ write_block() {
   close="$(block_close_marker "$tag")"
   body="$(cat)"
   rendered="${open}"$'\n'"${body}"$'\n'"${close}"
+
+  if [[ -f "$target" ]]; then
+    _core_block_shape "$target" "$open" "$close" || return 1
+  fi
 
   if [[ -f "$target" ]] && grep -qxF -- "$open" "$target" 2>/dev/null; then
     present="yes"

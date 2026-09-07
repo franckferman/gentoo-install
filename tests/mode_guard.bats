@@ -89,3 +89,72 @@ load helper
   grep -q 'dir_existed' "${GI_ROOT}/lib/state.sh"
   grep -q '_core_plain_file "$STATE_FILE"' "${GI_ROOT}/lib/state.sh"
 }
+
+@test "a block with no closing marker is refused, not swallowed to end of file" {
+  # The replacement is an awk that starts printing at the open marker and
+  # swallows lines until the close marker. With no close marker it swallows to
+  # end of file: a make.conf whose closing line an etc-update merge or a hand
+  # edit had removed came back four lines shorter — USE, ACCEPT_LICENSE,
+  # VIDEO_CARDS and GRUB_PLATFORMS gone — and the run said "block written".
+  local dir f
+  dir="$(gi_tmp)"
+  f="${dir}/make.conf"
+  {
+    printf 'COMMON_FLAGS="-O2 -pipe"\n'
+    printf '# >>> gentoo-install: portage make.conf >>>\n'
+    printf 'MAKEOPTS="-j4"\n'
+    printf 'USE="elogind"\n'
+    printf 'VIDEO_CARDS="intel"\n'
+  } >"$f"
+
+  gi_bash 'DRY_RUN=no; ON_CONFLICT=overwrite
+    write_block "$1" "portage make.conf" <<< "MAKEOPTS=\"-j16\""' "$f"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"not whole"* ]]
+  [[ "$stderr" == *"nothing says where the block ends"* ]]
+  grep -q 'USE="elogind"' "$f"
+  grep -q 'VIDEO_CARDS="intel"' "$f"
+  [ "$(wc -l <"$f")" -eq 5 ]
+}
+
+@test "an orphan closing marker and a doubled block are refused too" {
+  local dir f
+  dir="$(gi_tmp)"
+  f="${dir}/orphan"
+  printf 'A=1\n# <<< gentoo-install: t <<<\nB=2\n' >"$f"
+  gi_bash 'DRY_RUN=no; write_block "$1" "t" <<< "x"' "$f"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"left over from an"* ]]
+
+  f="${dir}/doubled"
+  printf '# >>> gentoo-install: t >>>\nx\n# <<< gentoo-install: t <<<\n' >"$f"
+  printf '# >>> gentoo-install: t >>>\ny\n# <<< gentoo-install: t <<<\n' >>"$f"
+  gi_bash 'DRY_RUN=no; write_block "$1" "t" <<< "z"' "$f"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"only one can be this run's"* ]]
+}
+
+@test "a whole block is still replaced, and what surrounds it survives" {
+  local dir f
+  dir="$(gi_tmp)"
+  f="${dir}/whole"
+  printf 'BEFORE=1\n# >>> gentoo-install: t >>>\nold\n# <<< gentoo-install: t <<<\nAFTER=2\n' >"$f"
+  gi_bash 'DRY_RUN=no; ON_CONFLICT=overwrite; write_block "$1" "t" <<< "new"' "$f"
+  [ "$status" -eq 0 ]
+  grep -q '^BEFORE=1$' "$f"
+  grep -q '^AFTER=2$' "$f"
+  grep -q '^new$' "$f"
+  ! grep -q '^old$' "$f"
+}
+
+@test "a file with no markers at all still gets its block appended" {
+  local dir f
+  dir="$(gi_tmp)"
+  f="${dir}/fresh"
+  printf 'A=1\n' >"$f"
+  gi_bash 'DRY_RUN=no; write_block "$1" "t" <<< "x"' "$f"
+  [ "$status" -eq 0 ]
+  grep -q '^A=1$' "$f"
+  grep -qxF '# >>> gentoo-install: t >>>' "$f"
+  grep -qxF '# <<< gentoo-install: t <<<' "$f"
+}

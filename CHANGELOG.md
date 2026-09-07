@@ -91,6 +91,20 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **A marked block that is not whole is refused, not swallowed to end of file.**
+  `write_block` replaces its own block with an `awk` that starts printing at the
+  opening marker and consumes lines until the closing one. With no closing
+  marker it consumed to the end: a `make.conf` whose closing line a hand edit or
+  an `etc-update` merge had removed came back four lines shorter — `USE`,
+  `ACCEPT_LICENSE`, `VIDEO_CARDS` and `GRUB_PLATFORMS` gone — and the run
+  reported "block written". The writer's contract is *"a rerun replaces its own
+  block and nothing else, so hand edits elsewhere in the file survive"*, and the
+  one state where that matters is the one where it did not hold. Nothing is
+  repaired: where the block ends is exactly what the file no longer says, so the
+  lines after the opening marker may be ours or may be the operator's, and a
+  writer that picks one is a writer that eats the other. An orphan closing
+  marker and a doubled block are refused for the same reason.
+
 - **The state journal is never created through a symlink.** It is written as
   root at a path `--state-dir` chose, and `: >"$STATE_FILE"` follows a link:
   proved on a dangling one, where the file appeared at the other end.
