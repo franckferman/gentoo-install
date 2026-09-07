@@ -1560,10 +1560,23 @@ disk_partition() {
   else
     local -a rows=()
     mapfile -t rows < <(disk_plan_rows "$plan" part)
+    # Whether the plan keeps anything back. It emits a free row only when
+    # something is left over, so its absence means the last volume is meant to
+    # take the rest — and 0:0 is then both simpler and exact, because it also
+    # absorbs the megabyte or two that alignment rounds away.
+    #
+    # Its presence means the opposite, and 0:0 was taking that too. The server
+    # layout keeps a fifth of the disk back on purpose; without LVM the plan
+    # said "home 28.6 GiB, 38.2 GiB unpartitioned" and the disk came back with
+    # a 66.9 GiB home. The plan is what the operator confirms by typing the
+    # device path, and it has already computed every size — including for a
+    # rest volume.
+    local free_mib
+    free_mib="$(disk_plan_rows "$plan" free | awk -F'\t' '{ print $4 }' | head -n 1)"
     local last=$((${#rows[@]} - 1)) i
     for i in "${!rows[@]}"; do
       IFS=$'\t' read -r kind vname mount mib fs dev <<<"${rows[i]}"
-      if ((i == last)); then
+      if ((i == last)) && [[ -z "$free_mib" ]]; then
         argv+=(-n "${index}:0:0")
       else
         argv+=(-n "${index}:0:+${mib}M")

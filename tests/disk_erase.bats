@@ -161,3 +161,35 @@ load helper
   # And it refuses rather than deactivating half a group.
   [[ "$body" == *"takes down volumes on a disk nobody confirmed"* ]]
 }
+
+@test "the last partition takes the rest only when the plan keeps nothing back" {
+  # The plan emits a free row only when something is left over. Its absence
+  # means the last volume is meant to take the rest, and 0:0 is exact — it also
+  # absorbs the megabyte alignment rounds away. Its presence means the
+  # opposite, and 0:0 was taking that too: the server layout keeps a fifth of
+  # the disk back on purpose, and without LVM the plan said "home 28.6 GiB,
+  # 38.2 GiB unpartitioned" while the disk came back with a 66.9 GiB home.
+  local snippet='
+    config_init_defaults >/dev/null 2>&1
+    DRY_RUN=yes
+    _disk_assert_target() { return 0; }
+    run_cmd() { printf "%s\n" "$*" >&2; return 0; }
+    run_quiet() { return 0; }
+    _disk_settle() { return 0; }
+    disk_partition loop0 "$1"'
+
+  # A plan that keeps nothing back: the last partition takes the rest.
+  local plan_rest
+  plan_rest="$(printf 'meta\tlvm\tno\t0\t-\t-\nesp\tesp\t/boot\t1024\tvfat\t/dev/loop0p1\npart\troot\t/\t8192\text4\t/dev/loop0p2\npart\thome\t/home\t40960\text4\t/dev/loop0p3\n')"
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; '"$snippet" bash "$plan_rest"
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"-n 3:0:0"* ]]
+
+  # A plan that keeps space back: the last partition gets the size announced.
+  local plan_free
+  plan_free="$(printf 'meta\tlvm\tno\t0\t-\t-\nesp\tesp\t/boot\t1024\tvfat\t/dev/loop0p1\npart\troot\t/\t8192\text4\t/dev/loop0p2\npart\thome\t/home\t40960\text4\t/dev/loop0p3\nfree\t-\t-\t20480\t-\t-\n')"
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; '"$snippet" bash "$plan_free"
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"-n 3:0:+40960M"* ]]
+  [[ "$stderr" != *"-n 3:0:0"* ]]
+}

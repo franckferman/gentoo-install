@@ -91,6 +91,17 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **The last partition no longer swallows space the plan keeps back.** Without
+  LVM, `disk_partition` gave the last partition `0:0` — the rest of the disk —
+  whatever the plan said. The `server` layout keeps a fifth of the disk
+  unallocated on purpose, so on a 200 GiB disk the plan read "home 28.6 GiB,
+  38.2 GiB unpartitioned" and the disk came back with a 66.9 GiB home. The plan
+  is what the operator confirms by typing the device path. `0:0` is now used
+  only when the plan emits no free row — which is exactly when the last volume
+  is meant to take the rest, and where `0:0` is also the exact answer because it
+  absorbs the megabyte alignment rounds away. Measured on a loop device before
+  and after: 66.9 GiB, then 28.6 GiB, with `minimal` and `desktop` unchanged.
+
 - **Releasing a disk no longer deactivates volumes on another one.**
   `disk_release` frees the holders of the target so that `sgdisk` cannot fail on
   a busy device, and it finds the volume group through a logical volume on that
