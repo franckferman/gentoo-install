@@ -108,6 +108,30 @@ _sys_todo() {
   state_set "system.todo.${_SYS_TODO_N}" "$*" || true
 }
 
+_sys_forget_todo() {
+  # Every to-do this step records is recorded again from scratch on the next
+  # run, and the numbering restarts at 1 — so the entries the last run left
+  # behind have to go first, or they outlive the thing they described.
+  #
+  # Measured: a first run recording three to-dos and a second recording one
+  # left the journal holding
+  #
+  #     system.todo.1=install an ssh key
+  #     system.todo.2=create an account     <- done, still listed
+  #     system.todo.3=install an ssh key    <- the same item, twice
+  #
+  # and step 95's closing screen read all three back. A list that tells an
+  # operator to redo finished work, and says one thing twice, is worse than no
+  # list: it is the screen they keep.
+  local line key
+  [[ -n "${STATE_FILE:-}" ]] || return 0
+  while IFS= read -r line; do
+    key="${line%%=*}"
+    [[ -n "$key" ]] || continue
+    state_unset "$key" || true
+  done < <(state_dump 2>/dev/null | grep '^system\.todo\.[0-9]' || true)
+}
+
 _sys_record() {
   # Args: $1 = key suffix, $2 = value. Never a secret: state.sh refuses those,
   # and nothing here ever offers one.
@@ -1834,6 +1858,7 @@ step_90_system() {
   _SYS_CHANGED=0
   _SYS_TODO_N=0
   _SYS_ACC_STATE=""
+  _sys_forget_todo
 
   if [[ "$root" == "/" || -z "$root" ]]; then
     err "Refusing to configure / as the target system"

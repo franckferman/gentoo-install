@@ -704,11 +704,15 @@ write_validated() {
   # Content comes from stdin; the validator is run exactly as given.
   #   write_validated /etc/fstab findmnt --verify --fstab /etc/fstab <<'EOF'
   # Args: $1 = target, $2.. = validator argv.
-  local target="$1"
+  local target="$1" existed="no"
   shift
   if (($# == 0)); then
     die "internal: write_validated ${target} was given no validator"
   fi
+
+  # Whether there was anything here before decides what a rollback means, and
+  # it has to be asked before the write, not after.
+  [[ -e "$target" ]] && existed="yes"
 
   # Back up before the write, unconditionally: the rollback needs a copy even
   # when --on-conflict would not have made one.
@@ -730,10 +734,33 @@ write_validated() {
   fi
 
   err "${target}: rejected by $(_cmdline "$@")"
-  if restore_backup "$target"; then
-    err "       the previous content is back in place"
+  if [[ "$existed" == "yes" ]]; then
+    if restore_backup "$target"; then
+      err "       the previous content is back in place"
+    else
+      err "       and the backup could not be put back; ${target} is left as written"
+      err "       ${_GI_BACKUP_OF[$target]:-the backup} is beside it"
+    fi
+    WRITE_RESULT="failed"
+    return 1
+  fi
+
+  # Nothing was here before, so the rollback of this write is the removal of
+  # the file. Leaving it used to be the behaviour, and for the files this
+  # function guards it is the worst of the three outcomes: a new
+  # /etc/sudoers.d drop-in that visudo refuses makes sudo refuse to run at
+  # all — "no valid sudoers sources found, quitting" — which is a machine
+  # nobody can administer, the accident this whole project is written
+  # against. A dracut.conf.d snippet that does not source breaks every
+  # initramfs build after it, and a loader entry the firmware cannot read is
+  # a boot menu with a dead line in it. In each case the state before the
+  # write is no file, and that is the state to go back to.
+  if rm -f -- "$target"; then
+    err "       nothing was here before, so ${target} has been removed"
+    err "       a file this checker refuses is worse than no file at all"
   else
-    err "       there was no previous content; ${target} is left as written"
+    err "       nothing was here before and ${target} could not be removed"
+    err "       delete it by hand before anything reads it"
   fi
   WRITE_RESULT="failed"
   return 1

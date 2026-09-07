@@ -124,6 +124,34 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **A file its own checker refuses is removed when there was nothing there
+  before.** `write_validated` rolls back by putting the previous content back,
+  and for a file that did not exist there was no previous content — so the
+  rejected bytes stayed. For the files this function guards that is the worst
+  of the three outcomes. A new `/etc/sudoers.d/10-gentoo-install` that `visudo`
+  refuses makes sudo refuse to run **at all** — *"no valid sudoers sources
+  found, quitting"* — on every account, which is a machine nobody can
+  administer: the accident this whole project is written against. A
+  `dracut.conf.d` snippet that does not source breaks every initramfs build
+  after it, and a loader entry the firmware cannot read is a boot menu with a
+  dead line in it. The state before such a write is *no file*, and that is the
+  state it goes back to now, said out loud. Whether the file existed is read
+  before the write, not after.
+
+- **A rerun of step 90 no longer lists the work it has just finished.** The
+  to-do entries are numbered from 1 on every run, so a second run recording
+  fewer of them left the earlier ones in the journal. Measured — three to-dos,
+  then one:
+
+      system.todo.1=install an ssh key
+      system.todo.2=create an account     <- done, still listed
+      system.todo.3=install an ssh key    <- the same item, twice
+
+  and step 95 read all three back on the closing screen. A list that tells an
+  operator to redo finished work, and says one thing twice, is worse than no
+  list: it is the screen they keep. Step 90 forgets the previous run's entries
+  before recording its own.
+
 - **Pre-flight asks for the tools the configuration actually needs.** The
   filesystem lookup read `fs`, `filesystem` and `root_fs` — three names nothing
   declares — so the answer was always the `ext4` fallback and `mkfs.btrfs`,

@@ -222,3 +222,52 @@ load helper
   [ -f "${dir}/d/state" ]
   [ ! -L "${dir}/d/state" ]
 }
+
+# --------------------------------------------------------------------------- #
+#  The to-do list belongs to the run that wrote it                            #
+# --------------------------------------------------------------------------- #
+# Step 90 records what an operator still has to do by hand, numbered from 1,
+# and step 95 reads them back on the closing screen — which is the point: a
+# --resume never saw the warnings as they went by. The numbering restarts at 1
+# on every run, so the entries of the previous run had to be forgotten first.
+
+@test "a rerun does not leave behind the to-dos it has just fixed" {
+  run --separate-stderr bash -c 'source "$GI_ENTRY"
+    d="${BATS_TEST_TMPDIR}/todo"; rm -rf -- "$d"; mkdir -p -- "$d"
+    CFG[state_dir]="$d"; STATE_DIR="$d"; DRY_RUN=no
+    state_init >/dev/null 2>&1
+
+    _SYS_TODO_N=0
+    _sys_todo "set the root password" >/dev/null 2>&1
+    _sys_todo "create an account"     >/dev/null 2>&1
+    _sys_todo "install an ssh key"    >/dev/null 2>&1
+
+    # The operator fixes two of them and runs --steps 90 again.
+    _SYS_TODO_N=0
+    _sys_forget_todo
+    _sys_todo "install an ssh key" >/dev/null 2>&1
+
+    state_dump | grep "^system\.todo\."
+  '
+  [ "$status" -eq 0 ]
+  [ "$output" = "system.todo.1=install an ssh key" ] || {
+    printf 'the journal must hold the one thing that is left, and nothing else:\n%s\n' \
+      "$output" >&2
+    printf 'without the forget, .2 kept a finished item and .3 repeated .1.\n' >&2
+    return 1
+  }
+}
+
+@test "step 90 forgets the last run's to-dos before it records its own" {
+  # Read out of the sourced shell, so a renamed or deleted function fails here
+  # rather than matching a stale line in the file.
+  gi_bash '
+    body="$(declare -f step_90_system)"
+    [[ "$body" == *_sys_forget_todo* ]] || { echo "no _sys_forget_todo"; exit 1; }
+  '
+  [ "$status" -eq 0 ] || {
+    printf 'the numbering restarts at 1 every run; the old entries have to go\n' >&2
+    printf 'first, or step 95 lists work that is already done: %s\n' "$output" >&2
+    return 1
+  }
+}
