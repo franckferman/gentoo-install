@@ -258,6 +258,24 @@ GI_INTERNAL_TOKENS='trinity|cagip|ca-gip|matric|gundabad|thrain|keepass|gps_'
     | tr ' ' '\n' | grep -E '^[a-z_]+$' \
     | sort -u >>"$refd"
   sort -u -o "$refd" "$refd"
+
+  # And the third helper of that shape, which had no fallback argument and so
+  # matched neither pattern above: step 10's. Ten of the twelve names it read
+  # were declared by nothing. `_pf_cfg_first fs filesystem root_fs` was the one
+  # that cost something — the answer was always the ext4 fallback, so mkfs.btrfs,
+  # mkfs.xfs and mkfs.f2fs were never required and a btrfs install on a medium
+  # without btrfs-progs got a green "Required tools: N present" from the one
+  # step whose whole job is to say so before the disk is touched.
+  #
+  # A key must start with a letter or an underscore, so that the `2` of
+  # `2>/dev/null` at the end of the call is not read as a setting name.
+  grep -rhvE '^[[:space:]]*#' \
+    "${GI_ROOT}/lib" "${GI_ROOT}/steps" "${GI_ROOT}/variants" "${GI_ENTRY}" \
+    | grep -ohE '_pf_cfg_first( +[a-z_][a-z_0-9]*)+' \
+    | sed -E 's/_pf_cfg_first//' \
+    | tr ' ' '\n' | grep -E '^[a-z_][a-z_0-9]*$' \
+    | sort -u >>"$refd"
+  sort -u -o "$refd" "$refd"
   [ -s "$refd" ]
 
   missing="$(comm -23 "$refd" "$declared")"
@@ -265,6 +283,41 @@ GI_INTERNAL_TOKENS='trinity|cagip|ca-gip|matric|gundabad|thrain|keepass|gps_'
     printf 'read by the code, declared by nothing:\n%s\n' "$missing" >&2
     return 1
   fi
+}
+
+@test "every helper that reads a setting by candidate name is one the scan knows" {
+  # Three times now the settings scan has been widened after a defect, never
+  # before one: cfg_yes and cfg_is, then _fin_recorded one level down, then
+  # _pf_cfg_first. Each time the new way of reading a setting was invisible to
+  # the test whose whole purpose is to notice exactly that.
+  #
+  # So the shape is enumerated instead of trusted. A helper that walks a list
+  # of candidate names — `for key in "$@"` over `CFG[$key]` — is a way to read
+  # a setting, and the scan above has to know its spelling. Adding one is
+  # fine; adding one without teaching the scan is what this refuses.
+  local found expected
+  found="$(awk '
+    /^[a-zA-Z_][a-zA-Z0-9_]*\(\)[[:space:]]*\{/ {
+      fn = $1; sub(/\(\).*/, "", fn); body = ""; next
+    }
+    fn != "" { body = body "\n" $0 }
+    /^\}/ && fn != "" {
+      if (body ~ /for key in "\$@"/ && body ~ /CFG\[\$key\]/) print fn
+      fn = ""
+    }
+  ' "${GI_ROOT}"/lib/*.sh "${GI_ROOT}"/steps/*.sh "${GI_ROOT}"/variants/*/*.sh \
+    "$GI_ENTRY" | sort -u)"
+
+  # _sys_cfg_first is reached through _sys_cfg, which is the spelling the scan
+  # matches; _portage_cfg and _pf_cfg_first are matched by their own names.
+  expected="$(printf '%s\n' _pf_cfg_first _portage_cfg _sys_cfg_first | sort)"
+
+  [[ "$found" == "$expected" ]] || {
+    printf 'the helpers that read a setting by candidate name are now:\n%s\n' "$found" >&2
+    printf 'the settings scan in this file was written for:\n%s\n' "$expected" >&2
+    printf 'teach the scan the new one, then add it to the list here.\n' >&2
+    return 1
+  }
 }
 
 @test "every state-journal key the code reads is a key some step writes" {

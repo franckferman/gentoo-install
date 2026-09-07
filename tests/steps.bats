@@ -449,3 +449,55 @@ load helper
   [ "$status" -ne 0 ]
   [[ "$stderr" == *"another spelling of /"* ]]
 }
+
+# --------------------------------------------------------------------------- #
+#  Pre-flight asks for the tools the configuration actually needs             #
+# --------------------------------------------------------------------------- #
+# The whole promise of step 10 is the list in one pass: an operator fixes what
+# it names, starts the install, and does not meet a twelfth refusal in step 20.
+# The filesystem lookup asked for `fs`, `filesystem` and `root_fs` — three
+# names nothing declares — so the answer was always the ext4 fallback.
+
+@test "the filesystem tool required is the one the layout asks for" {
+  local out
+  for fs in ext4 btrfs xfs f2fs; do
+    out="$(gi_capture '
+      config_init_defaults >/dev/null 2>&1
+      CFG[disk_filesystem]="$1"
+      _pf_required_tools | grep "^mkfs\." | grep -v "^mkfs.fat$"
+    ' "$fs")"
+    [ "$out" = "mkfs.${fs}" ] || {
+      printf 'disk_filesystem = %s must require mkfs.%s, got: %s\n' "$fs" "$fs" "$out" >&2
+      printf 'step 20 refuses without it, after step 10 said the tools were there.\n' >&2
+      return 1
+    }
+  done
+}
+
+@test "the TPM check follows the encryption variant, which is what names it" {
+  local answer
+  for pair in "none:no" "luks-passphrase:no" "luks-tpm:yes" "luks-keyfile-gpg:no"; do
+    answer="$(gi_capture '
+      config_init_defaults >/dev/null 2>&1
+      CFG[crypt]="$1"
+      if _pf_wants_tpm; then printf yes; else printf no; fi
+    ' "${pair%%:*}")"
+    [ "$answer" = "${pair##*:}" ] || {
+      printf 'crypt = %s: wants_tpm said %s, expected %s\n' \
+        "${pair%%:*}" "$answer" "${pair##*:}" >&2
+      return 1
+    }
+  done
+}
+
+@test "a configured disk is found under the name the setting actually has" {
+  # `disk` is the setting; target_disk and device sat beside it, declared by
+  # nothing. The lookup worked only because the real name led the list.
+  gi_bash '
+    config_init_defaults >/dev/null 2>&1
+    CFG[disk]=/dev/vdz
+    _pf_cfg_first disk
+  '
+  [ "$status" -eq 0 ]
+  [ "$output" = "/dev/vdz" ]
+}

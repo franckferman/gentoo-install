@@ -201,18 +201,19 @@ _pf_meminfo_kb() {
 }
 
 _pf_wants_crypt() {
+  # `crypt` and nothing else. This asked for `encrypt` and `luks` beside it —
+  # two names no setting has ever had. They cost nothing here, because the real
+  # name led the list; the same habit two functions down cost a whole check.
   local value
-  value="$(_pf_cfg_first crypt encrypt luks 2>/dev/null)" || return 1
+  value="$(_pf_cfg_first crypt 2>/dev/null)" || return 1
   [[ "$value" != "no" && "$value" != "none" ]]
 }
 
 _pf_wants_tpm() {
-  local value
-  value="$(_pf_cfg_first crypt_tpm tpm tpm2 2>/dev/null)" || value=""
-  if [[ "$value" == "yes" || "$value" == "tpm2" ]]; then
-    return 0
-  fi
-  case "$(_pf_cfg_first crypt encrypt luks variant 2>/dev/null || true)" in
+  # The variant names the binding: luks-tpm is the one that seals to a TPM.
+  # There is no separate on/off setting, and the three this used to try first —
+  # crypt_tpm, tpm, tpm2 — are declared by nothing.
+  case "$(_pf_cfg_first crypt 2>/dev/null || true)" in
     *tpm*) return 0 ;;
   esac
   return 1
@@ -346,7 +347,13 @@ _pf_required_tools() {
     printf '%s\n' curl
   fi
 
-  case "$(_pf_cfg_first fs filesystem root_fs 2>/dev/null || printf 'ext4')" in
+  # disk_filesystem, which is what the setting is called. This asked for fs,
+  # filesystem and root_fs — three names nothing declares — so the answer was
+  # always the ext4 fallback and mkfs.btrfs, mkfs.xfs and mkfs.f2fs were never
+  # required. A btrfs install on a medium without btrfs-progs got a green
+  # "Required tools: N present" from the one step whose whole job is to say so
+  # before the disk is touched.
+  case "$(_pf_cfg_first disk_filesystem 2>/dev/null || printf 'ext4')" in
     btrfs) printf '%s\n' mkfs.btrfs ;;
     xfs) printf '%s\n' mkfs.xfs ;;
     f2fs) printf '%s\n' mkfs.f2fs ;;
@@ -554,7 +561,8 @@ _pf_check_clock() {
 _pf_check_disk() {
   local disk size_bytes size_gib holders mounted tmp_avail_mib line
 
-  if ! disk="$(_pf_cfg_first disk target_disk device 2>/dev/null)"; then
+  # `disk` and nothing else: target_disk and device were never settings.
+  if ! disk="$(_pf_cfg_first disk 2>/dev/null)"; then
     _pf_verdict FAIL disk "Target disk" "none configured"
     _pf_note "Step 20 has nothing to partition. Name the disk explicitly: this"
     _pf_note "installer never guesses which disk it may destroy."

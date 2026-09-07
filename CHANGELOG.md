@@ -12,6 +12,16 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Added
 
+- **The settings scan knows every way of reading a setting, and a test keeps it
+  that way.** Three times the scan has been widened *after* a defect, never
+  before one: `cfg_yes`/`cfg_is`, then `_fin_recorded` one level down, then
+  `_pf_cfg_first`. Each time the new reader was invisible to the test whose
+  purpose is to notice exactly that. The shape is now enumerated instead of
+  trusted: a helper that walks a list of candidate names — `for key in "$@"`
+  over `CFG[$key]` — must be one the scan knows, and adding one without
+  teaching the scan fails. Proved both ways: with the scan widened the defect
+  above is caught, and with the scan as it was the same defect passes.
+
 - **The credential paths of `lib/crypt.sh` are under test.** `luksFormat`,
   `luksAddKey` reusing the same argv, and each key proved against each keyslot
   were exercised on a loop-backed LUKS2 container: both slots come out at 512
@@ -113,6 +123,18 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   through a redirection whose errors were discarded.
 
 ### Fixed
+
+- **Pre-flight asks for the tools the configuration actually needs.** The
+  filesystem lookup read `fs`, `filesystem` and `root_fs` — three names nothing
+  declares — so the answer was always the `ext4` fallback and `mkfs.btrfs`,
+  `mkfs.xfs` and `mkfs.f2fs` were never required. Measured: with
+  `disk_filesystem` set to each of the four, step 10 asked for `mkfs.ext4`
+  every time. A btrfs install on a medium without `btrfs-progs` therefore got a
+  green *"Required tools: N present"* from the one step whose whole job is to
+  say so before the disk is touched, and met the refusal in step 20 instead —
+  which is exactly the "one refusal per attempt" this step exists to prevent.
+  Ten of the twelve setting names step 10 read were declared by nothing; the
+  other nine were harmless because the real name led each list.
 
 - **The ssh key goes to the account the list names.** `accounts` supersedes
   `user` — `_sys_accounts_records` says so out loud and then refuses to merge
