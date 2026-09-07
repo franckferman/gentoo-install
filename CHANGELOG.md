@@ -91,6 +91,16 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **The state journal is never created through a symlink.** It is written as
+  root at a path `--state-dir` chose, and `: >"$STATE_FILE"` follows a link:
+  proved on a dangling one, where the file appeared at the other end.
+  `_core_plain_file` two lines further down already refused to `chmod` a
+  symlink — it just did not refuse to create through one. Only a regular file
+  is used now; anything else stops the run rather than being guessed at or
+  quietly removed, because a symlink where the journal belongs is a sign, not
+  an accident. `state_reset` was already safe: `rm` unlinks the link, not what
+  it names.
+
 - **An initramfs that cannot be read is not an initramfs missing its crypt
   module.** The check ran the *host's* `lsinitrd` on the target's image — the
   third site in this repository to ask the wrong machine for a tool that lives

@@ -173,3 +173,52 @@ load helper
   [ "$status" -eq 0 ]
   [ "$output" = "/dev/vg0/root /dev/vda2" ]
 }
+
+@test "a symlink where the journal belongs stops the run, and is not followed" {
+  # The journal is created as root at a path --state-dir chose, and `: >` on a
+  # symlink follows it. Proved on a dangling one: the file appeared at the
+  # other end. _core_plain_file two lines down already refused to chmod a
+  # symlink — it just did not refuse to create through one.
+  local dir
+  dir="$(gi_tmp)/sj"
+  mkdir -p "${dir}/d"
+  ln -sfn "${dir}/elsewhere" "${dir}/d/state"
+
+  gi_bash 'DRY_RUN=no; state_init "$1/d"' "$dir"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"not a regular file"* ]]
+  [[ "$stderr" == *"--state-dir"* ]]
+  [ ! -e "${dir}/elsewhere" ]
+}
+
+@test "a symlink onto a real file leaves that file alone" {
+  local dir
+  dir="$(gi_tmp)/sj2"
+  mkdir -p "${dir}/d"
+  printf 'something that matters\n' >"${dir}/victim"
+  ln -sfn "${dir}/victim" "${dir}/d/state"
+
+  gi_bash 'DRY_RUN=no; state_init "$1/d"' "$dir"
+  [ "$status" -ne 0 ]
+  [ "$(cat "${dir}/victim")" = "something that matters" ]
+}
+
+@test "a directory where the journal belongs is refused too" {
+  local dir
+  dir="$(gi_tmp)/sj3"
+  mkdir -p "${dir}/d/state"
+  gi_bash 'DRY_RUN=no; state_init "$1/d"' "$dir"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"not a regular file"* ]]
+}
+
+@test "an ordinary journal is created and read back" {
+  local dir
+  dir="$(gi_tmp)/sj4"
+  mkdir -p "${dir}/d"
+  gi_bash 'DRY_RUN=no; state_init "$1/d"; state_set step.20 "done now"; state_get step.20' "$dir"
+  [ "$status" -eq 0 ]
+  [ "$output" = "done now" ]
+  [ -f "${dir}/d/state" ]
+  [ ! -L "${dir}/d/state" ]
+}

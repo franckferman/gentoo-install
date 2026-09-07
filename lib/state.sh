@@ -90,8 +90,28 @@ state_init() {
   if [[ "$dir_existed" == "no" ]]; then
     chmod 0700 -- "$STATE_DIR" 2>/dev/null || true
   fi
+  # The journal is created as root at a path --state-dir chose, and `: >` on a
+  # symlink follows it: a link left at this name aimed the creation at whatever
+  # it names. Proved on a dangling one — the file appeared at the other end.
+  #
+  # Only a regular file is used. Anything else stops the run rather than being
+  # guessed at or quietly removed: a symlink where the journal belongs is a
+  # sign, not an accident, and _core_plain_file two lines down already refuses
+  # to chmod one — it just did not refuse to create through it.
+  if [[ -L "$STATE_FILE" || (-e "$STATE_FILE" && ! -f "$STATE_FILE") ]]; then
+    err "the state journal is not a regular file: ${STATE_FILE}"
+    err "       it records what this run decided, and it is written as root"
+    err "       whatever is at that name now was not put there by this project"
+    err "       --state-dir DIR names another place for it"
+    die "refusing to write the journal through ${STATE_FILE}"
+  fi
   if [[ ! -e "$STATE_FILE" ]]; then
-    : >"$STATE_FILE"
+    # O_EXCL: if the name is taken between the test above and here, the create
+    # fails rather than following what was put there.
+    (
+      set -C
+      : >"$STATE_FILE"
+    ) 2>/dev/null || die "cannot create the state journal ${STATE_FILE}"
   fi
   # Same reasoning one level down: only a regular file gets its mode changed,
   # never a device node or a symlink someone pointed here.
