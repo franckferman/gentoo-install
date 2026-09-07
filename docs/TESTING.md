@@ -733,10 +733,30 @@ systemd[1]: Created slice Slice /system/systemd-cryptsetup.
 Please enter passphrase for disk root (luks-00046e6c-…): (press TAB for no echo)
 ```
 
-One thing this run leaves behind, older than any of it: the kernel command
-line reaches the kernel **twice**, identically, on the `uki` path — visible in
-the first boot of this disk as well as the last. Harmless as long as the two
-copies agree, which is not a property anything here enforces.
+One more thing this disk gave up, older than any of the rest: on the `uki`
+path the kernel command line reached the kernel **twice**. Read straight out of
+the built image with `objcopy -O binary --only-section=.cmdline`:
+
+```
+root=/dev/mapper/gentoo … console=ttyS0,115200 root=/dev/mapper/gentoo … console=ttyS0,115200
+```
+
+`dracut --kernel-cmdline` is *added* to the `kernel_cmdline` the configuration
+files already carry, not substituted for it — and step 70 writes exactly that
+line into `/etc/dracut.conf.d/70-gentoo-install.conf`, because a normal
+initramfs needs it there. Harmless while the two copies agree, and unbounded
+when they do not: which of two contradicting `root=` or `console=` arguments
+the kernel takes is not a thing to leave to chance. It is passed now only when
+the target's own configuration does not already say precisely it — which is
+also the case where it matters, a `--steps 80` against a tree step 70 never
+configured. The same image, rebuilt:
+
+```
+$ objcopy -O binary --only-section=.cmdline … && tr -d '\0' < …
+root=/dev/mapper/gentoo rootfstype=ext4 ro rd.luks.uuid=luks-00046e6c-… console=tty0 console=ttyS0,115200
+```
+
+once, and the kernel prints it once at boot.
 
 ---
 

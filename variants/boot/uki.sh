@@ -163,18 +163,43 @@ boot_uki_build() {
     stub="${BOOT_UKI_STUB_CANDIDATES[0]}"
   }
 
+  # --kernel-cmdline is *added* to the kernel_cmdline the configuration files
+  # already carry, not substituted for it — and step 70 writes exactly this
+  # line into /etc/dracut.conf.d/70-gentoo-install.conf, because a normal
+  # initramfs needs it there. Given both, dracut wrote both, and the .cmdline
+  # section of the image held the line twice:
+  #
+  #   root=/dev/mapper/gentoo … console=ttyS0,115200 root=/dev/mapper/gentoo … console=ttyS0,115200
+  #
+  # read out of the built image with objcopy, and printed by the kernel at
+  # every boot. Harmless while the two copies agree and unbounded when they do
+  # not: whichever of two contradicting root= or console= arguments the kernel
+  # takes is not a thing this project should be leaving to chance.
+  #
+  # So it is passed only when the target's own configuration does not already
+  # say precisely it — which is also the case where it matters, a --steps 80
+  # against a tree step 70 never configured.
+  local -a argv=(dracut --force --uefi --kver "$version" --uefi-stub "$stub")
+  local conf_cmdline=""
+  if [[ "$DRY_RUN" != "yes" ]]; then
+    conf_cmdline="$(kernel_dracut_effective "$root" kernel_cmdline)"
+  fi
+
   log "building the unified kernel image"
   log "       kernel     ${version}"
   log "       stub       ${stub}"
   log "       cmdline    ${cmdline}"
   log "       output     ${out}"
 
+  if [[ "$conf_cmdline" == "$cmdline" ]]; then
+    log "                  already in ${root%/}/etc/dracut.conf.d; not passed twice"
+  else
+    argv+=(--kernel-cmdline "$cmdline")
+  fi
+  argv+=("$out")
+
   kernel_in_target "$root" mkdir -p -- "${out%/*}" || return 1
-  kernel_in_target "$root" dracut --force --uefi \
-    --kver "$version" \
-    --uefi-stub "$stub" \
-    --kernel-cmdline "$cmdline" \
-    "$out" || {
+  kernel_in_target "$root" "${argv[@]}" || {
     err "dracut could not build the unified kernel image"
     err "       dracut --force --uefi --kver ${version} ${out}   reproduces it in the chroot"
     err "       the stub, the kernel and the initramfs all have to be in the target"

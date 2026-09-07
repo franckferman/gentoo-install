@@ -154,6 +154,22 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **A unified kernel image carried its command line twice.**
+  `dracut --kernel-cmdline` is *added* to the `kernel_cmdline` the
+  configuration files already carry, not substituted for it, and step 70 writes
+  exactly that line into `/etc/dracut.conf.d/70-gentoo-install.conf` because a
+  normal initramfs needs it there. Given both, dracut wrote both. Read out of
+  the built image with `objcopy -O binary --only-section=.cmdline`:
+
+      root=/dev/mapper/gentoo … console=ttyS0,115200 root=/dev/mapper/gentoo … console=ttyS0,115200
+
+  and the kernel printed it twice at every boot. Harmless while the two copies
+  agree and unbounded when they do not: which of two contradicting `root=` or
+  `console=` arguments the kernel takes is not a thing to leave to chance. It
+  is passed now only when the target's own dracut configuration does not
+  already say precisely it — which is also the case where it matters, a
+  `--steps 80` against a tree step 70 never configured.
+
 - **The initramfs check now asks a systemd image the question that matters.**
   It reported `Initramfs … crypt dm` and called it a pass about a machine that
   waited for `/dev/mapper/gentoo` for ever: a systemd initramfs starts

@@ -797,3 +797,68 @@ dm"
     return 1
   }
 }
+
+@test "the unified image is not given the command line twice" {
+  # dracut adds --kernel-cmdline to the kernel_cmdline its configuration files
+  # already carry, and step 70 writes exactly that line into
+  # /etc/dracut.conf.d/70-gentoo-install.conf. Given both, the .cmdline section
+  # of the built image held the line twice — read out of it with objcopy, and
+  # printed by the kernel at every boot.
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+    config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no
+    boot_load_variant uki >/dev/null 2>&1
+    kernel_cmdline() { printf "root=/dev/mapper/gentoo ro\n"; }
+    kernel_dracut_effective() { printf "root=/dev/mapper/gentoo ro\n"; }
+    boot_uki_stub() { printf "/usr/lib/systemd/boot/efi/linuxx64.efi.stub\n"; }
+    kernel_in_target() { shift; printf "IN-TARGET %s\n" "$*"; return 0; }
+    boot_uki_build /mnt/x 6.18.48 /EFI/Linux/gentoo.efi
+  '
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"--kernel-cmdline"* ]] || {
+    printf 'the configuration already carries it; passing it adds a second copy:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+}
+
+@test "and is given it when the target's configuration does not carry it" {
+  # --steps 80 against a tree step 70 never configured is the case that needs
+  # it: without the argument the image would take the installer's own
+  # /proc/cmdline.
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+    config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no
+    boot_load_variant uki >/dev/null 2>&1
+    kernel_cmdline() { printf "root=/dev/mapper/gentoo ro\n"; }
+    kernel_dracut_effective() { printf "\n"; }
+    boot_uki_stub() { printf "/usr/lib/systemd/boot/efi/linuxx64.efi.stub\n"; }
+    kernel_in_target() { shift; printf "IN-TARGET %s\n" "$*"; return 0; }
+    boot_uki_build /mnt/x 6.18.48 /EFI/Linux/gentoo.efi
+  '
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--kernel-cmdline root=/dev/mapper/gentoo ro"* ]] || {
+    printf 'with nothing in the configuration the image must be told: %s\n' "$output" >&2
+    return 1
+  }
+}
+
+@test "a configuration that says something else is not silently accepted" {
+  # Two different lines is the case the doubling hid: whichever of two
+  # contradicting root= arguments the kernel takes is not left to chance.
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+    config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no
+    boot_load_variant uki >/dev/null 2>&1
+    kernel_cmdline() { printf "root=/dev/mapper/gentoo ro\n"; }
+    kernel_dracut_effective() { printf "root=/dev/sda2 ro\n"; }
+    boot_uki_stub() { printf "/usr/lib/systemd/boot/efi/linuxx64.efi.stub\n"; }
+    kernel_in_target() { shift; printf "IN-TARGET %s\n" "$*"; return 0; }
+    boot_uki_build /mnt/x 6.18.48 /EFI/Linux/gentoo.efi
+  '
+  [[ "$output" == *"--kernel-cmdline"* ]] || {
+    printf 'the two disagree, so the one this run composed has to be passed: %s\n' \
+      "$output" >&2
+    return 1
+  }
+}
