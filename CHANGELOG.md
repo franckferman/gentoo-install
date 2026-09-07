@@ -91,6 +91,17 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **Disk verification says what each mountpoint carries, not merely that
+  something is there.** `disk_verify` checked that the planned device exists,
+  that *something* is mounted at each target, and that the planned device holds
+  the right filesystem type — never that the thing mounted at the target is the
+  planned device. Proved on two loop devices: `/var` mounted from a different
+  disk entirely, and the run reported "disk verification passed" a moment before
+  step 40 would have unpacked the stage3 into that tree. Its own docstring is
+  *"Nothing is claimed that has not been checked."* `disk_mount_tree` compares
+  the source before it mounts — it refuses to stack on somebody else's — so the
+  comparison was already in the file, four functions away.
+
 - **"volume group is still active" asked about the allocation policy.** The
   teardown's last check ran `vgs -o vg_attr --noheadings | grep -q 'a'`, and the
   `a` in `vg_attr` is the allocation policy, not activity. Measured on a real

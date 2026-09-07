@@ -219,3 +219,37 @@ load helper
   [[ "$body" == *"_disk_vg_is_active"* ]]
   [[ "$body" != *"vg_attr"* ]]
 }
+
+@test "verification says what each mountpoint carries, not merely that something is" {
+  # disk_verify checked that a device exists, that something is mounted at the
+  # target, and that the *planned* device holds the right filesystem type. It
+  # never asked what was mounted. Proved on two loop devices: /var mounted from
+  # a different disk entirely, and the run reported "disk verification passed"
+  # a moment before step 40 would unpack the stage3 into that tree.
+  # disk_mount_tree compares the source before it mounts, four functions away.
+  local dir dev plan
+  dir="$(gi_tmp)"
+  dev="${dir}/planned"
+  mknod "$dev" b 7 200 2>/dev/null || skip "cannot create a block node here"
+  plan="$(printf 'meta\tmountpoint\t/mnt/t\t0\t-\t-\npart\troot\t/\t4096\text4\t%s\n' "$dev")"
+
+  run --separate-stderr bash -c '
+    source "$GI_ENTRY"; DRY_RUN=no
+    mountpoint() { return 0; }
+    findmnt() { printf "/dev/somebody-else\n"; }
+    lsblk() { printf "ext4\n"; }
+    disk_verify "$1"' bash "$plan"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"mounted from /dev/somebody-else"* ]]
+  [[ "$stderr" == *"the plan says ${dev}"* ]]
+
+  # And it passes when the planned device is the one mounted.
+  run --separate-stderr bash -c '
+    source "$GI_ENTRY"; DRY_RUN=no
+    WANT="$2"
+    mountpoint() { return 0; }
+    findmnt() { printf "%s\n" "$WANT"; }
+    lsblk() { printf "ext4\n"; }
+    disk_verify "$1"' bash "$plan" "$dev"
+  [[ "$stderr" == *"disk verification passed"* ]]
+}

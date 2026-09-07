@@ -2085,6 +2085,21 @@ disk_verify() {
       problems=$((problems + 1))
       continue
     fi
+    # Mounted from what. "Something is mounted here" was the whole question
+    # this asked, and it is not the question: /var mounted from another disk
+    # passed, and the run reported "disk verification passed" a moment before
+    # step 40 unpacked the stage3 into that tree. disk_mount_tree already
+    # compares the source before it mounts — it refuses to stack on somebody
+    # else's — so the comparison was in this file, four functions away.
+    local raw from want
+    raw="$(findmnt -no SOURCE --target "$target" 2>/dev/null || true)"
+    from="$(readlink -f -- "$raw" 2>/dev/null || printf '%s' "$raw")"
+    want="$(readlink -f -- "$dev" 2>/dev/null || printf '%s' "$dev")"
+    if [[ "$from" != "$want" ]]; then
+      err "${target} is mounted from ${raw:-nothing}, the plan says ${dev}"
+      problems=$((problems + 1))
+      continue
+    fi
     seen="$(lsblk -no FSTYPE "$dev" 2>/dev/null | head -n 1 | tr -d ' ')"
     if [[ -n "$seen" && "$seen" != "$fs" ]]; then
       err "${dev} carries ${seen}, the plan says ${fs}"
