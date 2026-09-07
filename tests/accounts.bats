@@ -413,7 +413,7 @@ gi_root_lock() {
   mkdir -p "${dir}/home/alice" "${dir}/etc/ssh"
   gi_bash 'config_init_defaults >/dev/null 2>&1
     DRY_RUN=no; STATE_FILE=""; NON_INTERACTIVE=yes
-    CFG[ssh]=yes; CFG[user]=alice
+    CFG[sshd]=yes; CFG[user]=alice
     CFG[ssh_key]="ssh-ed25519 AAAAC3Nz test@example"
     _sys_in_chroot() { return 0; }
     run_cmd() { "$@"; }

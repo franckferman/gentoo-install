@@ -384,3 +384,40 @@ load helper
   [[ "$stderr" == *"still performance"* ]]
   [[ "$output" == *"left=[powersave]"* ]]
 }
+
+@test "every setting compared against a closed set is checked at parse time" {
+  # The note above CFG_ENUM records why it exists: "a value out of a
+  # configuration file went through no check at all, so bootloader =
+  # frobnicate was accepted and only failed two hours later, inside step 80."
+  # Nine settings with closed sets were still outside it.
+  local pair
+  for pair in "--efistub-cmdline|frobnicate" "--firmware|frobnicate" \
+    "--boot-removable|ture" "--sshd|ture" "--kernel-embed-cmdline|ture" \
+    "--portage-emerge-set|ture"; do
+    run --separate-stderr "$GI_ENTRY" --dry-run "${pair%%|*}" "${pair##*|}" --list-steps
+    [ "$status" -ne 0 ] || {
+      printf '%s %s was accepted\n' "${pair%%|*}" "${pair##*|}" >&2
+      return 1
+    }
+    [[ "$stderr" == *"Invalid value for"* ]]
+  done
+}
+
+@test "an empty value still means let the variant decide" {
+  # boot_removable defaults to no under grub and yes under uki, and firmware
+  # is detected when unset. config_validate_enums skips empty values, so
+  # adding these keys must not have taken that away.
+  run --separate-stderr "$GI_ENTRY" --dry-run --list-steps
+  [ "$status" -eq 0 ]
+  [[ "$stderr" != *"Invalid value for"* ]]
+}
+
+@test "the same removable setting cannot mean opposite things by typo" {
+  # grub reads it as == "yes" and uki as == "no", so `boot_removable = ture`
+  # meant no removable copy under one bootloader and a fallback written under
+  # the other, with nothing said either way.
+  run --separate-stderr "$GI_ENTRY" --dry-run --bootloader grub --boot-removable ture --list-steps
+  [ "$status" -ne 0 ]
+  run --separate-stderr "$GI_ENTRY" --dry-run --bootloader uki --boot-removable ture --list-steps
+  [ "$status" -ne 0 ]
+}

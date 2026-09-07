@@ -1705,7 +1705,7 @@ _sys_sshd() {
   # Split: same reason -- this would name the HOST sshd_config (SC2318).
   local config="${root}/etc/ssh/sshd_config"
 
-  if ! cfg_yes ssh && ! cfg_yes sshd; then
+  if ! cfg_yes sshd; then
     skip "sshd not enabled (conservative default: it opens a port on every boot)"
     _sys_record sshd "disabled"
     return 0

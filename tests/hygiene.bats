@@ -236,6 +236,15 @@ GI_INTERNAL_TOKENS='trinity|cagip|ca-gip|matric|gundabad|thrain|keepass|gps_'
     | sed -E 's/.*\((cfg|target_fact|_fin_fact) //; s/CFG\[//; s/\]//' \
     | sort -u >"$refd"
 
+  # And the predicates. cfg_yes and cfg_is read a setting just as cfg does,
+  # and were not scanned: `cfg_yes ssh` sat beside the declared sshd, so --ssh
+  # came back "Unknown option" and the lookup could only ever answer no.
+  grep -rhvE '^[[:space:]]*#' \
+    "${GI_ROOT}/lib" "${GI_ROOT}/steps" "${GI_ROOT}/variants" "${GI_ENTRY}" \
+    | grep -ohE '\b(cfg_yes|cfg_is) [a-z_]+' \
+    | awk '{ print $2 }' | sort -u >>"$refd"
+  sort -u -o "$refd" "$refd"
+
   # And the candidate lists. _sys_cfg and _portage_cfg take a fallback and then
   # every spelling a step is willing to answer to, which is a second way to
   # read a setting and was not scanned: `locales` — the plural, the whole point

@@ -99,6 +99,24 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **Nine settings compared against a closed set are checked at parse time.**
+  The note above `CFG_ENUM` records why the table exists: *"a value out of a
+  configuration file went through no check at all, so `bootloader = frobnicate`
+  was accepted and only failed two hours later, inside step 80."* Nine were
+  still outside it. Two — `efistub_cmdline` and `firmware` — repeated that
+  failure exactly. The yes/no ones were worse, because they are read as
+  `== "yes"`: a typo silently meant no. `boot_removable` is read as `== "yes"`
+  by grub and as `== "no"` by uki, so `boot_removable = ture` meant *no
+  removable copy* under one bootloader and *a fallback written* under the
+  other, with nothing said either way. An empty value still means "let the
+  variant decide".
+
+- **`ssh` was read and declared by nothing.** `cfg_yes ssh` sat beside the
+  declared `sshd`, so `--ssh` came back "Unknown option" and the lookup could
+  only ever answer no. The hygiene test that keeps every read key declared now
+  scans `cfg_yes` and `cfg_is` as well as `cfg`, `target_fact`, `_sys_cfg` and
+  the rest — which is how it was found, and what stops the class recurring.
+
 - **Every spelling of `/` is refused as a chroot target.** The refusal that
   keeps mounts off the running system compared the path as text, so `/` and `//`
   were caught while `/.`, `/..`, `/mnt/..` and `/tmp/../` — four other spellings

@@ -209,6 +209,23 @@ declare -A CFG_ENUM=(
   [non_interactive]="yes|no"
   [on_conflict]="overwrite|skip|prompt|backup"
   [portage_sync]="webrsync|rsync|none"
+  # Added after a pass over every setting compared against a closed set. Two
+  # were refused two hours later, inside step 80 — the very failure the note
+  # above this table records for bootloader. The yes/no ones were worse: they
+  # are read as `== "yes"`, so a typo silently meant no. boot_removable is read
+  # as `== "yes"` by grub and as `== "no"` by uki, so `boot_removable = ture`
+  # meant no removable copy under one bootloader and a fallback written under
+  # the other, with nothing said either way. An empty value still means "let
+  # the variant decide": config_validate_enums skips those.
+  [boot_removable]="yes|no"
+  [efistub_cmdline]="efibootmgr|builtin"
+  [firmware]="uefi|bios"
+  [kernel_embed_cmdline]="yes|no"
+  [kernel_firmware]="yes|no"
+  [kernel_menuconfig]="yes|no"
+  [portage_emerge_set]="yes|no"
+  [portage_update_world]="yes|no"
+  [sshd]="yes|no"
   [privilege]="sudo|sudo-nopasswd|doas|doas-nopasswd|none"
   [reboot]="ask|yes|no"
   [restart]="yes|no"
