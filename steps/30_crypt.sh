@@ -201,7 +201,11 @@ _step30_finish_provisioning() {
 
   # The plan the rest of the run reads must name the mapper, not the partition
   # underneath it: step 95 unmounts from it, and step 90 writes an fstab from
-  # what is mounted.
-  write_file "$plan_file" 0600 <<<"$DISK_PROVISIONED_PLAN" || return 1
+  # what is mounted. The journal has the same debt, and paying only the first
+  # half of it is what made crypt = luks-keyfile-gpg unable to unlock itself:
+  # step 20 reads the UUIDs off the devices before this step formats them, so
+  # on an encrypted run it records none, and nothing recorded them afterwards.
+  # disk_record_plan_facts writes the plan file too, from the plan given here.
+  disk_record_plan_facts "$DISK_PROVISIONED_PLAN" || return 1
   return 0
 }

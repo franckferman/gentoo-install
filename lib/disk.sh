@@ -2117,36 +2117,6 @@ disk_verify() {
   ok "disk verification passed"
 }
 
-disk_fstab_records() {
-  # What step 90 needs to write an fstab, on stdout (a returned value):
-  # spec, mountpoint, type, options, dump, pass — already in mount order, and
-  # by UUID, because a device name is not stable across a reboot.
-  # Args: $1 = plan text.
-  local plan="$1" mount dev fs uuid opts dump pass
-  while IFS=$'\t' read -r _ mount dev fs; do
-    uuid="$(blkid -s UUID -o value -- "$dev" 2>/dev/null || true)"
-    case "$fs" in
-      vfat) opts="defaults,umask=0077,shortname=winnt" ;;
-      btrfs) opts="defaults,compress=zstd:3,noatime" ;;
-      xfs) opts="defaults,noatime" ;;
-      *) opts="defaults,noatime" ;;
-    esac
-    dump=0
-    pass=2
-    if [[ "$mount" == "/" ]]; then pass=1; fi
-    if [[ "$fs" == "vfat" ]]; then pass=2; fi
-    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "${uuid:+UUID=}${uuid:-$dev}" "$mount" "$fs" "$opts" "$dump" "$pass"
-  done < <(_disk_mount_order "$plan")
-
-  local swap_dev
-  while IFS=$'\t' read -r _ _ _ _ _ swap_dev; do
-    [[ -n "$swap_dev" ]] || continue
-    uuid="$(blkid -s UUID -o value -- "$swap_dev" 2>/dev/null || true)"
-    printf '%s\tnone\tswap\tsw\t0\t0\n' "${uuid:+UUID=}${uuid:-$swap_dev}"
-  done < <(disk_plan_rows "$plan" volume | awk -F'\t' '$5 == "swap"')
-}
-
 disk_show_result() {
   # The disk as it now is, straight from lsblk, so the operator compares it
   # with the plan they approved rather than with a claim this file makes.
@@ -2161,4 +2131,132 @@ disk_show_result() {
   while IFS= read -r line; do
     log "       | ${line}"
   done < <(findmnt -R -o TARGET,SOURCE,FSTYPE,SIZE "$root" 2>/dev/null || true)
+}
+
+# --------------------------------------------------------------------------- #
+#  The plan as facts, for the steps that come after                           #
+# --------------------------------------------------------------------------- #
+# Two steps build the tree the rest of the run reads. Step 20 does it alone
+# when nothing is encrypted; when something is, step 20 stops after
+# partitioning and step 30 finishes inside the container. Both then have the
+# same thing to say, and both say it from here — the plan is this file's
+# format and every accessor these three functions use lives in this file.
+#
+# Saying it twice matters more than it looks. The facts below are read off the
+# devices at the moment they are recorded, and on an encrypted run step 20's
+# moment is before any filesystem exists. Measured on a loop image: blkid on a
+# partitioned, unformatted ESP prints nothing, and the same partition after
+# mkfs.vfat prints 38CE-7632. So an encrypted install used to leave
+# disk.esp_uuid unset for good — and crypt.keyfile_uuid with it, because
+# crypt_record_way_in falls back to disk.esp_uuid. Step 70 then wrote
+# rd.luks.key=/efi/luks-key.gpg with no device after it, which dracut reads
+# from inside the initramfs, where the key is not. The machine booted, asked
+# for the recovery passphrase, and the one file crypt = luks-keyfile-gpg
+# exists to place was never read.
+
+_disk_uuid_of_device() {
+  # Args: $1 = device. Prints its UUID on stdout, or nothing at all. Never
+  # fails: an unreadable UUID costs the run a fallback, not the install.
+  local dev="${1:-}"
+  [[ -n "$dev" && -b "$dev" ]] || return 0
+  command -v blkid >/dev/null 2>&1 || return 0
+  blkid -s UUID -o value -- "$dev" 2>/dev/null || true
+}
+
+disk_record_crypt_device() {
+  # The partition a LUKS container belongs on: the physical volume under LVM,
+  # otherwise the partition holding /. Journalled as soon as the partitions
+  # exist, and before anything is formatted, because the message that stops an
+  # encrypted run names it.
+  #
+  # Step 30 reads it as disk.crypt_device and refused with "No device to
+  # encrypt" until this existed — which is how the encrypted path turned out
+  # never to have run end to end.
+  # Args: $1 = plan text.
+  local plan="$1" dev=""
+  if [[ "$(disk_plan_meta "$plan" lvm)" == "yes" ]]; then
+    dev="$(disk_plan_rows "$plan" part | awk -F'\t' '$5 == "lvm" { print $6; exit }')"
+  else
+    dev="$(disk_plan_device_for "$plan" /)"
+  fi
+
+  # A plan retargeted onto an open container names the mapper where the
+  # partition used to be (disk_plan_retarget_crypt). What has to be encrypted
+  # is what lies under that mapper and never the mapper itself: recording it
+  # here would hand the next --resume /dev/mapper/gentoo as the container to
+  # open, and the container it must open is the partition beneath.
+  case "$dev" in
+    /dev/mapper/*) return 0 ;;
+  esac
+
+  if [[ -n "$dev" ]]; then
+    state_set disk.crypt_device "$dev"
+  fi
+}
+
+disk_record_plan_facts() {
+  # What steps 30, 50, 70, 80 and 90 need, and nothing they do not. The journal
+  # records what was done, never with what: no passphrase, no key.
+  # Args: $1 = plan text.
+  local plan="$1" root esp path
+
+  root="$(disk_plan_meta "$plan" mountpoint)"
+  esp="$(disk_plan_device_for "$plan" "${CFG[disk_esp_mount]}")"
+
+  local root_dev uuid
+  root_dev="$(disk_plan_device_for "$plan" /)"
+
+  # The names are the contract with the later steps, and they were wrong.
+  # This wrote disk.root, disk.vg, disk.esp and disk.filesystem — names no
+  # consumer reads — while step 70 asked for disk.root_uuid and disk.root_device
+  # and step 80 for disk.esp_device. Every one of them fell through to its empty
+  # default, and step 70 refused with "nothing says where the root filesystem is"
+  # on an install whose disk had just been partitioned correctly.
+  state_set disk.device "$(disk_plan_meta "$plan" device)"
+  state_set disk.layout "$(disk_plan_meta "$plan" layout)"
+  state_set disk.lvm "$(disk_plan_meta "$plan" lvm)"
+  state_set disk.vg_name "$(disk_plan_meta "$plan" vg)"
+  state_set disk.mountpoint "$root"
+  state_set disk.root_fstype "${CFG[disk_filesystem]}"
+  state_set disk.esp_device "${esp}"
+  state_set disk.esp_mount "${CFG[disk_esp_mount]}"
+  state_set disk.root_device "$root_dev"
+
+  # A UUID survives the disk moving from sda to nvme0n1, and that reorder is
+  # exactly what the reboot after an install can bring. Step 70 prefers it and
+  # falls back to the device name, so a missing UUID degrades rather than fails.
+  # An empty answer is not written, so that the second call — step 30's, after
+  # the filesystems exist — has something left to fill in rather than a blank
+  # value already in its place.
+  uuid="$(_disk_uuid_of_device "$root_dev")"
+  [[ -z "$uuid" ]] || state_set disk.root_uuid "$uuid"
+  uuid="$(_disk_uuid_of_device "$esp")"
+  [[ -z "$uuid" ]] || state_set disk.esp_uuid "$uuid"
+
+  # Again here, so that the already-provisioned path journals it too.
+  disk_record_crypt_device "$plan"
+
+  # A /boot of its own, when the layout gives it one. The GRUB variant asks for
+  # this before deciding whether it needs cryptodisk: with /boot outside the
+  # container the kernel is reachable without unlocking anything, and turning
+  # cryptodisk on anyway only adds a second passphrase prompt at every boot.
+  state_set disk.boot_device "$(disk_plan_device_for "$plan" /boot)"
+
+  # The logical volume carrying /, so that step 70 composes
+  # root=/dev/mapper/<vg>-<lv> from what step 20 created. Without it the kernel
+  # command line falls back to the name "root", which is right until someone
+  # asks for a layout that calls it anything else.
+  if [[ "$(disk_plan_meta "$plan" lvm)" == "yes" ]]; then
+    state_set disk.root_lv "$(disk_plan_name_for "$plan" /)"
+  fi
+
+  # The plan goes to a file rather than into the journal: it is a table, and a
+  # key=value journal is not where a table belongs. Step 50 reads it back to
+  # reattach a tree it did not build.
+  path="${CFG[state_dir]}/disk-plan.tsv"
+  if [[ "$DRY_RUN" == "yes" ]]; then
+    log "dry-run: would write the plan to ${path}"
+    return 0
+  fi
+  write_file "$path" 0600 <<<"$plan" || return 1
 }

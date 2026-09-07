@@ -223,7 +223,7 @@ kernel_cmdline() {
       luks_uuid="$(target_fact luks_uuid crypt.uuid "")"
       if [[ -z "$luks_uuid" ]]; then
         err "Cannot compose a kernel command line: crypt is '${crypt}' but no LUKS UUID is known"
-        err "       step 30 records crypt.luks_uuid in the state journal"
+        err "       step 30 records crypt.uuid in the state journal"
         err "       cryptsetup luksUUID <device> prints it"
         err "       example:  luks_uuid = 1d3f0f4a-0f5a-4c7e-9a2b-2f9d3c5e7a11"
         return 1

@@ -52,38 +52,8 @@ _step20_already_provisioned() {
 }
 
 # --------------------------------------------------------------------------- #
-#  Hand-over to the later steps                                               #
+#  The hand-over to step 30                                                   #
 # --------------------------------------------------------------------------- #
-_step20_uuid() {
-  # Args: $1 = device. Prints its UUID on stdout, or nothing at all. Never
-  # fails: an unreadable UUID costs the run a fallback, not the install.
-  local dev="${1:-}"
-  [[ -n "$dev" && -b "$dev" ]] || return 0
-  command -v blkid >/dev/null 2>&1 || return 0
-  blkid -s UUID -o value -- "$dev" 2>/dev/null || true
-}
-
-_step20_record_crypt_device() {
-  # The partition a LUKS container belongs on: the physical volume under LVM,
-  # otherwise the partition holding /. Journalled as soon as the partitions
-  # exist, and before anything is formatted, because the message that stops an
-  # encrypted run names it.
-  #
-  # Step 30 reads it as disk.crypt_device and refused with "No device to
-  # encrypt" until this existed — which is how the encrypted path turned out
-  # never to have run end to end.
-  # Args: $1 = plan text.
-  local plan="$1" dev=""
-  if [[ "$(disk_plan_meta "$plan" lvm)" == "yes" ]]; then
-    dev="$(disk_plan_rows "$plan" part | awk -F'\t' '$5 == "lvm" { print $6; exit }')"
-  else
-    dev="$(disk_plan_device_for "$plan" /)"
-  fi
-  if [[ -n "$dev" ]]; then
-    state_set disk.crypt_device "$dev"
-  fi
-}
-
 _step20_awaiting_container() {
   # True when this step has done all it can and step 30 must continue.
   #
@@ -109,71 +79,6 @@ _step20_awaiting_container() {
     return 1
   fi
   return 0
-}
-
-_step20_record() {
-  # What steps 30, 50, 80 and 90 need, and nothing they do not. The journal
-  # records what was done, never with what: no passphrase, no key.
-  # Args: $1 = plan text.
-  local plan="$1" root esp path
-
-  root="$(disk_plan_meta "$plan" mountpoint)"
-  esp="$(disk_plan_device_for "$plan" "${CFG[disk_esp_mount]}")"
-
-  local root_dev uuid
-  root_dev="$(disk_plan_device_for "$plan" /)"
-
-  # The names are the contract with the later steps, and they were wrong.
-  # This wrote disk.root, disk.vg, disk.esp and disk.filesystem — names no
-  # consumer reads — while step 70 asked for disk.root_uuid and disk.root_device
-  # and step 80 for disk.esp_device. Every one of them fell through to its empty
-  # default, and step 70 refused with "nothing says where the root filesystem is"
-  # on an install whose disk had just been partitioned correctly.
-  state_set disk.device "$(disk_plan_meta "$plan" device)"
-  state_set disk.layout "$(disk_plan_meta "$plan" layout)"
-  state_set disk.lvm "$(disk_plan_meta "$plan" lvm)"
-  state_set disk.vg_name "$(disk_plan_meta "$plan" vg)"
-  state_set disk.mountpoint "$root"
-  state_set disk.root_fstype "${CFG[disk_filesystem]}"
-  state_set disk.esp_device "${esp}"
-  state_set disk.esp_mount "${CFG[disk_esp_mount]}"
-  state_set disk.root_device "$root_dev"
-
-  # A UUID survives the disk moving from sda to nvme0n1, and that reorder is
-  # exactly what the reboot after an install can bring. Step 70 prefers it and
-  # falls back to the device name, so a missing UUID degrades rather than fails.
-  uuid="$(_step20_uuid "$root_dev")"
-  [[ -z "$uuid" ]] || state_set disk.root_uuid "$uuid"
-  uuid="$(_step20_uuid "$esp")"
-  [[ -z "$uuid" ]] || state_set disk.esp_uuid "$uuid"
-
-  # Again here, so that the already-provisioned path journals it too.
-  _step20_record_crypt_device "$plan"
-
-  # A /boot of its own, when the layout gives it one. The GRUB variant asks for
-  # this before deciding whether it needs cryptodisk: with /boot outside the
-  # container the kernel is reachable without unlocking anything, and turning
-  # cryptodisk on anyway only adds a second passphrase prompt at every boot.
-  state_set disk.boot_device "$(disk_plan_device_for "$plan" /boot)"
-
-  # The logical volume carrying /, so that step 70 composes
-  # root=/dev/mapper/<vg>-<lv> from what step 20 created. Without it the kernel
-  # command line falls back to the name "root", which is right until someone
-  # asks for a layout that calls it anything else.
-  if [[ "$(disk_plan_meta "$plan" lvm)" == "yes" ]]; then
-    state_set disk.root_lv "$(disk_plan_name_for "$plan" /)"
-  fi
-
-  # The plan and the fstab records go to a file rather than into the journal:
-  # they are tables, and a key=value journal is not where a table belongs.
-  path="${CFG[state_dir]}/disk-plan.tsv"
-  if [[ "$DRY_RUN" == "yes" ]]; then
-    log "dry-run: would write the plan to ${path}"
-    return 0
-  fi
-  write_file "$path" 0600 <<<"$plan" || return 1
-  disk_fstab_records "$plan" >"${CFG[state_dir]}/disk-fstab.tsv" 2>/dev/null || true
-  chmod 0600 -- "${CFG[state_dir]}/disk-fstab.tsv" 2>/dev/null || true
 }
 
 # --------------------------------------------------------------------------- #
@@ -216,7 +121,7 @@ step_20_disk() {
     disk_show_result "$plan"
     # shellcheck disable=SC2034  # lib/disk.sh reads it in _disk_assert_target
     DISK_CONFIRMED_TARGET="/dev/${name}"
-    _step20_record "$plan" || return "$EXIT_FAILURE"
+    disk_record_plan_facts "$plan" || return "$EXIT_FAILURE"
     return "$EXIT_SUCCESS"
   fi
 
@@ -243,14 +148,14 @@ step_20_disk() {
   disk_release "$name" || return "$EXIT_FAILURE"
   disk_wipe "$name" || return "$EXIT_FAILURE"
   disk_partition "$name" "$plan" || return "$EXIT_FAILURE"
-  _step20_record_crypt_device "$plan"
+  disk_record_crypt_device "$plan"
 
   # The handover. Everything below writes a filesystem, and with encryption
   # asked for there is nowhere to write one yet: the volume group would go on
   # the raw partition and the root filesystem into the bytes the LUKS header is
   # about to occupy. Step 30 opens the container and finishes from there.
   if _step20_awaiting_container "$plan"; then
-    _step20_record "$plan" || return "$EXIT_FAILURE"
+    disk_record_plan_facts "$plan" || return "$EXIT_FAILURE"
     ok "step 20: /dev/${name} partitioned; step 30 creates the container and"
     log "         the filesystems go inside it"
     return "$EXIT_SUCCESS"
@@ -264,7 +169,7 @@ step_20_disk() {
   disk_mount_tree "$plan" || return "$EXIT_FAILURE"
   disk_verify "$plan" || return "$EXIT_FAILURE"
   disk_show_result "$plan"
-  _step20_record "$plan" || return "$EXIT_FAILURE"
+  disk_record_plan_facts "$plan" || return "$EXIT_FAILURE"
 
   ok "step 20: /dev/${name} provisioned and mounted under $(disk_plan_meta "$plan" mountpoint)"
   return "$EXIT_SUCCESS"

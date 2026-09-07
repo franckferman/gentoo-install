@@ -97,7 +97,42 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   alone. `tools/tpm-pcr.sh` reported that; the installer sealed against them
   without a word. It measures them now and says which ones bind nothing.
 
+### Removed
+
+- **`disk_fstab_records()` and the `disk-fstab.tsv` it wrote.** Its own comment
+  said "what step 90 needs to write an fstab". Step 90 does not read it: it
+  generates fstab from `findmnt`, deliberately, because the kernel's mount
+  table is "the only description of what step 20 actually built that cannot
+  have drifted from it". So every run wrote a 0600 table nothing ever opened,
+  through a redirection whose errors were discarded.
+
 ### Fixed
+
+- **An encrypted install now records the UUIDs of the filesystems it made.**
+  The facts step 20 journals are read off the devices at the moment it journals
+  them, and on an encrypted run that moment is before any filesystem exists:
+  step 20 stops after partitioning so that the LUKS header is not written over,
+  and step 30 creates the filesystems inside the container. Step 30 rewrote the
+  plan file and nothing else, so `disk.esp_uuid` and `disk.root_uuid` stayed
+  unset for good. Measured on a loop image: `blkid` on a partitioned,
+  unformatted ESP prints nothing, the same partition after `mkfs.vfat` prints
+  `38CE-7632`. The cost fell on the one variant that exists to make unlocking
+  automatic — with no `disk.esp_uuid`, `crypt.keyfile_uuid` was never recorded
+  either and step 70 wrote `rd.luks.key=/efi/luks-key.gpg` with no device after
+  it, which dracut reads from *inside* the initramfs, where the key is not: the
+  machine booted, asked for the recovery passphrase, and never opened the file
+  `crypt = luks-keyfile-gpg` had just deployed. `disk_record_plan_facts()` now
+  lives in `lib/disk.sh`, which owns the plan format, and both steps call it —
+  step 30 with the plan retargeted onto the open container, so the journal
+  names the mapper the root filesystem is really on. What is *not* re-recorded
+  is `disk.crypt_device`: the device to encrypt is what lies under the mapper,
+  never the mapper itself, or the next `--resume` would be handed
+  `/dev/mapper/gentoo` as the container to open.
+
+- **A kernel command line refusal named a journal key that does not exist.**
+  Step 70 told the operator "step 30 records `crypt.luks_uuid` in the state
+  journal". The key is `crypt.uuid`; `crypt.luks_uuid` is written by nothing
+  and would be looked for in vain.
 
 - **Nine settings compared against a closed set are checked at parse time.**
   The note above `CFG_ENUM` records why the table exists: *"a value out of a
