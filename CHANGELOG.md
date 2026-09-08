@@ -12,6 +12,16 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Added
 
+- **Step 80 checks which `root=` the kernel will keep.** grub-mkconfig emits
+  its own `root=` from grub-probe and then appends `GRUB_CMDLINE_LINUX`, so the
+  generated line carries two; the kernel keeps the last, which is why this
+  project puts its own there — grub-probe run from inside a chroot has been
+  known to name the installer's disk rather than the target's. That ordering is
+  load-bearing and nothing checked it: reverse it and the machine boots from
+  whatever grub-probe guessed, in silence. The generated `grub.cfg` is read
+  back now, and a linux line whose last `root=` is not the one this run
+  composed — or which carries none at all — is refused.
+
 - **The GPG-wrapped key file has been read by an initramfs.** Nine steps, none
   failed, then a boot: `dracut: rd.luks.key: keypath='/efi/luks-key.gpg'
   keydev='UUID=E533-ACCA'`, `Found /efi/luks-key.gpg on /dev/vda1`,

@@ -862,3 +862,80 @@ dm"
     return 1
   }
 }
+
+# --------------------------------------------------------------------------- #
+#  Which root= the kernel keeps                                               #
+# --------------------------------------------------------------------------- #
+# grub-mkconfig writes its own root= from grub-probe and then appends
+# GRUB_CMDLINE_LINUX, so the generated line carries two. The kernel keeps the
+# last, which is why this project puts its own there: grub-probe run from
+# inside a chroot has been known to name the installer's disk. Measured on a
+# custom-layout install, in the generated file:
+#
+#   linux /vmlinuz-… root=/dev/mapper/gi--vg0-root ro root=/dev/mapper/gi--vg0-root rootfstype=ext4 …
+#
+# grub's first, ours second. Load-bearing, and nothing checked it.
+
+@test "the last root= on grub's linux line is the one this run composed" {
+  local dir
+  dir="$(gi_tmp)/grubcmd"
+  mkdir -p "$dir"
+  printf 'menuentry x {\n\tlinux\t/vmlinuz root=/dev/sda2 ro root=/dev/mapper/vg-root rootfstype=ext4 ro\n}\n' \
+    >"${dir}/grub.cfg"
+  gi_bash '
+    boot_load_variant grub >/dev/null 2>&1
+    kernel_cmdline() { printf "root=/dev/mapper/vg-root rootfstype=ext4 ro\n"; }
+    boot_grub_check_cmdline "$1/grub.cfg"
+  ' "$dir"
+  [ "$status" -eq 0 ] || {
+    printf 'ours is second, which is what wins: %s\n' "$stderr" >&2
+    return 1
+  }
+  [[ "$stderr" == *"root=/dev/mapper/vg-root last"* ]]
+}
+
+@test "and grub's own answer coming last is refused" {
+  # The ordering reversing is silent: the machine boots from whatever
+  # grub-probe guessed, which inside a chroot has been the installer's disk.
+  local dir
+  dir="$(gi_tmp)/grubcmd2"
+  mkdir -p "$dir"
+  printf 'menuentry x {\n\tlinux\t/vmlinuz root=/dev/mapper/vg-root rootfstype=ext4 ro root=/dev/sda2 ro\n}\n' \
+    >"${dir}/grub.cfg"
+  gi_bash '
+    boot_load_variant grub >/dev/null 2>&1
+    kernel_cmdline() { printf "root=/dev/mapper/vg-root rootfstype=ext4 ro\n"; }
+    boot_grub_check_cmdline "$1/grub.cfg"
+  ' "$dir"
+  [ "$status" -ne 0 ] || {
+    printf 'the kernel would take grub-probe answer, not this run\n' >&2
+    return 1
+  }
+  [[ "$stderr" == *"root=/dev/sda2 last, not root=/dev/mapper/vg-root"* ]]
+}
+
+@test "a line with no root= at all is refused too" {
+  local dir
+  dir="$(gi_tmp)/grubcmd3"
+  mkdir -p "$dir"
+  printf 'menuentry x {\n\tlinux\t/vmlinuz ro quiet\n}\n' >"${dir}/grub.cfg"
+  gi_bash '
+    boot_load_variant grub >/dev/null 2>&1
+    kernel_cmdline() { printf "root=/dev/mapper/vg-root ro\n"; }
+    boot_grub_check_cmdline "$1/grub.cfg"
+  ' "$dir"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"no root= at all"* ]]
+}
+
+@test "grub's verifier asks that question" {
+  gi_bash '
+    boot_load_variant grub >/dev/null 2>&1
+    body="$(declare -f boot_grub_verify)"
+    [[ "$body" == *boot_grub_check_cmdline* ]] || exit 1
+  '
+  [ "$status" -eq 0 ] || {
+    printf 'the check exists and nothing calls it\n' >&2
+    return 1
+  }
+}

@@ -222,6 +222,58 @@ boot_grub_run_install() {
   fi
 }
 
+boot_grub_check_cmdline() {
+  # grub-mkconfig writes its own root= from grub-probe and then appends
+  # GRUB_CMDLINE_LINUX, so the generated line carries two of them. The kernel
+  # keeps the last, which is exactly why this project puts its own in
+  # GRUB_CMDLINE_LINUX: grub-probe run from inside a chroot has been known to
+  # name the installer's disk rather than the target's, and being second is
+  # what makes ours the one that counts.
+  #
+  # That ordering is load-bearing and nothing checked it. Measured on a
+  # custom-layout install, in the generated file:
+  #
+  #   linux /vmlinuz-… root=/dev/mapper/gi--vg0-root ro root=/dev/mapper/gi--vg0-root rootfstype=ext4 …
+  #
+  # grub's first, ours second. If grub's template ever appended
+  # GRUB_CMDLINE_LINUX before its own root=, or if this project stopped
+  # putting one there, the machine would boot from whatever grub-probe
+  # guessed and nothing would say so.
+  # Args: $1 = the grub.cfg to read.
+  local cfg="$1" ours line last
+  ours="$(kernel_cmdline | tr ' ' '\n' | grep -m1 '^root=' || true)"
+  if [[ -z "$ours" ]]; then
+    warn "this run composed no root=; grub-probe's answer is the only one"
+    warn "       grep -m1 linux ${cfg}   shows what the kernel will be given"
+    return 0
+  fi
+
+  line="$(grep -m1 -E '^[[:space:]]*linux[[:space:]]' "$cfg" 2>/dev/null || true)"
+  if [[ -z "$line" ]]; then
+    warn "no linux line in ${cfg}; the root= ordering could not be checked"
+    return 0
+  fi
+
+  # shellcheck disable=SC2020  # character for character is what is wanted: a
+  # space and a tab each become a newline, which is how the line gets split.
+  # `|| true`: a linux line with no root= on it at all is the case this check
+  # exists to catch, and under set -o pipefail the failing grep would take the
+  # whole run down instead of reporting it.
+  last="$(printf '%s\n' "$line" | tr ' \t' '\n\n' | grep '^root=' | tail -n 1 || true)"
+  if [[ "$last" == "$ours" ]]; then
+    ok "grub.cfg: the kernel is given ${ours} last, which is the one it keeps"
+    return 0
+  fi
+
+  err "grub.cfg gives the kernel ${last:-no root= at all} last, not ${ours}"
+  err "       grub-mkconfig writes its own root= and then appends"
+  err "       GRUB_CMDLINE_LINUX, so ours has to come second to win"
+  err "       grub-probe from inside a chroot has named the installer's disk"
+  err "       grep -m1 linux ${cfg}"
+  err "       example:  ./gentoo-install.sh --steps 80"
+  return 1
+}
+
 boot_grub_script_checker() {
   # The argv that will read the generated grub.cfg, one word per line, or
   # nothing when no machine here has the tool. The target first, the host only
@@ -337,6 +389,7 @@ boot_grub_verify() {
     return 1
   fi
   ok "grub.cfg parses and has $(grep -c '^menuentry' "$cfg") menu entry/entries"
+  boot_grub_check_cmdline "$cfg" || return 1
 
   if [[ "$firmware" != "uefi" ]]; then
     ok "legacy BIOS: the boot record on $(boot_disk) is what starts GRUB"

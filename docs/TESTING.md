@@ -850,17 +850,30 @@ INIT: Entering runlevel: 3
  * Starting DHCP Client Daemon ...   [ ok ]
 ```
 
-**One thing this run leaves open.** The kernel command line arrives twice on
-the GRUB path too:
+**One thing this run looked like it left open, and did not.** The kernel
+command line arrives twice on the GRUB path too:
 
 ```
 Command line: BOOT_IMAGE=/vmlinuz-… root=/dev/mapper/gi--vg0-root ro root=/dev/mapper/gi--vg0-root rootfstype=ext4 ro rd.lvm.vg=gi-vg0 …
 ```
 
-A different cause from the `uki` one already fixed: GRUB's own `10_linux`
-generator writes `root=… ro` from the mounted filesystem, and then appends
-`GRUB_CMDLINE_LINUX`, which carries the `root=` this project composed. Both
-say the same thing here. Nothing makes them.
+That is not the `uki` defect in another place. It is deliberate, and
+`boot_grub_default_body` says so where it writes the line: grub-mkconfig emits
+its own `root=` from grub-probe and *then* appends `GRUB_CMDLINE_LINUX`, the
+kernel keeps the last `root=` it is given, and grub-probe run from inside a
+chroot has been known to name the installer's disk rather than the target's.
+Being second is what makes this project's answer the one that counts.
+
+Read out of the generated file, grub's first and this project's second:
+
+```
+	linux	/vmlinuz-6.18.48-gentoo-dist-bin root=/dev/mapper/gi--vg0-root ro root=/dev/mapper/gi--vg0-root rootfstype=ext4 ro rd.lvm.vg=gi-vg0 …
+```
+
+What was missing is that nothing checked it. The ordering is load-bearing —
+reverse it and the machine boots from whatever grub-probe guessed, in silence —
+so step 80 now reads the generated `grub.cfg` back and refuses a linux line
+whose last `root=` is not the one this run composed.
 
 ---
 
