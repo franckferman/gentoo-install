@@ -499,7 +499,16 @@ line, both composed from what steps 20 and 30 recorded rather than hardcoded.
 
 genkernel does not use dracut: its initramfs reads `crypt_root=`, `root_key=`
 and `dolvm` where dracut reads `rd.luks.uuid=` and `rd.luks.key=`. The step
-composes the right dialect rather than assuming one.
+composes the right dialect rather than assuming one, and writes a
+`/etc/dracut.conf.d` file only where dracut is the generator — a command line
+in the wrong dialect sitting in dracut's directory is a trap for the day
+something pulls dracut in.
+
+Both builders that compile their own kernel read `/usr/src/linux` and nowhere
+else. A stage3 has no such symlink and `sys-kernel/gentoo-sources` makes one
+only with the `symlink` USE flag, so the step runs `eselect kernel set 1` in
+the target first. Name a directory with `--kernel-source-dir` and it is left
+alone: the symlink is moved only when nothing was chosen.
 
 ### Why there is no third initramfs
 

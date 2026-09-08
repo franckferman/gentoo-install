@@ -94,12 +94,9 @@ kernel_genkernel_build() {
   fi
 
   kernel_ensure_crypt_packages "$root" || return 1
+  kernel_select_sources "$root" /usr/src/linux genkernel || return 1
 
   mapfile -t args < <(kernel_genkernel_args)
-
-  warn "genkernel builds its own initramfs; the dracut configuration written above does not apply to it"
-  warn "       the command line step 70 composed already speaks genkernel's dialect (crypt_root=, dolvm)"
-  warn "       kernel = dist-kernel or manual if you want the dracut modules instead"
 
   log "genkernel all ${args[*]}"
   kernel_in_target "$root" genkernel "${args[@]}" all || {

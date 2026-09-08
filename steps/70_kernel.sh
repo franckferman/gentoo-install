@@ -704,6 +704,30 @@ kernel_write_dracut_conf() {
   # Args: $1 = target root.
   local root="$1" conf="${1}/etc/dracut.conf.d/70-gentoo-install.conf" body
 
+  # Only when dracut is what will build the image. A genkernel install used to
+  # get this file too, carrying add_dracutmodules and — the part with teeth — a
+  # kernel_cmdline in genkernel's dialect:
+  #
+  #   kernel_cmdline="root=/dev/mapper/gi--vg9-root … dolvm crypt_root=UUID=…"
+  #
+  # dracut was not installed and the line was never read, which is why nobody
+  # noticed. Install dracut afterwards — switching to the distribution kernel
+  # on a later run, or pulling it in as a dependency — and it bakes that line
+  # into its image: crypt_root= means nothing to dracut, rd.luks.uuid= is not
+  # there, and the container is never opened. A configuration file for a tool
+  # that is not here, written in the wrong dialect for the tool that is.
+  # Said once per run: this function is called three times on the way through
+  # the step, and three copies of the same paragraph read like three decisions.
+  if [[ "$(kernel_initramfs_generator)" != "dracut" ]]; then
+    if [[ -z "${KERNEL_DRACUT_CONF_DECLINED:-}" ]]; then
+      KERNEL_DRACUT_CONF_DECLINED="yes"
+      skip "initramfs generator is $(kernel_initramfs_generator); no dracut configuration written"
+      skip "       its dialect is not dracut's, and a file in the wrong one is a"
+      skip "       trap for the day dracut is installed"
+    fi
+    return 0
+  fi
+
   body="$(kernel_dracut_conf_body "$root")" || return 1
 
   # write_validated, not write_file: dracut has no --check, but sourcing the
@@ -870,6 +894,45 @@ kernel_in_target() {
   fi
 }
 
+kernel_select_sources() {
+  # /usr/src/linux is a symlink, and both builders that compile their own
+  # kernel read it and nowhere else. genkernel says so out loud:
+  #
+  #   * ERROR: kernel source directory "/usr/src/linux" was not found!
+  #
+  # which is where every genkernel install ended until this was written.
+  # Emerging sys-kernel/gentoo-sources unpacks /usr/src/linux-<version> and
+  # makes that symlink only with the `symlink` USE flag, which a stage3 does
+  # not carry. eselect kernel is the tool that makes it, app-admin/eselect is
+  # in every stage3, and running it is what the refusal used to ask the
+  # operator to go and do by hand.
+  # Args: $1 = target root, $2 = the path that must exist, $3 = who wants it.
+  local root="${1%/}" src="$2" who="$3"
+
+  if [[ "$DRY_RUN" != "yes" && -e "${root}${src}" ]]; then
+    skip "${src} already points somewhere"
+    return 0
+  fi
+
+  if ! kernel_in_target "$root" eselect kernel set 1; then
+    err "eselect kernel set 1 failed in ${root}"
+    err "       ${who} reads ${src} and nothing else"
+    err "       chroot ${root} eselect kernel list   shows what is unpacked"
+    err "       example:  --kernel dist-kernel   builds no sources at all"
+    return 1
+  fi
+
+  # eselect exits 0 on an empty list. Believing it only moves the failure to
+  # a log inside the target, which is where the operator is not looking.
+  if [[ "$DRY_RUN" != "yes" && ! -e "${root}${src}" ]]; then
+    err "eselect kernel reported success and ${root}${src} is still not there"
+    err "       chroot ${root} eselect kernel list"
+    err "       example:  --kernel-source-dir /usr/src/linux-6.12.0-gentoo"
+    return 1
+  fi
+  ok "${src}: $(readlink -- "${root}${src}" 2>/dev/null || printf 'set')"
+}
+
 kernel_emerge() {
   # Args: $1 = target root, $2.. = packages.
   local root="$1"
@@ -1008,9 +1071,18 @@ kernel_ensure_crypt_packages() {
   # recovery passphrase.
   # Args: $1 = target root.
   local root="$1" crypt
-  local -a want=() optional=() missing=() spare=() use=()
+  local -a want=() optional=() missing=() spare=() use=() initramfs_pkg=()
 
   kernel_ensure_lvm_tools "$root" || return 1
+
+  # dracut only where dracut is what builds the image. genkernel builds its own
+  # initramfs and reads none of dracut's configuration, so pulling dracut into
+  # a genkernel target installs a second initramfs generator the machine will
+  # never run — and leaves the newer of two tools on disk to be picked up by
+  # whatever runs next.
+  if [[ "$(kernel_initramfs_generator)" == "dracut" ]]; then
+    initramfs_pkg=(sys-kernel/dracut)
+  fi
 
   crypt="$(target_crypt)"
   case "$crypt" in
@@ -1020,9 +1092,9 @@ kernel_ensure_crypt_packages() {
       kernel_write_dracut_conf "$root"
       return
       ;;
-    passphrase) want=(sys-fs/cryptsetup sys-kernel/dracut) ;;
+    passphrase) want=(sys-fs/cryptsetup "${initramfs_pkg[@]}") ;;
     tpm)
-      want=(sys-fs/cryptsetup sys-kernel/dracut)
+      want=(sys-fs/cryptsetup "${initramfs_pkg[@]}")
       optional=(app-crypt/clevis app-crypt/tpm2-tss)
       # dracut, not tpm2. The flag list of the only clevis ebuild that exists
       # for Gentoo — app-crypt/clevis in GURU — is
@@ -1043,7 +1115,7 @@ kernel_ensure_crypt_packages() {
       # dependency.
       use=("app-crypt/clevis dracut")
       ;;
-    keyfile) want=(sys-fs/cryptsetup sys-kernel/dracut app-crypt/gnupg) ;;
+    keyfile) want=(sys-fs/cryptsetup "${initramfs_pkg[@]}" app-crypt/gnupg) ;;
     *) return 0 ;;
   esac
 
@@ -1171,8 +1243,17 @@ show_kernel_plan() {
   log "kernel variant   ${variant}"
   log "target root      ${root}"
   log "crypt / layout   $(target_crypt) / $(target_layout) ($(target_topology))"
-  log "dracut modules   $(kernel_dracut_modules)"
-  log "dracut omits     $(kernel_dracut_omit)"
+  # genkernel builds its own initramfs and reads none of this. Printing a
+  # dracut module list in the plan of a genkernel install describes work that
+  # will not happen, in a screen an operator reads to decide whether the plan
+  # is right.
+  local generator
+  generator="$(kernel_initramfs_generator)"
+  log "initramfs by     ${generator}"
+  if [[ "$generator" == "dracut" ]]; then
+    log "dracut modules   $(kernel_dracut_modules)"
+    log "dracut omits     $(kernel_dracut_omit)"
+  fi
   show_kernel_cmdline
 }
 

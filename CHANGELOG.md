@@ -174,6 +174,55 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **`kernel = genkernel` could not build a kernel at all.** The first genkernel
+  install this project ever ran got through steps 20 to 50, composed the right
+  command line — `dolvm crypt_root=UUID=…` in genkernel's own dialect — and then
+  stopped on `genkernel failed`, with the reason in `/var/log/genkernel.log`
+  *inside* the target:
+
+  ```
+  * ERROR: kernel source directory "/usr/src/linux" was not found!
+  ```
+
+  `sys-kernel/gentoo-sources` unpacks `/usr/src/linux-<version>` and creates
+  that symlink only with the `symlink` USE flag, which a stage3 does not carry;
+  genkernel reads `/usr/src/linux` and nowhere else. Every genkernel install
+  ended there. Step 70 runs `eselect kernel set 1` in the target now, before
+  genkernel, and refuses if the symlink is still absent afterwards — `eselect`
+  exits 0 on an empty list, and letting that through only moves the failure to
+  a log the operator is not looking at.
+
+- **`kernel = manual` stopped on the same missing symlink.** One notch softer —
+  it refused, in the open, with a message telling the operator to go and run
+  `eselect kernel set 1` themselves — but it was still a stop on the default
+  path for something the installer can do. It does it now, and only for the
+  default: `--kernel-source-dir` is a choice, and moving `/usr/src/linux` on
+  its behalf would quietly build a different kernel from the one asked for, so
+  a directory named on the command line is left exactly as named and the
+  refusal still fires if nothing is there.
+
+- **A genkernel install was given a dracut configuration.** Step 70 wrote
+  `/etc/dracut.conf.d/70-gentoo-install.conf` on every target regardless of the
+  generator, so a genkernel machine ended up carrying a `kernel_cmdline` in
+  genkernel's dialect inside dracut's configuration directory — inert until the
+  day something pulls dracut in, and then a command line dracut cannot read,
+  written by this installer, in a file no one remembers. The file is written
+  only when dracut is the generator, and `--show-plan` no longer promises
+  dracut modules a genkernel run will never install.
+
+- **A genkernel target was given dracut to install.** `sys-kernel/dracut` was
+  in the package list of every encrypted target regardless of what builds the
+  image, so a genkernel machine ended up carrying a second initramfs generator
+  it will never run — and, with a stray `dracut.conf.d` file beside it, a way
+  for the next tool along to build an unbootable image from a command line in
+  the wrong dialect. Emerged only where dracut is the generator; `cryptsetup`
+  and `gnupg`, which both generators need, are unchanged.
+
+- **The reason for writing no dracut configuration is given once.**
+  `kernel_write_dracut_conf` is called three times on the way through step 70,
+  and on a genkernel target each call printed the same three-line paragraph —
+  three copies reading like three separate decisions.
+
 - **A layout that makes no volume group is no longer refused for a name.** The
   collision guard added one cycle earlier asked `disk_lvm`, which defaults to
   `auto` — and `auto` means *whatever the layout says*, `minimal` saying

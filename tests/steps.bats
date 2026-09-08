@@ -939,3 +939,120 @@ dm"
     return 1
   }
 }
+
+# --------------------------------------------------------------------------- #
+#  A configuration for the tool that will actually read it                    #
+# --------------------------------------------------------------------------- #
+# Found by the first genkernel install. Step 70 wrote
+# /etc/dracut.conf.d/70-gentoo-install.conf on every run, carrying a
+# kernel_cmdline in whichever dialect the generator speaks. On a genkernel
+# target that is genkernel's:
+#
+#   kernel_cmdline="root=/dev/mapper/gi--vg9-root … dolvm crypt_root=UUID=…"
+#
+# dracut was not installed and the line was never read, which is why nobody
+# noticed. Install dracut afterwards and it bakes that into its image:
+# crypt_root= means nothing to it, rd.luks.uuid= is not there, and the
+# container is never opened.
+
+@test "a genkernel install is given no dracut configuration" {
+  local dir
+  dir="$(gi_tmp)/gk1"
+  mkdir -p "${dir}/etc/dracut.conf.d"
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+    config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no
+    CFG[kernel]=genkernel
+    kernel_write_dracut_conf "$1"
+  ' bash "$dir"
+  [ "$status" -eq 0 ]
+  [[ ! -e "${dir}/etc/dracut.conf.d/70-gentoo-install.conf" ]] || {
+    printf 'the file is a trap for the day dracut is installed:\n%s\n' \
+      "$(cat "${dir}/etc/dracut.conf.d/70-gentoo-install.conf")" >&2
+    return 1
+  }
+  [[ "$stderr" == *"initramfs generator is genkernel"* ]]
+}
+
+@test "and a dist-kernel install still is" {
+  local dir
+  dir="$(gi_tmp)/gk2"
+  mkdir -p "${dir}/etc/dracut.conf.d"
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+    config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no; ON_CONFLICT=overwrite; NON_INTERACTIVE=yes
+    CFG[kernel]=dist-kernel; CFG[crypt]=none; CFG[root_device]=/dev/vdz2
+    kernel_validate_dracut_conf() { return 0; }
+    show_dracut_conf() { return 0; }
+    kernel_check_dracut_modules() { return 0; }
+    kernel_write_dracut_conf "$1"
+  ' bash "$dir"
+  [ "$status" -eq 0 ]
+  [[ -f "${dir}/etc/dracut.conf.d/70-gentoo-install.conf" ]] || {
+    printf 'dracut is what builds this image; it needs the file\n' >&2
+    return 1
+  }
+}
+
+@test "the plan does not promise dracut work a genkernel run will not do" {
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+    config_init_defaults >/dev/null 2>&1
+    CFG[kernel]=genkernel; CFG[crypt]=luks-passphrase; CFG[disk_layout]=desktop
+    show_kernel_plan /mnt/x genkernel
+  '
+  [[ "$stderr" == *"initramfs by"*"genkernel"* ]]
+  [[ "$stderr" != *"dracut modules"* ]] || {
+    printf 'genkernel reads none of that: %s\n' "$stderr" >&2
+    return 1
+  }
+}
+
+# Two more from the same dry run, both of them the generator being ignored.
+
+@test "a genkernel target is not given dracut to install" {
+  # sys-kernel/dracut was in every encrypted target's package list regardless
+  # of what builds the image. On a genkernel machine that installs a second
+  # initramfs generator nothing will ever run — and leaves it on disk for
+  # whatever picks it up next.
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+    config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no
+    CFG[kernel]=genkernel; CFG[crypt]=luks-passphrase
+    kernel_ensure_lvm_tools() { return 0; }
+    kernel_pkg_installed() { return 1; }
+    kernel_write_dracut_conf() { return 0; }
+    kernel_emerge() { shift; printf "%s\n" "$@"; return 0; }
+    kernel_ensure_crypt_packages /mnt/nowhere' bash
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sys-fs/cryptsetup"* ]]
+  [[ "$output" != *"sys-kernel/dracut"* ]]
+}
+
+@test "and a dracut target still is" {
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+    config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no
+    CFG[kernel]=dist-kernel; CFG[crypt]=luks-keyfile-gpg
+    kernel_ensure_lvm_tools() { return 0; }
+    kernel_pkg_installed() { return 1; }
+    kernel_write_dracut_conf() { return 0; }
+    kernel_emerge() { shift; printf "%s\n" "$@"; return 0; }
+    kernel_ensure_crypt_packages /mnt/nowhere' bash
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sys-kernel/dracut"* ]]
+  [[ "$output" == *"app-crypt/gnupg"* ]]
+}
+
+@test "the reason for writing no dracut configuration is given once" {
+  # kernel_write_dracut_conf is called three times on the way through step 70.
+  # Three copies of the same paragraph read like three separate decisions.
+  run --separate-stderr bash -c 'source "$GI_ENTRY"; set +e
+    config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no
+    CFG[kernel]=genkernel
+    kernel_write_dracut_conf /mnt/nowhere
+    kernel_write_dracut_conf /mnt/nowhere
+    kernel_write_dracut_conf /mnt/nowhere' bash
+  [ "$status" -eq 0 ]
+  [ "$(grep -c 'initramfs generator is genkernel' <<<"$stderr")" -eq 1 ]
+}

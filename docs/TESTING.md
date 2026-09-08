@@ -927,6 +927,81 @@ which has none.
 
 ---
 
+## Run 9 — genkernel, the builder nothing had ever run
+
+```bash
+sudo script -qefc ./run9gk.sh console
+# --disk /dev/loop0 --disk-layout desktop --disk-vg gi-vg9 --disk-filesystem ext4
+# --crypt luks-passphrase --kernel genkernel --bootloader grub --init openrc
+```
+
+`kernel = genkernel` had been reasoned about, refused for the TPM with the
+right reason, and given the right command-line dialect. It had never been run.
+Steps 20 to 50 passed, step 70 composed exactly the line the design says it
+should —
+
+```
+root=/dev/mapper/gi--vg9-root rootfstype=ext4 ro dolvm \
+  crypt_root=UUID=9fc04eaf-0be5-4c88-b609-e09eeb0788ca console=tty0 console=ttyS0,115200
+```
+
+`dolvm` and `crypt_root=` where dracut would read `rd.lvm.vg=` and
+`rd.luks.uuid=` — and then:
+
+```
+[*] genkernel all --bootdir=/boot --no-mountboot --makeopts=-j16 --luks --lvm --firmware
+[x] genkernel failed
+[x]        its log is /var/log/genkernel.log inside the target
+```
+
+with the reason in a file inside the target, where nobody was looking:
+
+```
+* ERROR: kernel source directory "/usr/src/linux" was not found!
+```
+
+**`/usr/src/linux` is a symlink and nothing in the install made it.**
+`sys-kernel/gentoo-sources` unpacks `/usr/src/linux-6.18.48-gentoo` and creates
+the symlink only with the `symlink` USE flag, which a stage3 does not carry.
+genkernel reads `/usr/src/linux` and nowhere else, so **every genkernel install
+this project could produce ended here.** `kernel = manual` had the same
+dependency and refused in the open, telling the operator to run
+`eselect kernel set 1` by hand — which is the command the installer runs now,
+for both, before either builds. Replayed on `--steps 50,70,80,90,95` against
+the same container:
+
+```
+[=] initramfs generator is genkernel; no dracut configuration written
+[+] /usr/src/linux: linux-6.18.48-gentoo
+[*] genkernel all --bootdir=/boot --no-mountboot --makeopts=-j16 --luks --lvm --firmware
+* Gentoo Linux Genkernel; Version 4.3.17
+*         >> Compiling 6.18.48-gentoo-x86_64 bzImage ...
+*         >> Compiling 6.18.48-gentoo-x86_64 modules ...
+```
+
+**The refusal is gone and the build runs.** Note the wall clock before you
+plan around this option: genkernel's stock configuration builds essentially
+every module in the tree, and the module phase alone had been running three
+hours at `-j16` on a 16-thread host. `dist-kernel` is minutes.
+
+Three more defects came out of the same run, all of them the same shape — the
+step knowing which *encryption* it was building for and not which *generator*:
+
+- `/etc/dracut.conf.d/70-gentoo-install.conf` was written on the genkernel
+  target, carrying `kernel_cmdline` in genkernel's dialect. dracut was not
+  installed, so the file was inert — until the day something pulls dracut in,
+  and then it bakes a `crypt_root=` it cannot read into its image and the
+  container is never opened. Written only where dracut is the generator.
+- `sys-kernel/dracut` was in the package list of every encrypted target, so the
+  genkernel machine was having a second initramfs generator installed that it
+  will never run — the thing that would have found the file above.
+- `--show-plan` promised dracut modules a genkernel run does not install.
+
+None of the three is visible by reading step 70; all three are visible in the
+first line of its output on a genkernel target.
+
+---
+
 ## Run 5 — a stage of your own
 
 ```bash

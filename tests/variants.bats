@@ -307,3 +307,156 @@ _plan() {
     files_identical "$1/src" "$1/dst"' "$dir"
   [ "$status" -ne 0 ]
 }
+
+# --------------------------------------------------------------------------- #
+#  genkernel and /usr/src/linux                                               #
+# --------------------------------------------------------------------------- #
+# Found by the first genkernel install this project ever ran. Steps 20 to 50
+# passed, step 70 composed the right command line, and then:
+#
+#   * ERROR: kernel source directory "/usr/src/linux" was not found!
+#
+# in /var/log/genkernel.log. sys-kernel/gentoo-sources unpacks
+# /usr/src/linux-<version> and creates the symlink only with the `symlink` USE
+# flag, which a stage3 does not carry; genkernel reads /usr/src/linux and
+# nothing else. Every genkernel install ended there.
+
+_genkernel_root() {
+  # A target root with sources unpacked and no symlink, as a stage3 leaves it.
+  local root
+  root="$(gi_tmp)/target"
+  mkdir -p "${root}/usr/src/linux-6.18.48-gentoo"
+  printf '%s\n' "$root"
+}
+
+@test "genkernel is not run until /usr/src/linux exists" {
+  # eselect kernel set 1 is what makes the symlink, and it is already what the
+  # manual variant's error message tells an operator to run.
+  local root
+  root="$(_genkernel_root)"
+  gi_bash 'config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no
+    root="$1"
+    chroot() {
+      shift
+      printf "in-target: %s\n" "$*" >&2
+      [[ "$1 $2 $3" == "eselect kernel set" ]] &&
+        ln -sfn linux-6.18.48-gentoo "${root}/usr/src/linux"
+      return 0
+    }
+    source "${GI_ROOT}/variants/kernel/genkernel.sh"
+    kernel_select_sources "$root" /usr/src/linux genkernel' "$root"
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"eselect kernel set 1"* ]]
+  [[ "$stderr" == *"/usr/src/linux: linux-6.18.48-gentoo"* ]]
+  [ -L "${root}/usr/src/linux" ]
+}
+
+@test "a target that already has the symlink is left alone" {
+  local root
+  root="$(_genkernel_root)"
+  ln -sfn linux-6.18.48-gentoo "${root}/usr/src/linux"
+  gi_bash 'config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no
+    chroot() { printf "in-target: %s\n" "$*" >&2; return 0; }
+    source "${GI_ROOT}/variants/kernel/genkernel.sh"
+    kernel_select_sources "$1" /usr/src/linux genkernel' "$root"
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"already points somewhere"* ]]
+  [[ "$stderr" != *"in-target:"* ]]
+}
+
+@test "a symlink that eselect promised and did not make is a refusal" {
+  # eselect exits 0 when the list is empty. Letting that through only moves the
+  # failure to genkernel, where the log is inside the target and the operator
+  # is not.
+  local root
+  root="$(_genkernel_root)"
+  gi_bash 'config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no
+    chroot() { return 0; }
+    source "${GI_ROOT}/variants/kernel/genkernel.sh"
+    kernel_select_sources "$1" /usr/src/linux genkernel' "$root"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"reported success"* ]]
+  [[ "$stderr" == *"still not there"* ]]
+  [[ "$stderr" == *"eselect kernel list"* ]]
+}
+
+@test "and so is eselect itself failing" {
+  local root
+  root="$(_genkernel_root)"
+  gi_bash 'config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no
+    chroot() { return 1; }
+    source "${GI_ROOT}/variants/kernel/genkernel.sh"
+    kernel_select_sources "$1" /usr/src/linux genkernel' "$root"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"eselect kernel set 1 failed"* ]]
+  [[ "$stderr" == *"reads /usr/src/linux and nothing else"* ]]
+}
+
+@test "the build orders the symlink before genkernel, not after" {
+  # The order is the whole fix: genkernel reads /usr/src/linux at startup.
+  local root
+  root="$(_genkernel_root)"
+  gi_bash 'config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no
+    CFG[crypt]=luks-passphrase; CFG[disk_lvm]=yes
+    root="$1"
+    kernel_pkg_installed() { return 0; }
+    kernel_ensure_crypt_packages() { return 0; }
+    chroot() {
+      shift
+      printf "%s\n" "$1"
+      [[ "$1" == "eselect" ]] && ln -sfn linux-6.18.48-gentoo "${root}/usr/src/linux"
+      return 0
+    }
+    source "${GI_ROOT}/variants/kernel/genkernel.sh"
+    kernel_genkernel_build "$root"' "$root"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"eselect"*"genkernel"* ]]
+}
+
+@test "the manual build makes the same symlink instead of asking for it" {
+  # Same missing /usr/src/linux, one notch softer: manual refused with a
+  # message telling the operator to go and run eselect. That is a stop on the
+  # default path for something the installer can do itself.
+  local root
+  root="$(_genkernel_root)"
+  gi_bash 'config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no
+    root="$1"
+    kernel_pkg_installed() { return 0; }
+    kernel_ensure_crypt_packages() { return 0; }
+    kernel_manual_place_config() { return 1; }   # stop right after the symlink
+    chroot() {
+      shift
+      [[ "$1 $2 $3" == "eselect kernel set" ]] &&
+        ln -sfn linux-6.18.48-gentoo "${root}/usr/src/linux"
+      return 0
+    }
+    source "${GI_ROOT}/variants/kernel/manual.sh"
+    kernel_manual_build "$root"' "$root"
+  [[ "$stderr" != *"No kernel sources at"* ]]
+  [ -L "${root}/usr/src/linux" ]
+}
+
+@test "a source directory named on the command line is not overruled" {
+  # --kernel-source-dir is a choice. Pointing /usr/src/linux somewhere else on
+  # its behalf would silently build a different kernel from the one asked for.
+  local root
+  root="$(_genkernel_root)"
+  gi_bash 'config_init_defaults >/dev/null 2>&1
+    DRY_RUN=no
+    parse_args --kernel-source-dir /usr/src/linux-6.12.0-gentoo >/dev/null 2>&1
+    kernel_pkg_installed() { return 0; }
+    kernel_ensure_crypt_packages() { return 0; }
+    chroot() { printf "in-target: %s\n" "$*" >&2; return 0; }
+    source "${GI_ROOT}/variants/kernel/manual.sh"
+    kernel_manual_build "$1"' "$root"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"No kernel sources at /usr/src/linux-6.12.0-gentoo"* ]]
+  [[ "$stderr" != *"in-target: eselect"* ]]
+  [ ! -e "${root}/usr/src/linux" ]
+}

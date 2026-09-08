@@ -179,6 +179,16 @@ kernel_manual_build() {
 
   kernel_ensure_crypt_packages "$root" || return 1
 
+  # A stage3 leaves no /usr/src/linux and emerging the sources does not make
+  # one, so the default path stopped here on every manual install and asked the
+  # operator to run eselect by hand. It is run for them — but only for the
+  # default: a directory named on the command line is a choice, and pointing
+  # the symlink somewhere else would quietly overrule it.
+  if [[ ! -e "${root%/}${src}" && "$DRY_RUN" != "yes" ]] \
+    && ! is_explicit kernel_source_dir; then
+    kernel_select_sources "$root" "$src" "the kernel build" || return 1
+  fi
+
   if [[ ! -d "${root%/}${src}" && "$DRY_RUN" != "yes" ]]; then
     err "No kernel sources at ${src} inside ${root}"
     err "       eselect kernel list shows what is unpacked"
