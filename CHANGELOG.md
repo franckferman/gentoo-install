@@ -12,6 +12,16 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Added
 
+- **An interrupted install has been resumed, for real.** Steps 20, 30 and 40 on
+  an encrypted disk with a container named `vault` — not the default — then the
+  run ended, the container closed, the tree gone. The second invocation carried
+  no `--crypt`, no `--crypt-name`, no `--disk` and no configuration file, and
+  reopened `/dev/loop0p2` as `/dev/mapper/vault` from the journal before
+  mounting the tree. The reattach reading `crypt.variant` and `crypt.name`
+  instead of the settings had been reasoned about and pinned by tests that name
+  the setting explicitly, which is the one case where the two cannot disagree.
+  `docs/TESTING.md` carries it as run 8.
+
 - **Step 80 checks which `root=` the kernel will keep.** grub-mkconfig emits
   its own `root=` from grub-probe and then appends `GRUB_CMDLINE_LINUX`, so the
   generated line carries two; the kernel keeps the last, which is why this
@@ -163,6 +173,15 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   through a redirection whose errors were discarded.
 
 ### Fixed
+
+- **A layout that makes no volume group is no longer refused for a name.** The
+  collision guard added one cycle earlier asked `disk_lvm`, which defaults to
+  `auto` — and `auto` means *whatever the layout says*, `minimal` saying
+  `lvm: no`. On a machine that has a `vg0` of its own, a perfectly good minimal
+  install was refused for a group name it was never going to use. The question
+  is asked of the plan now, which is what says whether a group will be made,
+  and step 20 asks it once the plan exists rather than in `disk_guard`, which
+  has none.
 
 - **A volume group named like the host's is refused before the disk is
   erased.** `disk_vg` defaults to `vg0`, the commonest volume group name there

@@ -116,6 +116,13 @@ step_20_disk() {
     return "$EXIT_FAILURE"
   fi
 
+  # Asked here rather than in disk_guard, because the plan is what says whether
+  # a volume group will be made at all: disk_lvm defaults to auto, and auto
+  # means "whatever the layout says".
+  if ! disk_guard_vg_name "/dev/${name}" "$plan"; then
+    return "$EXIT_FAILURE"
+  fi
+
   if _step20_already_provisioned "$plan"; then
     skip "/dev/${name} is already partitioned, formatted and mounted as planned"
     disk_show_result "$plan"

@@ -257,6 +257,26 @@ load helper
 # --------------------------------------------------------------------------- #
 #  The volume group's name belongs to somebody                                #
 # --------------------------------------------------------------------------- #
+@test "a layout that makes no volume group is not refused for a name" {
+  # disk_lvm defaults to auto, and auto means "whatever the layout says":
+  # minimal declares `lvm: no` and makes no group at all. Asking CFG[disk_lvm]
+  # refused a perfectly good minimal install on a machine that has a vg0, for a
+  # name it was never going to use.
+  gi_bash '
+    config_init_defaults >/dev/null 2>&1
+    CFG[disk_vg]=vg0; CFG[disk_lvm]=auto
+    have() { [[ "$1" == "vgs" ]]; }
+    vgs() { return 0; }
+    _disk_vg_is_confined() { return 1; }
+    plan="$(printf "meta\tlvm\tno\t0\t-\t-\n")"
+    disk_guard_vg_name /dev/vdz "$plan"
+  '
+  [ "$status" -eq 0 ] || {
+    printf 'no group is made, so no name can collide: %s\n' "$stderr" >&2
+    return 1
+  }
+}
+
 @test "a volume group of the configured name living elsewhere is refused" {
   # disk_vg defaults to vg0, the commonest volume group name there is. On a
   # machine whose own group is called vg0, an install got as far as
@@ -271,7 +291,8 @@ load helper
     have() { [[ "$1" == "vgs" ]]; }
     vgs() { return 0; }                      # a group of that name exists
     _disk_vg_is_confined() { return 1; }     # and not on the target disk
-    disk_guard_vg_name /dev/vdz
+    plan="$(printf "meta\tlvm\tyes\t0\t-\t-\n")"
+    disk_guard_vg_name /dev/vdz "$plan"
   '
   [ "$status" -ne 0 ] || {
     printf 'the collision has to be refused before the disk is erased\n' >&2
@@ -288,7 +309,8 @@ load helper
     have() { [[ "$1" == "vgs" ]]; }
     vgs() { return 0; }
     _disk_vg_is_confined() { return 0; }     # every PV is on the target
-    disk_guard_vg_name /dev/vdz
+    plan="$(printf "meta\tlvm\tyes\t0\t-\t-\n")"
+    disk_guard_vg_name /dev/vdz "$plan"
   '
   [ "$status" -eq 0 ] || {
     printf 'a previous run of ours is not a collision: %s\n' "$stderr" >&2
@@ -303,7 +325,8 @@ load helper
     have() { [[ "$1" == "vgs" ]]; }
     vgs() { return 0; }
     _disk_vg_is_confined() { return 1; }
-    disk_guard_vg_name /dev/vdz
+    plan="$(printf "meta\tlvm\tno\t0\t-\t-\n")"
+    disk_guard_vg_name /dev/vdz "$plan"
   '
   [ "$status" -eq 0 ]
 }
@@ -387,6 +410,21 @@ load helper
   [ "$status" -eq 0 ]
   [[ "$stderr" == *"2 partition(s) created"* ]] || {
     printf 'an ESP and a physical volume are two partitions: %s\n' "$stderr" >&2
+    return 1
+  }
+}
+
+@test "step 20 asks that question with the plan in hand" {
+  # In disk_guard it had no plan to ask, so it asked the setting instead.
+  gi_bash '
+    body="$(declare -f step_20_disk)"
+    [[ "$body" == *disk_guard_vg_name* ]] || { echo "step 20 does not ask"; exit 1; }
+    [[ "$body" == *\"\$plan\"* ]] || { echo "and not with the plan"; exit 1; }
+    [[ "$(declare -f disk_guard)" != *disk_guard_vg_name* ]] \
+      || { echo "disk_guard still asks, with no plan to ask about"; exit 1; }
+  '
+  [ "$status" -eq 0 ] || {
+    printf 'the plan is what says whether a group will be made\n' >&2
     return 1
   }
 }

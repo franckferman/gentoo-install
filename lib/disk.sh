@@ -567,7 +567,6 @@ disk_guard() {
     warn "/dev/${name} has mounted filesystems; they will be unmounted (disk_allow_mounted=yes)"
   fi
 
-  disk_guard_vg_name "/dev/${name}" || return 1
   return 0
 }
 
@@ -590,10 +589,15 @@ disk_guard_vg_name() {
   #
   # A group of that name *on the target disk* is this install's own, from a
   # previous run, and is not a collision.
-  # Args: $1 = the target disk (/dev/sdb).
-  local device="$1" vg="${CFG[disk_vg]:-}"
+  # Asked of the plan and not of the settings. disk_lvm defaults to auto, and
+  # auto means "whatever the layout says": minimal declares `lvm: no` and makes
+  # no volume group at all. Reading CFG[disk_lvm] here refused a perfectly good
+  # minimal install on this machine, for a group name it was never going to
+  # use — a refusal invented by the fix for the collision, one cycle after it.
+  # Args: $1 = the target disk (/dev/sdb), $2 = plan text.
+  local device="$1" plan="$2" vg="${CFG[disk_vg]:-}"
 
-  [[ "${CFG[disk_lvm]:-auto}" != "no" ]] || return 0
+  [[ "$(disk_plan_meta "$plan" lvm)" == "yes" ]] || return 0
   [[ -n "$vg" ]] || return 0
   have vgs || return 0
   vgs "$vg" >/dev/null 2>&1 || return 0

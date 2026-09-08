@@ -877,6 +877,56 @@ whose last `root=` is not the one this run composed.
 
 ---
 
+## Run 8 — the second invocation, for real
+
+Every earlier run typed the whole configuration again. This one is the case the
+installer talks about most and had never actually been made: an install
+interrupted, and picked up with nothing but the state directory.
+
+Steps 20, 30 and 40 on an encrypted disk with a container named `vault` — not
+the default — then the run ends, the container is closed, and the tree is gone.
+The second invocation is what an operator would really type:
+
+```bash
+./gentoo-install.sh --steps 50 --root /mnt/gi8r --state-dir …/state \
+  --crypt-pass-file …/pass --disk-allow-loop yes --yes
+```
+
+No `--crypt`. No `--crypt-name`. No `--disk`. No configuration file.
+
+```
+[*] /mnt/gi8r is not mounted; the plan step 20 recorded says what belongs there
+[*] /dev/loop0p2 has to be opened before its tree can be mounted
+[+] reopened /dev/loop0p2 as /dev/mapper/vault
+[*] mounting the target tree under /mnt/gi8r
+[+] target tree mounted under /mnt/gi8r
+[+] step 50 step_50_chroot: done
+```
+
+`vault` came from the journal. With the settings answering instead — which is
+what step 50 did until the reattach was made to read `crypt.variant` and
+`crypt.name` — `crypt` would have been the default `luks-passphrase` and
+`crypt_name` the default `gentoo`, and the container would have been reopened
+under a name the recorded plan does not mention. That fix had been reasoned
+about and pinned by tests that name the setting explicitly, which is the one
+case where the two cannot disagree. This is the run where they did.
+
+Step 95 was then asked to release it all, and refused the machine as it should:
+four blocking checks — no kernel, no initramfs, no boot entry, no fstab — for
+an install that stopped after step 40. It closed the container and unmounted
+the tree anyway, which is the half that is not a proof.
+
+**And the run found a defect of its own, in the previous cycle's fix.** The
+volume-group name guard added the day before asked `disk_lvm`, which defaults
+to `auto`; `auto` means *whatever the layout says*, and `minimal` says `lvm:
+no`. So a perfectly good minimal install on a machine that happens to have a
+`vg0` was refused for a group name it was never going to use. The question is
+asked of the **plan** now, which is what says whether a group will be made at
+all, and step 20 asks it once the plan exists rather than in `disk_guard`,
+which has none.
+
+---
+
 ## Run 5 — a stage of your own
 
 ```bash
