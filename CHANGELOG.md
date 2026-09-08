@@ -154,6 +154,28 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **A volume group named like the host's is refused before the disk is
+  erased.** `disk_vg` defaults to `vg0`, the commonest volume group name there
+  is, and the machine running this installer had one. An install got as far as
+  `GPT table created` and then `vgcreate vg0 failed on /dev/loop0p2`: the disk
+  was gone for a run that could not continue. `disk_guard` asks now, before
+  anything is touched, and a group of that name *on the target disk* is this
+  install's own from a previous run and not a collision.
+
+- **The teardown was not asking whose volume group it was deactivating.**
+  `disk_release` checks that every physical volume of a group is on the disk
+  being erased before running `vgchange -an`; `disk_teardown`, which step 95
+  calls, checked only that the name resolved. With the default name on a host
+  that has a `vg0`, that is `vgchange -an vg0` against the host's own root,
+  home, var and swap. LVM would have refused the mounted ones; the unmounted
+  ones it would not have refused, and none of them were this run's to touch.
+
+- **An LVM disk said it had one partition when it had two.** The counter is
+  advanced by the loop that lays out a non-LVM table and was left where it
+  started on the LVM branch, so the message read `1 partition(s) created`
+  directly above `vgcreate failed on /dev/loop0p2` — which says the partition
+  is not there when `sgdisk -p` and the kernel both showed it was.
+
 - **A unified kernel image carried its command line twice.**
   `dracut --kernel-cmdline` is *added* to the `kernel_cmdline` the
   configuration files already carry, not substituted for it, and step 70 writes

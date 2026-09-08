@@ -253,3 +253,140 @@ load helper
     disk_verify "$1"' bash "$plan" "$dev"
   [[ "$stderr" == *"disk verification passed"* ]]
 }
+
+# --------------------------------------------------------------------------- #
+#  The volume group's name belongs to somebody                                #
+# --------------------------------------------------------------------------- #
+@test "a volume group of the configured name living elsewhere is refused" {
+  # disk_vg defaults to vg0, the commonest volume group name there is. On a
+  # machine whose own group is called vg0, an install got as far as
+  #     [+] /dev/loop0: GPT table created
+  #     [x] vgcreate vg0 failed on /dev/loop0p2
+  # so the disk was erased for a run that could not continue — and every step
+  # after 20 names the group by that name, including the one that deactivates
+  # it.
+  gi_bash '
+    config_init_defaults >/dev/null 2>&1
+    CFG[disk_vg]=vg0; CFG[disk_lvm]=yes
+    have() { [[ "$1" == "vgs" ]]; }
+    vgs() { return 0; }                      # a group of that name exists
+    _disk_vg_is_confined() { return 1; }     # and not on the target disk
+    disk_guard_vg_name /dev/vdz
+  '
+  [ "$status" -ne 0 ] || {
+    printf 'the collision has to be refused before the disk is erased\n' >&2
+    return 1
+  }
+  [[ "$stderr" == *"already exists, and not on /dev/vdz"* ]]
+  [[ "$stderr" == *"disk_vg = gi-vg0"* ]]
+}
+
+@test "a group of that name on the target disk is this install's own" {
+  gi_bash '
+    config_init_defaults >/dev/null 2>&1
+    CFG[disk_vg]=vg0; CFG[disk_lvm]=yes
+    have() { [[ "$1" == "vgs" ]]; }
+    vgs() { return 0; }
+    _disk_vg_is_confined() { return 0; }     # every PV is on the target
+    disk_guard_vg_name /dev/vdz
+  '
+  [ "$status" -eq 0 ] || {
+    printf 'a previous run of ours is not a collision: %s\n' "$stderr" >&2
+    return 1
+  }
+}
+
+@test "no LVM asked for means no name to collide with" {
+  gi_bash '
+    config_init_defaults >/dev/null 2>&1
+    CFG[disk_vg]=vg0; CFG[disk_lvm]=no
+    have() { [[ "$1" == "vgs" ]]; }
+    vgs() { return 0; }
+    _disk_vg_is_confined() { return 1; }
+    disk_guard_vg_name /dev/vdz
+  '
+  [ "$status" -eq 0 ]
+}
+
+@test "the teardown does not deactivate a group that reaches past the target" {
+  # disk_release asks this before it deactivates anything; the teardown asked
+  # only whether the name resolved, so it would have run vgchange -an vg0
+  # against the host's own root, home, var and swap.
+  gi_bash '
+    plan="$(printf "meta\tmountpoint\t/mnt/t\t0\t-\t-\nmeta\tlvm\tyes\t0\t-\t-\nmeta\tvg\tvg0\t0\t-\t-\nmeta\tdevice\t/dev/vdz\t0\t-\t-\n")"
+    mountpoint() { return 1; }
+    vgs() { return 0; }
+    _disk_vg_is_confined() { return 1; }
+    _disk_vg_is_active() { return 1; }
+    vgchange() { printf "VGCHANGE %s\n" "$*"; return 0; }
+    run_quiet() { "$@"; }
+    disk_teardown "$plan"
+  '
+  [[ "$output" != *VGCHANGE* ]] || {
+    printf 'it deactivated a group that is not on the target disk: %s\n' "$output" >&2
+    return 1
+  }
+  [[ "$stderr" == *"reaches past /dev/vdz"* ]]
+}
+
+@test "and does deactivate the one it made" {
+  gi_bash '
+    plan="$(printf "meta\tmountpoint\t/mnt/t\t0\t-\t-\nmeta\tlvm\tyes\t0\t-\t-\nmeta\tvg\tvg0\t0\t-\t-\nmeta\tdevice\t/dev/vdz\t0\t-\t-\n")"
+    mountpoint() { return 1; }
+    vgs() { return 0; }
+    _disk_vg_is_confined() { return 0; }
+    _disk_vg_is_active() { return 1; }
+    vgchange() { printf "VGCHANGE %s\n" "$*"; return 0; }
+    run_quiet() { "$@"; }
+    disk_teardown "$plan"
+  '
+  [[ "$output" == *"VGCHANGE -an vg0"* ]]
+}
+
+@test "an LVM disk is given two partitions to make" {
+  gi_bash '
+    plan="$(printf "meta\tlvm\tyes\t0\t-\t-\nesp\tesp\t/boot\t1024\tvfat\t/dev/vdz1\npart\tsystem\t-\t0\tlvm\t/dev/vdz2\n")"
+    DRY_RUN=yes
+    _disk_assert_target() { return 0; }
+    # to stderr: the caller redirects run_cmd stdout to /dev/null
+    run_cmd() { printf "SGDISK %s\n" "$*" >&2; return 0; }
+    run_quiet() { return 0; }
+    _disk_settle() { return 0; }
+    disk_normalize() { printf "%s\n" "$1"; }
+    disk_partition vdz "$plan"
+  '
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"-n 1:"*"-n 2:0:0"* ]] || {
+    printf 'an ESP and a physical volume: %s\n' "$stderr" >&2
+    return 1
+  }
+}
+
+@test "and says so afterwards" {
+  # index counts what sgdisk was asked for, and the LVM branch never advanced
+  # it: the run said "1 partition(s) created" about a disk carrying both, right
+  # above "vgcreate failed on /dev/loop0p2" — which reads as "the partition is
+  # not there" when it is.
+  local blk="" c
+  for c in /dev/loop0 /dev/loop1 /dev/ram0; do
+    [[ -b "$c" ]] && { blk="$c"; break; }
+  done
+  [[ -n "$blk" ]] || skip "no block device here for the readiness check"
+
+  gi_bash '
+    plan="$(printf "meta\tlvm\tyes\t0\t-\t-\nesp\tesp\t/boot\t1024\tvfat\t/dev/vdz1\npart\tsystem\t-\t0\tlvm\t/dev/vdz2\n")"
+    DRY_RUN=no
+    _disk_assert_target() { return 0; }
+    run_cmd() { return 0; }
+    run_quiet() { return 0; }
+    _disk_settle() { return 0; }
+    disk_partition_device() { printf "%s\n" "$1"; }
+    disk_normalize() { printf "%s\n" "$1"; }
+    disk_partition "$1" "$plan"
+  ' "$blk"
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"2 partition(s) created"* ]] || {
+    printf 'an ESP and a physical volume are two partitions: %s\n' "$stderr" >&2
+    return 1
+  }
+}

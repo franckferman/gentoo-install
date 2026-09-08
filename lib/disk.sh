@@ -566,7 +566,46 @@ disk_guard() {
   if [[ -n "$(disk_mountpoints "$name")" ]]; then
     warn "/dev/${name} has mounted filesystems; they will be unmounted (disk_allow_mounted=yes)"
   fi
+
+  disk_guard_vg_name "/dev/${name}" || return 1
   return 0
+}
+
+disk_guard_vg_name() {
+  # A volume group of the configured name that lives somewhere else is a name
+  # collision, and it is refused here — before the disk is erased — rather than
+  # by vgcreate afterwards.
+  #
+  # disk_vg defaults to vg0, which is the commonest volume group name there
+  # is. This machine's own group is called vg0. An install to a loop image got
+  # as far as
+  #
+  #   [+] /dev/loop0: GPT table created
+  #   [x] vgcreate vg0 failed on /dev/loop0p2
+  #
+  # so LVM refused the duplicate and the disk had already been wiped for a run
+  # that could not continue. Worse, everything downstream then names "the"
+  # volume group vg0: the teardown deactivates it, and until this cycle it did
+  # so without asking whose it was.
+  #
+  # A group of that name *on the target disk* is this install's own, from a
+  # previous run, and is not a collision.
+  # Args: $1 = the target disk (/dev/sdb).
+  local device="$1" vg="${CFG[disk_vg]:-}"
+
+  [[ "${CFG[disk_lvm]:-auto}" != "no" ]] || return 0
+  [[ -n "$vg" ]] || return 0
+  have vgs || return 0
+  vgs "$vg" >/dev/null 2>&1 || return 0
+  _disk_vg_is_confined "$vg" "$device" && return 0
+
+  err "a volume group named ${vg} already exists, and not on ${device}"
+  err "       $(vgs --noheadings -o vg_name,pv_name,vg_size "$vg" 2>/dev/null | tr -s ' ')"
+  err "       vgcreate would refuse it, after this disk had been erased for a"
+  err "       run that cannot finish — and every step after step 20 names the"
+  err "       group by that name, including the one that deactivates it"
+  err "       example:  disk_vg = gi-${vg}"
+  return 1
 }
 
 _disk_mounts_line() {
@@ -1557,6 +1596,12 @@ disk_partition() {
 
   if [[ "$lvm" == "yes" ]]; then
     argv+=(-n 2:0:0 -t 2:8E00 -c 2:"Linux LVM")
+    # index counts what has been asked for, and the line below reports it. On
+    # this branch it was left at 2, so an LVM install said "1 partition(s)
+    # created" about a disk carrying an ESP and a physical volume — which is
+    # exactly the wrong thing to read next to "vgcreate failed on /dev/loop0p2",
+    # because it says the partition is not there when it is.
+    index=3
   else
     local -a rows=()
     mapfile -t rows < <(disk_plan_rows "$plan" part)
@@ -2042,8 +2087,29 @@ disk_teardown() {
     run_quiet swapoff -- "$dev" || true
   done < <(disk_plan_rows "$plan" volume | awk -F'\t' '$5 == "swap"')
 
+  # A group of that name existing is not the same question as this run having
+  # made it. disk_vg defaults to vg0, which is the commonest volume group name
+  # there is: on a machine whose own group is called vg0 — this one, as it
+  # happens — deactivating "the" vg0 after an install reaches for the host's
+  # root, home, var and swap. disk_release asks whether every physical volume
+  # of the group is on the disk being erased before it deactivates anything;
+  # the teardown asked only whether the name resolved.
+  #
+  # LVM would have refused to deactivate the mounted ones and said so. The
+  # unmounted ones it would not have refused, and none of them were this run's
+  # to touch.
   if [[ "$(disk_plan_meta "$plan" lvm)" == "yes" ]] && vgs "$vg" >/dev/null 2>&1; then
-    run_quiet vgchange -an "$vg" || warn "vgchange -an ${vg} failed"
+    local device
+    device="$(disk_plan_meta "$plan" device)"
+    if [[ -n "$device" ]] && ! _disk_vg_is_confined "$vg" "$device"; then
+      err "volume group ${vg} reaches past ${device}; not deactivating it"
+      err "       vgs -o vg_name,pv_name ${vg}   shows where it lives"
+      err "       a group of this name exists that this install did not make"
+      err "       example:  disk_vg = gi-${vg}"
+      left=$((left + 1))
+    else
+      run_quiet vgchange -an "$vg" || warn "vgchange -an ${vg} failed"
+    fi
   fi
 
   if mountpoint -q -- "$root" 2>/dev/null; then

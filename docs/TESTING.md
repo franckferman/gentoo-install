@@ -760,6 +760,110 @@ once, and the kernel prints it once at boot.
 
 ---
 
+## Run 7 — a layout of your own
+
+`--disk-layout custom` with
+
+```
+disk_volumes = "swap:swap:2G::;root:/:12G:ext4;srv:/srv:rest:ext4"
+```
+
+on LVM, unencrypted, GRUB, OpenRC — the first time a disk was ever partitioned
+from a hand-written layout. It stopped on its second line:
+
+```
+[+] /dev/loop0: GPT table created
+[+] /dev/loop0: 1 partition(s) created
+[x] vgcreate vg0 failed on /dev/loop0p2
+```
+
+Three things in those three lines.
+
+**The disk had already been erased for a run that could not continue.**
+`disk_vg` defaults to `vg0`, which is the commonest volume group name there
+is — and the machine running this installer has a `vg0` of its own, carrying
+its root, home, var and swap. `vgcreate` refused the duplicate, correctly, and
+by then the partition table was gone. The name is checked now in `disk_guard`,
+before anything is touched, and a group of that name *on the target disk* is
+this install's own from a previous run and not a collision:
+
+```
+[x] a volume group named vg0 already exists, and not on /dev/loop0
+[x]        vgcreate would refuse it, after this disk had been erased for a
+[x]        run that cannot finish — and every step after step 20 names the
+[x]        group by that name, including the one that deactivates it
+[x]        example:  disk_vg = gi-vg0
+```
+
+**And the one that deactivates it was not asking whose it was.** `disk_release`
+checks that every physical volume of a group is on the disk being erased before
+running `vgchange -an`; `disk_teardown`, which step 95 calls, checked only that
+the name resolved. On this machine that is `vgchange -an vg0` against the
+host's own root, home, var and swap. LVM would have refused the mounted ones
+and said so; the unmounted ones it would not have refused, and none of them
+were this run's to touch. It asks the same question as `disk_release` now.
+
+**`1 partition(s) created` was a miscount.** Both partitions existed —
+`sgdisk -p` showed the ESP and the Linux LVM partition, and the kernel had
+nodes for both. The counter is advanced by the loop that lays out a non-LVM
+table and was left at 2 on the LVM branch, so the message said "1" next to
+"vgcreate failed on /dev/loop0p2" — which reads as *the partition is not
+there* when it is, and sent the first half hour of this run down the wrong
+path.
+
+With a free name, the layout goes down as written:
+
+```
+[+] /dev/loop0: 2 partition(s) created
+[+] volume group gi-vg0 created on /dev/loop0p2
+[+] 3 logical volume(s) in gi-vg0
+[+] 4 filesystem(s) created
+[+] disk verification passed
+```
+
+and the group's name carries a hyphen, so this run is also the first to
+exercise the `/dev/mapper` doubling — `gi--vg0-root` — that `kernel_cmdline`
+has always written and nothing had ever read back. Step 70 composed both
+spellings of the same name in one line, each correct for its reader:
+
+```
+root=/dev/mapper/gi--vg0-root rootfstype=ext4 ro rd.lvm.vg=gi-vg0 …
+```
+
+Eight steps, none failed, five checks clear. Step 80 is also the first real
+exercise of the guard added when `grub-install` and `bootctl` were found to
+write NVRAM through their own installers:
+
+```
+[!] not letting grub-install write an NVRAM entry: /dev/loop0 is not the
+[+] removable path: /mnt/gi7c/boot/EFI/BOOT/BOOTX64.EFI — the firmware finds this one with no entry
+   3/ 5  [PASS] Boot entry   grub on the removable path, no entry needed
+```
+
+The host's NVRAM was untouched — every `Boot0*` variable still carries its
+6 September timestamp — and the disk booted anyway, from the fallback path,
+all the way through:
+
+```
+[    1.964414] dracut: Found volume group "gi-vg0" using metadata type lvm2
+INIT: Entering runlevel: 3
+ * Starting DHCP Client Daemon ...   [ ok ]
+```
+
+**One thing this run leaves open.** The kernel command line arrives twice on
+the GRUB path too:
+
+```
+Command line: BOOT_IMAGE=/vmlinuz-… root=/dev/mapper/gi--vg0-root ro root=/dev/mapper/gi--vg0-root rootfstype=ext4 ro rd.lvm.vg=gi-vg0 …
+```
+
+A different cause from the `uki` one already fixed: GRUB's own `10_linux`
+generator writes `root=… ro` from the mounted filesystem, and then appends
+`GRUB_CMDLINE_LINUX`, which carries the `root=` this project composed. Both
+say the same thing here. Nothing makes them.
+
+---
+
 ## Run 5 — a stage of your own
 
 ```bash
