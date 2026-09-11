@@ -575,6 +575,29 @@ power-on, in front of a firmware menu, with no shell.
 The command line and the kernel image come from step 70. Two implementations of
 that would be one too many.
 
+### Secure Boot
+
+Give `--secureboot-keyfile` and `--secureboot-cert` — a matching pair in PEM —
+and every EFI binary this step installs is signed on the way in. Without them
+the binaries are installed unsigned and the step says so: a machine with Secure
+Boot enabled will not start them.
+
+Two details are load-bearing, and both are the tools behaving reasonably rather
+than badly. `sbverify --list` **exits 0 on a binary with no signature at all**,
+so the verdict is read from its text; code that tested the exit status would
+call an unsigned kernel signed. And `sbsign` **appends** — signing in place,
+which is what happens when the ESP is at `/boot` and the kernel is already
+where the loader reads it, leaves one more signature per run. The image is
+stripped first, so an install run four times carries one signature, from the
+pair in force; after rotating the pair the retired certificate is gone, which
+is what rotating one is for.
+
+Every signature is read back with `sbverify --cert` before the install is
+called done. A signature table can be present on an image whose signature
+covers different bytes than the ones on disk — an ESP that filled up mid-write
+gives exactly that — and the firmware's answer to it is a refusal that names
+nothing.
+
 ## 90 system
 
 Timezone, locales, console keymap, hostname, `/etc/hosts`, `fstab`, root

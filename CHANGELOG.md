@@ -174,6 +174,28 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 ### Fixed
 
+- **A Secure Boot signature is read back before the install is called done.**
+  Everywhere else in this project a write is read back — `write_validated`
+  re-reads its file, the UKI fallback copy is compared rather than trusted —
+  and the one write where being wrong costs a boot was the exception.
+  `sbverify --list` does not close it: it says a signature table is present,
+  which is also true of an image whose signature covers different bytes than
+  the ones on disk, and an ESP that fills up mid-write gives exactly that.
+  Measured on a real `grubx64.efi` truncated by 2000 bytes: `--list` saw
+  nothing wrong, `--cert` said `Signature verification failed`. Step 80 asks
+  `sbverify --cert` now and refuses rather than reporting `signed` on an image
+  the firmware will reject with a message that names nothing. Where `sbverify`
+  is absent the signature is still made and the miss is said out loud — refusing
+  an install because the check cannot be made would trade a machine that boots
+  for a check.
+
+- **A Secure Boot refusal no longer contradicts itself.** A key path with a
+  typo in it produced `Secure Boot key not readable: /root/db.kye` and then,
+  underneath, `secureboot_keyfile and secureboot_cert are both required` —
+  sending the operator to check the two settings that are the part already
+  correct. The second paragraph is kept for the case it actually describes,
+  exactly one half given, where it now also names which half is missing.
+
 - **`kernel = genkernel` could not build a kernel at all.** The first genkernel
   install this project ever ran got through steps 20 to 50, composed the right
   command line — `dolvm crypt_root=UUID=…` in genkernel's own dialect — and then

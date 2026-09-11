@@ -174,6 +174,36 @@ show_signature() {
   fi
 }
 
+boot_verify_signature() {
+  # The signature just written, checked against the certificate it was made
+  # for. Everywhere else in this project a write is read back — write_validated
+  # re-reads its file, the UKI fallback copy is compared rather than trusted —
+  # and the one write where being wrong costs a boot was the exception.
+  #
+  # `sbverify --list` is not this check: it says a signature table is present,
+  # which is true of an image whose signature covers different bytes than the
+  # ones on disk. An ESP that filled up mid-write, or a copy truncated by a
+  # power loss, gives exactly that — step 80 reports "signed", the firmware
+  # computes a different hash, and the machine stops at a screen that names
+  # nothing. --cert verifies the signature against the certificate.
+  # Args: $1 = the image, $2 = the certificate it was signed for.
+  local dest="$1" cert="$2" out
+  [[ "$DRY_RUN" != "yes" ]] || return 0
+  have sbverify || {
+    warn "sbverify is not installed; ${dest} was signed but not read back"
+    warn "       app-crypt/sbsigntools provides it"
+    return 0
+  }
+  out="$(sbverify --cert "$cert" "$dest" 2>&1)" || {
+    err "the signature on ${dest} does not verify against ${cert}"
+    printf '%s\n' "$out" | sed 's/^/       /' >&2
+    err "       the image on disk is not the image that was signed"
+    err "       a full ESP is the common cause: df -h $(dirname -- "$dest")"
+    return 1
+  }
+  return 0
+}
+
 boot_strip_signatures() {
   # Every signature on a PE image, removed. sbattach takes one per call, so
   # the loop is the strip; it is bounded because an unbounded loop over an
@@ -227,13 +257,32 @@ boot_install_efi() {
       err "       sbverify --list ${src} shows what is already on it"
       return 1
     }
+    boot_verify_signature "$dest" "$cert" || return 1
     ok "signed ${src} -> ${dest}"
   else
-    if [[ -n "$(boot_secureboot_keyfile)$(boot_secureboot_cert)" ]]; then
-      # Half a pair was given: that is a mistake worth stopping for, and
-      # boot_secureboot_ready has already said which half is missing.
+    key="$(boot_secureboot_keyfile)"
+    cert="$(boot_secureboot_cert)"
+    if [[ -n "$key" && -n "$cert" ]]; then
+      # Both halves were named and something else is wrong — the file is not
+      # there, or sbsign is not installed. boot_secureboot_ready has just said
+      # which, and telling the operator on top of that that "both are required"
+      # sends them to check the two settings that are the one part already
+      # correct. Measured: a key path with a typo in it produced
+      #
+      #   [x] Secure Boot key not readable: /root/db.kye
+      #   [x] Secure Boot signing was asked for and cannot be done
+      #   [x]        secureboot_keyfile and secureboot_cert are both required
+      #
+      # where the second paragraph contradicts the first.
+      err "Secure Boot signing was asked for and cannot be done"
+      err "       the reason is above; nothing was installed to ${dest}"
+      return 1
+    fi
+    if [[ -n "${key}${cert}" ]]; then
+      # Exactly one half: this is the message for that.
       err "Secure Boot signing was asked for and cannot be done"
       err "       secureboot_keyfile and secureboot_cert are both required"
+      err "       $([[ -n "$key" ]] && printf 'the certificate' || printf 'the key') is the one that was not given"
       err "       example:  --secureboot-keyfile /root/db.key --secureboot-cert /root/db.crt"
       return 1
     fi

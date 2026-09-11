@@ -1051,6 +1051,102 @@ gives the installer a terminal and keeps the transcript.
 
 ---
 
+## Secure Boot signing — exercised against the real tools
+
+No VM. `sbsign`, `sbverify`, `sbattach` and `openssl` on the host, a real
+`grubx64.efi` that step 80 had installed in a previous run, and two throwaway
+key pairs:
+
+```bash
+openssl req -new -x509 -newkey rsa:2048 -nodes -sha256 -days 3650 \
+  -subj "/CN=gentoo-install test db/" -keyout db.key -out db.crt
+```
+
+`--secureboot-keyfile` and `--secureboot-cert` had been reasoned about and
+never run. Two of the things that reading got right are worth recording,
+because both are traps: `sbverify --list` **exits 0 on an unsigned binary** —
+it prints `No signature table present` and returns success, so the verdict has
+to be read from the text — and `sbsign` **appends rather than replaces**, so an
+in-place signature adds one signature per run of step 80. Both were already
+handled. Measured:
+
+```
+run 1: 1 signature(s), 161320 bytes
+run 2: 1 signature(s), 161320 bytes
+run 3: 1 signature(s), 161320 bytes
+run 4: 1 signature(s), 161320 bytes
+### after rotating the key pair
+signature 1
+ - subject: /CN=gentoo-install rotated db
+```
+
+Four in-place runs, one signature, identical size, and after rotating the pair
+the retired certificate is gone — which is the whole point of rotating one.
+A firmware that still has the old certificate enrolled will not start the
+image, and that is the correct outcome.
+
+`sbsign` refuses a mismatched key and certificate by itself, and leaves no
+output file behind:
+
+```
+error in key/certificate chain
+  ...private key does not match certificate...
+[x] sbsign failed on .../pristine.efi
+[x]        the key and the certificate must be a matching pair, in PEM
+```
+
+And the signed image verifies against the certificate that would be enrolled:
+
+```
+$ sbverify --cert db.crt out.efi
+Signature verification OK
+```
+
+### Two defects the run found
+
+**The refusal contradicted itself.** A key path with a typo in it produced:
+
+```
+[x] Secure Boot key not readable: /root/db.kye
+[x] Secure Boot signing was asked for and cannot be done
+[x]        secureboot_keyfile and secureboot_cert are both required
+```
+
+Both settings *were* given. The second paragraph sends the operator to check
+the one part that is already correct. It now says the reason is above, and the
+"both are required" paragraph is kept for the case it describes — exactly one
+half given — where it also names which half.
+
+**The signature was written and never read back.** Everywhere else in this
+project a write is read back: `write_validated` re-reads its file, the UKI
+fallback copy is compared rather than trusted. The one write where being wrong
+costs a boot was the exception. `sbverify --list` does not close it — it says a
+signature table is present, which is also true of an image whose signature
+covers different bytes than the ones on disk. An ESP that fills up mid-write
+gives exactly that. Truncating a signed `grubx64.efi` by 2000 bytes:
+
+```
+[x] the signature on .../v2.efi does not verify against .../db.crt
+       warning: file-aligned section .reloc extends beyond end of file
+       No signature table present
+       Signature verification failed
+[x]        the image on disk is not the image that was signed
+[x]        a full ESP is the common cause: df -h ...
+```
+
+Step 80 reads every signature back with `sbverify --cert` now, and refuses the
+install rather than reporting `signed` on an image the firmware will reject
+with a message that names nothing. Where `sbverify` is absent the signature is
+still made and the miss is said out loud — refusing an install because the
+check cannot be made would trade a machine that boots for a check.
+
+**What this run does not prove.** No firmware has been asked to *enrol* these
+keys and start the image. That needs OVMF with a writable variable store and a
+key enrolment step; the signature itself is now verified by the same tool the
+firmware's check is modelled on, which is as far as this bench goes.
+
+---
+
 ## efistub on the removable path — settled
 
 It is possible for exactly one kind of machine, and the installer refuses every
