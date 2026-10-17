@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install Handbook · gentoo-install</title>
+<meta name="description" content="Step-by-step, do-it-by-hand companion to gentoo-install: one chapter per install phase.">
+<style>
+  :root{
+    --bg:#15131a; --bg2:#1d1a24; --bg3:#262231; --border:#342f40;
+    --text:#e9e6f0; --muted:#a69fb5; --accent:#b39ddb; --accent2:#9575cd;
+    --code:#1a1720; --maxw:860px;
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .layout{display:flex;min-height:100vh}
+  .side{width:330px;flex:0 0 330px;background:var(--bg2);border-right:1px solid var(--border);
+    height:100vh;position:sticky;top:0;overflow-y:auto;padding:20px 0}
+  .brand{padding:0 20px 14px;border-bottom:1px solid var(--border);margin-bottom:10px}
+  .brand a{color:var(--text);font-weight:700;font-size:15px}
+  .brand .sub{display:block;color:var(--muted);font-size:12px;font-weight:400;margin-top:3px}
+  .toc{list-style:none;margin:0;padding:0}
+  .toc a{display:block;padding:7px 20px;color:var(--muted);font-size:13.5px;border-left:3px solid transparent}
+  .toc a:hover{background:var(--bg3);color:var(--text);text-decoration:none}
+  .toc a.active{color:var(--accent);border-left-color:var(--accent);background:var(--bg3);font-weight:600}
+  .main{flex:1;min-width:0;display:flex;justify-content:center;padding:34px 28px 80px}
+  article{width:100%;max-width:var(--maxw)}
+  article h1{font-size:30px;line-height:1.2;margin:.2em 0 .6em;border-bottom:1px solid var(--border);padding-bottom:.3em}
+  article h2{font-size:22px;margin:1.6em 0 .5em;border-bottom:1px solid var(--border);padding-bottom:.25em}
+  article h3{font-size:18px;margin:1.3em 0 .4em}
+  article blockquote{margin:1em 0;padding:.4em 1em;border-left:3px solid var(--accent2);
+    background:var(--bg2);color:var(--muted);border-radius:0 6px 6px 0}
+  article code{background:var(--code);border:1px solid var(--border);border-radius:4px;
+    padding:.1em .35em;font-size:.88em;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  article pre{background:var(--code);border:1px solid var(--border);border-radius:8px;padding:14px 16px;overflow:auto}
+  article pre code{background:none;border:0;padding:0;font-size:.85em;line-height:1.5}
+  article table{border-collapse:collapse;width:100%;margin:1em 0;font-size:.92em;display:block;overflow-x:auto}
+  article th,article td{border:1px solid var(--border);padding:7px 10px;text-align:left}
+  article th{background:var(--bg3)}
+  article tr:nth-child(even){background:var(--bg2)}
+  article hr{border:0;border-top:1px solid var(--border);margin:2em 0}
+  article img{max-width:100%}
+  .topbar{display:none;position:sticky;top:0;z-index:20;background:var(--bg2);
+    border-bottom:1px solid var(--border);padding:10px 16px;align-items:center;gap:12px}
+  .topbar button{background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:14px;cursor:pointer}
+  .topbar .t{font-weight:700;font-size:14px}
+  .err{color:#ff9a9a;background:#2a1a1a;border:1px solid #533;border-radius:8px;padding:14px 16px}
+  @media (max-width:900px){
+    .side{position:fixed;z-index:30;left:0;top:0;transform:translateX(-100%);transition:transform .2s ease;box-shadow:2px 0 20px rgba(0,0,0,.4)}
+    .side.open{transform:translateX(0)}
+    .topbar{display:flex}
+    .main{padding:20px 16px 70px}
+  }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <button id="menuBtn" aria-label="Toggle chapters">Chapters</button>
+  <span class="t">Install Handbook</span>
+</div>
+<div class="layout">
+  <nav class="side" id="side">
+    <div class="brand">
+      <a href="#README.md">Install Handbook</a>
+      <span class="sub">by-hand companion to gentoo-install ·
+        <a href="../">site</a> · <a href="https://github.com/franckferman/gentoo-install">GitHub</a></span>
+    </div>
+    <ul class="toc" id="toc"></ul>
+  </nav>
+  <div class="main"><article id="content">Loading…</article></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js" crossorigin="anonymous"></script>
+<script>
+(function(){
+  "use strict";
+  var REPO="gentoo-install", BRANCH="master";
+  var GH="https://github.com/franckferman/"+REPO+"/blob/"+BRANCH+"/";
+  var CH=[
+    ["README.md","Index"],
+    ["00-overview.md","00 · Overview & philosophy"],
+    ["01-configuration-cli.md","01 · Configuration & the CLI"],
+    ["02-state-resume-rollback.md","02 · State, resume & rollback"],
+    ["03-preflight.md","03 · Pre-flight checks"],
+    ["04-disk.md","04 · Partitioning & formatting the disk"],
+    ["05-encryption.md","05 · Encryption (LUKS, GPG, TPM)"],
+    ["06-stage3.md","06 · The stage3 (fetch, verify, unpack)"],
+    ["07-chroot.md","07 · Entering the chroot"],
+    ["08-portage.md","08 · Portage (profile, make.conf, sets)"],
+    ["09-kernel-initramfs.md","09 · Kernel, initramfs & cmdline"],
+    ["10-tpm-sealing.md","10 · TPM sealing"],
+    ["11-bootloader.md","11 · Bootloader (GRUB / EFI stub / systemd-boot / UKI)"],
+    ["12-system-config.md","12 · System configuration"],
+    ["13-finalize.md","13 · Finalize & handover"],
+    ["99-appendix.md","99 · Appendix"]
+  ];
+  var VALID={}; CH.forEach(function(c){VALID[c[0]]=c[1];});
+  var toc=document.getElementById("toc"),content=document.getElementById("content"),side=document.getElementById("side");
+  CH.forEach(function(c){
+    var li=document.createElement("li"),a=document.createElement("a");
+    a.href="#"+c[0]; a.textContent=c[1]; a.dataset.file=c[0]; li.appendChild(a); toc.appendChild(li);
+  });
+  document.getElementById("menuBtn").onclick=function(){side.classList.toggle("open");};
+  function current(){var h=decodeURIComponent(location.hash.replace(/^#/,""));return VALID[h]?h:"README.md";}
+  function rewrite(){
+    content.querySelectorAll("a[href]").forEach(function(a){
+      var href=a.getAttribute("href"); if(!href) return;
+      if(/^https?:|^#|^mailto:/.test(href)) return;
+      var m=href.match(/^([0-9A-Za-z._-]+\.md)(#.*)?$/);
+      if(m && VALID[m[1]]){ a.setAttribute("href","#"+m[1]); return; }
+      if(href.indexOf("../../")===0){ a.setAttribute("href",GH+href.replace(/^(\.\.\/)+/,"")); a.target="_blank"; return; }
+      if(/\.md$/.test(href)){ a.setAttribute("href",GH+"docs/handbook/"+href.replace(/^(\.\.\/)+/,"")); a.target="_blank"; }
+    });
+  }
+  function render(md){content.innerHTML=marked.parse(md);rewrite();window.scrollTo(0,0);}
+  function load(){
+    var f=current();
+    toc.querySelectorAll("a").forEach(function(a){a.classList.toggle("active",a.dataset.file===f);});
+    document.title=(VALID[f]&&f!=="README.md"?VALID[f]+" · ":"")+"Install Handbook";
+    fetch(f,{cache:"no-cache"}).then(function(r){if(!r.ok)throw new Error(r.status+" "+r.statusText);return r.text();})
+      .then(render).catch(function(e){
+        content.innerHTML='<div class="err"><b>Could not load '+f+'</b><br>'+e.message+
+          '<br><br>This viewer fetches the Markdown files, so it must be opened over HTTP '+
+          '(the published site, or a local server), not via a <code>file://</code> path.</div>';
+      });
+    if(window.innerWidth<=900) side.classList.remove("open");
+  }
+  window.addEventListener("hashchange",load);
+  if(!location.hash) location.replace("#README.md");
+  load();
+})();
+</script>
+</body>
+</html>
