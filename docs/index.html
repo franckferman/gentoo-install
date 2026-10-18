@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>gentoo-install — Eleven steps. A signed stage3. A plan you can read.</title>
+<title>gentoo-install - Eleven steps. A signed stage3. A plan you can read.</title>
 <meta name="color-scheme" content="dark">
 <meta name="description" content="A modular Gentoo installer in bash: eleven numbered steps, a signed stage3, and a plan you can read before anything is written.">
 <style>
@@ -204,7 +204,7 @@ footer { padding: 2rem; border-top: 1px solid var(--border); text-align: center;
 .fade-in { opacity: 0; transform: translateY(24px); transition: opacity .6s ease, transform .6s ease; }
 .fade-in.visible { opacity: 1; transform: translateY(0); }
 
-/* Everything that moves, for whoever asked it not to — and the sections are
+/* Everything that moves, for whoever asked it not to - and the sections are
    revealed by an observer, so without motion they are simply already there. */
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
@@ -229,7 +229,7 @@ footer { padding: 2rem; border-top: 1px solid var(--border); text-align: center;
 </style>
 <noscript><style>
   /* The sections are revealed by an IntersectionObserver. With no script to
-     run it they would stay at opacity 0 — a blank page that looks like a bug. */
+     run it they would stay at opacity 0 - a blank page that looks like a bug. */
   .fade-in { opacity: 1; transform: none; }
 </style></noscript>
 </head>
@@ -281,11 +281,11 @@ footer { padding: 2rem; border-top: 1px solid var(--border); text-align: center;
     <a href="https://github.com/franckferman/gentoo-install#readme" class="btn btn-secondary" target="_blank" rel="noopener">Read the docs</a>
   </div>
 
-  <!-- TERMINAL — real output, copied from the run that produced it -->
+  <!-- TERMINAL - real output, copied from the run that produced it -->
   <div class="terminal">
     <div class="term-bar">
       <div class="term-dot r"></div><div class="term-dot y"></div><div class="term-dot g"></div>
-      <div class="term-title">step 95 — finalize</div>
+      <div class="term-title">step 95 - finalize</div>
     </div>
     <div class="term-body">
       <div><span class="prompt">#</span> <span class="cmd">./gentoo-install.sh</span> <span class="flag">--disk</span> <span class="val">/dev/vda</span> <span class="flag">--crypt</span> <span class="val">luks-tpm</span> <span class="flag">--bootloader</span> <span class="val">grub</span></div>
@@ -318,11 +318,11 @@ footer { padding: 2rem; border-top: 1px solid var(--border); text-align: center;
   <p class="section-sub">Every default is documented, every guard has its own switch, and every claim on this page was produced by running it.</p>
 
   <div class="features-grid">
-    <div class="feature-card"><div class="feat-icon blue">📋</div><h3>Plan before write</h3><p><code>--dry-run</code> prints the whole plan — the partition table, the sizes, the command line — and needs no root. It is complete by construction: every write goes through one function.</p></div>
+    <div class="feature-card"><div class="feat-icon blue">📋</div><h3>Plan before write</h3><p><code>--dry-run</code> prints the whole plan - the partition table, the sizes, the command line - and needs no root. It is complete by construction: every write goes through one function.</p></div>
     <div class="feature-card"><div class="feat-icon green">🔏</div><h3>Signed stage3</h3><p>The chain is walked end to end: a clearsigned pointer, a detached signature on the archive, a signed checksum file, and the byte count. Not a checksum from the same server that served the file.</p></div>
     <div class="feature-card"><div class="feat-icon purple">🔢</div><h3>Steps are the API</h3><p>Eleven numbers, 10 through 95. They appear in <code>--steps</code>, in the docs and in your own notes, and adding one between two others does not move the rest.</p></div>
     <div class="feature-card"><div class="feat-icon red">⌨️</div><h3>Typed proof</h3><p>Erasing a disk means typing its path by hand. Neither <code>--yes</code> nor <code>--force</code> lifts that, and neither of them answers the reboot question either.</p></div>
-    <div class="feature-card"><div class="feat-icon orange">🔑</div><h3>Two ways in, exercised</h3><p>An encrypted install does not finish until two independent credentials have each been made to open the container — here, now, not in a comment. A TPM that stops releasing the key is an ordinary event.</p></div>
+    <div class="feature-card"><div class="feat-icon orange">🔑</div><h3>Two ways in, exercised</h3><p>An encrypted install does not finish until two independent credentials have each been made to open the container - here, now, not in a comment. A TPM that stops releasing the key is an ordinary event.</p></div>
     <div class="feature-card"><div class="feat-icon teal">🧰</div><h3>Ten rescue scripts</h3><p>Standalone by design: none of them sources the installer's libraries, so any one can be copied alone onto a USB stick for a machine that no longer boots.</p></div>
   </div>
 </div>
@@ -374,7 +374,7 @@ sudo ./gentoo-install.sh --resume</pre>
     </div>
     <div class="step-row">
       <div class="step-num-wrap"><div class="step-num">20</div><div class="step-line"></div></div><div></div>
-      <div class="step-content"><h3>disk <span style="color:var(--red)">— destructive</span></h3><p>Partition and format. The device path has to be typed out in full, and no flag answers that for you.</p>
+      <div class="step-content"><h3>disk <span style="color:var(--red)">- destructive</span></h3><p>Partition and format. The device path has to be typed out in full, and no flag answers that for you.</p>
       <div class="step-tags"><span class="stag">--disk</span><span class="stag">--disk-layout</span><span class="stag">--disk-erase</span></div></div>
     </div>
     <div class="step-row">
@@ -384,12 +384,12 @@ sudo ./gentoo-install.sh --resume</pre>
     </div>
     <div class="step-row">
       <div class="step-num-wrap"><div class="step-num">40</div><div class="step-line"></div></div><div></div>
-      <div class="step-content"><h3>stage</h3><p>Fetch, verify and unpack the stage3 — the signature chain from one end to the other, then the unpack.</p>
+      <div class="step-content"><h3>stage</h3><p>Fetch, verify and unpack the stage3 - the signature chain from one end to the other, then the unpack.</p>
       <div class="step-tags"><span class="stag">--stage3</span><span class="stag">--stage-file</span></div></div>
     </div>
     <div class="step-row">
       <div class="step-num-wrap"><div class="step-num">50</div><div class="step-line"></div></div><div></div>
-      <div class="step-content"><h3>chroot</h3><p>Mounts the pseudo-filesystems and the ESP — and, on a second invocation, mounts the target again from the plan step 20 recorded.</p>
+      <div class="step-content"><h3>chroot</h3><p>Mounts the pseudo-filesystems and the ESP - and, on a second invocation, mounts the target again from the plan step 20 recorded.</p>
       <div class="step-tags"><span class="stag">--root</span></div></div>
     </div>
     <div class="step-row">
@@ -404,12 +404,12 @@ sudo ./gentoo-install.sh --resume</pre>
     </div>
     <div class="step-row">
       <div class="step-num-wrap"><div class="step-num">75</div><div class="step-line"></div></div><div></div>
-      <div class="step-content"><h3>seal</h3><p>What the encryption variant still owes the target, done inside the target — <code>luks-tpm</code> binds its keyslot to the chip there, with the clevis that will have to release it at every boot.</p>
+      <div class="step-content"><h3>seal</h3><p>What the encryption variant still owes the target, done inside the target - <code>luks-tpm</code> binds its keyslot to the chip there, with the clevis that will have to release it at every boot.</p>
       <div class="step-tags"><span class="stag">--skip-steps 75</span></div></div>
     </div>
     <div class="step-row">
       <div class="step-num-wrap"><div class="step-num">80</div><div class="step-line"></div></div><div></div>
-      <div class="step-content"><h3>boot</h3><p>The bootloader and its entry — and the removable path <code>\EFI\BOOT\BOOTX64.EFI</code> whenever an NVRAM entry cannot be written.</p>
+      <div class="step-content"><h3>boot</h3><p>The bootloader and its entry - and the removable path <code>\EFI\BOOT\BOOTX64.EFI</code> whenever an NVRAM entry cannot be written.</p>
       <div class="step-tags"><span class="stag">--bootloader</span><span class="stag">--boot-removable</span></div></div>
     </div>
     <div class="step-row">
@@ -419,7 +419,7 @@ sudo ./gentoo-install.sh --resume</pre>
     </div>
     <div class="step-row">
       <div class="step-num-wrap"><div class="step-num">95</div><div class="step-line"></div></div><div></div>
-      <div class="step-content"><h3>finalize</h3><p>Five verdicts on the machine as it now exists — kernel, initramfs, boot entry, fstab, a way in — then the unmount and what to do next. A failed proof is not an opinion to override.</p>
+      <div class="step-content"><h3>finalize</h3><p>Five verdicts on the machine as it now exists - kernel, initramfs, boot entry, fstab, a way in - then the unmount and what to do next. A failed proof is not an opinion to override.</p>
       <div class="step-tags"><span class="stag">--reboot</span></div></div>
     </div>
   </div>
@@ -444,7 +444,7 @@ sudo ./gentoo-install.sh --resume</pre>
       <div class="opt-group-head">Bootloader</div>
       <div class="opt-row"><div class="opt-flag">grub</div><div class="opt-desc">Default. UEFI and legacy BIOS, encrypted <code>/boot</code>, LVM.</div></div>
       <div class="opt-row"><div class="opt-flag">uki</div><div class="opt-desc">Kernel, initramfs and command line in one signed EFI binary. Needs no NVRAM entry at all.</div></div>
-      <div class="opt-row"><div class="opt-flag">systemd-boot</div><div class="opt-desc">UEFI only. Works under OpenRC — <code>bootctl</code> comes from systemd-utils.</div></div>
+      <div class="opt-row"><div class="opt-flag">systemd-boot</div><div class="opt-desc">UEFI only. Works under OpenRC - <code>bootctl</code> comes from systemd-utils.</div></div>
       <div class="opt-row"><div class="opt-flag">efistub</div><div class="opt-desc">The firmware starts the kernel. The NVRAM entry <em>is</em> the configuration.</div></div>
     </div>
     <div class="opt-group">
@@ -472,13 +472,13 @@ sudo ./gentoo-install.sh --resume</pre>
   <p class="section-sub">Every one of these exists because something happened. They are listed here rather than buried, because a refusal you did not expect is worth reading about before you meet it.</p>
 
   <div class="features-grid">
-    <div class="feature-card"><div class="feat-icon red">🔌</div><h3>Firmware state</h3><p>It will not write an NVRAM entry, or reboot, for a disk this machine did not boot from — unless it is running from a live medium. An install to a disk image once replaced a working laptop's own boot entry and then rebooted it.</p></div>
+    <div class="feature-card"><div class="feat-icon red">🔌</div><h3>Firmware state</h3><p>It will not write an NVRAM entry, or reboot, for a disk this machine did not boot from - unless it is running from a live medium. An install to a disk image once replaced a working laptop's own boot entry and then rebooted it.</p></div>
     <div class="feature-card"><div class="feat-icon green">🛑</div><h3>A failed pre-flight</h3><p>Its eleven checks decide whether anything may be written at all, so its failure ends the run rather than joining the others in the summary. It was accumulated like the rest until a run refused a disk for being too small and erased it anyway.</p></div>
-    <div class="feature-card"><div class="feat-icon orange">↩️</div><h3>The reboot</h3><p><code>--yes</code> does not answer it. Only <code>--reboot yes</code>, written on purpose, does — a reboot is irreversible in the way a typed proof is.</p></div>
+    <div class="feature-card"><div class="feat-icon orange">↩️</div><h3>The reboot</h3><p><code>--yes</code> does not answer it. Only <code>--reboot yes</code>, written on purpose, does - a reboot is irreversible in the way a typed proof is.</p></div>
     <div class="feature-card"><div class="feat-icon purple">🔐</div><h3>One way in</h3><p>An encrypted install does not report success with a single credential. A container only the TPM opens is one firmware update away from a rebuild.</p></div>
-    <div class="feature-card"><div class="feat-icon blue">🧭</div><h3>A plan from another life</h3><p>Resuming mounts the tree the recorded plan describes — unless that plan names the disk this machine booted from, which would mount a running system under <code>/mnt/gentoo</code>.</p></div>
+    <div class="feature-card"><div class="feat-icon blue">🧭</div><h3>A plan from another life</h3><p>Resuming mounts the tree the recorded plan describes - unless that plan names the disk this machine booted from, which would mount a running system under <code>/mnt/gentoo</code>.</p></div>
     <div class="feature-card"><div class="feat-icon green">🧪</div><h3>An unproved sealing</h3><p><code>clevis luks list</code> reads the same whether the chip honours a token or refuses it. So the chip is made to release the key, and what it hands back is tested against the keyslot.</p></div>
-    <div class="feature-card"><div class="feat-icon teal">📄</div><h3>A file it did not write</h3><p>Every write is a marked block, a backup, or a refusal — and the backup is compared with what is already there, so a rerun does not leave a directory of identical copies.</p></div>
+    <div class="feature-card"><div class="feat-icon teal">📄</div><h3>A file it did not write</h3><p>Every write is a marked block, a backup, or a refusal - and the backup is compared with what is already there, so a rerun does not leave a directory of identical copies.</p></div>
   </div>
 </div>
 </div>
@@ -502,8 +502,8 @@ sudo ./gentoo-install.sh --resume</pre>
   </div>
 
   <p style="color:var(--muted);font-size:.92rem;line-height:1.8;margin-top:1.75rem;max-width:720px">
-    An encrypted machine installed by this script — LVM on LUKS2, a keyslot sealed
-    to a software TPM under QEMU with OVMF — was booted from its own disk with no
+    An encrypted machine installed by this script - LVM on LUKS2, a keyslot sealed
+    to a software TPM under QEMU with OVMF - was booted from its own disk with no
     ISO attached. It unlocked itself, checked four filesystems and reached a login
     prompt without asking for anything. An unencrypted disk was carried from an
     empty GPT to a login prompt earlier.
@@ -532,18 +532,18 @@ sudo ./gentoo-install.sh --resume</pre>
     <li data-bootloader="systemd-boot" data-status="booted">
       <span class="bs-name">systemd-boot</span>
       <span class="bs-verdict yes">booted</span>
-      <span class="bs-note">The loader's own menu — the entry step 80 wrote, counting down the timeout step 80 wrote — reached from <code>\EFI\BOOT\BOOTX64.EFI</code> on a firmware given a pristine variable store, because the install was refused an NVRAM entry on purpose.</span>
+      <span class="bs-note">The loader's own menu - the entry step 80 wrote, counting down the timeout step 80 wrote - reached from <code>\EFI\BOOT\BOOTX64.EFI</code> on a firmware given a pristine variable store, because the install was refused an NVRAM entry on purpose.</span>
     </li>
   </ul>
 
   <p style="color:var(--muted);font-size:.92rem;line-height:1.8;margin-top:1.75rem;max-width:720px">
     <strong style="color:var(--text)">What none of it covers:</strong>
-    <code>efistub</code> has not been booted from the removable path — that one
+    <code>efistub</code> has not been booted from the removable path - that one
     needs a kernel with its command line compiled in, because the fallback is
     launched with no load options at all. <code>musl</code>, <code>hardened</code> and <code>llvm</code>
-    stages have been unpacked, and musl carried as far as step 70 — a kernel and
+    stages have been unpacked, and musl carried as far as step 70 - a kernel and
     a dracut initramfs with <code>crypt</code>, <code>crypt-lib</code> and
-    <code>dm</code> in it — but no musl machine has been booted either. Read the
+    <code>dm</code> in it - but no musl machine has been booted either. Read the
     plan before you point version 0.1.0 at a disk you would miss.
   </p>
 </div>
