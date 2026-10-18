@@ -30,7 +30,7 @@ Every executable script and every library starts exactly like this:
 ```bash
 #!/usr/bin/env bash
 #
-# gentoo-install — <one line, what this file is>
+# gentoo-install - <one line, what this file is>
 # ----------------------------------------------------------------------------
 # <two to five lines of prose: what it does, and the one thing a reader needs
 # to know before touching it>
@@ -46,7 +46,7 @@ most important place where this project departs from them.
 
 Libraries under `lib/` are sourced, not executed. They still declare
 `set -euo pipefail` so that running them directly for a syntax check behaves,
-and they end with nothing — no top-level side effect, no auto-init.
+and they end with nothing - no top-level side effect, no auto-init.
 
 ---
 
@@ -55,7 +55,7 @@ and they end with nothing — no top-level side effect, no auto-init.
 ### Colours
 
 Only when the stream that carries them is a terminal, and never when
-`NO_COLOR` is set. That stream is **stderr**, not stdout — every coloured byte
+`NO_COLOR` is set. That stream is **stderr**, not stdout - every coloured byte
 in this project goes to stderr, so testing `-t 1` would drop colour the moment
 someone runs `| tee install.log` or `--json > plan.json`, which is exactly when
 they still want it:
@@ -145,7 +145,7 @@ done
 
 - **One exception, declared in a table and not in an `if`.** Some failures are
   not a result to report next to the others: they are the reason the rest must
-  not happen. `STEP_HALTS` names them, and today it names exactly one — step 10,
+  not happen. `STEP_HALTS` names them, and today it names exactly one - step 10,
   whose checks decide whether anything may be written at all. Accumulating past
   it was found by running it: pre-flight refused a disk for being under the
   minimum it insists on, said `--force does not lift these: they are proofs,
@@ -274,7 +274,7 @@ And where the file has a checker, **validate then roll back**:
 write_config "$tmp" && if ! validator "$tmp"; then restore_backup; die "..."; fi
 ```
 
-`sshd -t`, `visudo -c`, `grub-script-check`, `emerge --info` — each of these
+`sshd -t`, `visudo -c`, `grub-script-check`, `emerge --info` - each of these
 turns a silent brick into a caught error. This is the best pattern in
 `debian-server-post-install` and it generalises to `fstab`, `make.conf` and the
 bootloader.
@@ -351,8 +351,8 @@ created. Ownership is recorded, not guessed.
 
 Stated in the README, and every default classified:
 
-- **Safe by default** — the choice a careful operator would make.
-- **Conservative by default** — off, because turning it on breaks something
+- **Safe by default** - the choice a careful operator would make.
+- **Conservative by default** - off, because turning it on breaks something
   named.
 
 Every disabled default says what it would break. A generated configuration file
@@ -361,8 +361,8 @@ ships its own disabled lines, commented, next to the flag that enables them.
 Destructive operations are never reached without a proof:
 
 - Nothing is erased before another way in has been shown to work.
-- The confirmation for an irreversible act is a **typed value** — a disk name,
-  a UUID, a slot number — never `y`. A reflex `y` is what this guards against.
+- The confirmation for an irreversible act is a **typed value** - a disk name,
+  a UUID, a slot number - never `y`. A reflex `y` is what this guards against.
 - `--force` lifts confirmations. It does not lift proofs.
 
 ---
@@ -398,7 +398,7 @@ Present from the first commit, not added later:
 ```
 LICENSE                 AGPL-3.0, and the README says the same
 README.md               badges, table of contents, the inheritance tables,
-                        one section per orchestration category — the table of
+                        one section per orchestration category - the table of
                         contents of the doc is the table of the steps
 CHANGELOG.md            Keep a Changelog, SemVer
 CONTRIBUTING.md

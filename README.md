@@ -22,8 +22,8 @@ step, until the device path has been typed out by hand.
 
 **One machine has been installed by this script and booted.** On 2026-09-05 a
 24 GiB disk image was taken from an empty GPT to a login prompt by the steps
-in order — `minimal` layout, no encryption, GRUB on UEFI, the distribution
-kernel — and then started under QEMU with OVMF firmware, where it reached:
+in order - `minimal` layout, no encryption, GRUB on UEFI, the distribution
+kernel - and then started under QEMU with OVMF firmware, where it reached:
 
 ```
 This is gitest (Linux x86_64 6.18.48-gentoo-dist-bin)
@@ -41,7 +41,7 @@ What was checked once it was up, from inside the running system:
 | the account step 90 created | `tester` logs in, `uid=1000`, in `wheel` |
 | privilege escalation | `sudo id` → `uid=0(root)` |
 
-**An encrypted machine has since been installed and booted as well** — LUKS2 on
+**An encrypted machine has since been installed and booted as well** - LUKS2 on
 `aes-xts-plain64` with a 512-bit key, argon2id, GRUB through the removable path.
 It stops where it should:
 
@@ -57,7 +57,7 @@ end. The keyslot itself is exercised on every remount with
 container.
 
 **A fourth bootloader now exists: `uki`.** One EFI binary carrying the kernel,
-the initramfs and the command line, written to `\EFI\BOOT\BOOTX64.EFI` — the
+the initramfs and the command line, written to `\EFI\BOOT\BOOTX64.EFI` - the
 path a firmware tries when nothing in NVRAM points anywhere. It has been booted
 on the encrypted disk with no NVRAM entry, no GRUB and no systemd-boot in
 between. That is the answer to the failure the other three share: an NVRAM entry
@@ -67,12 +67,12 @@ clears it, an intact system stops booting.
 That image has also been **signed and booted signed**: `sbverify --cert` reports
 `Signature verification OK` for both the image and the copy at the fallback
 path, and the machine still reaches its passphrase prompt. Signing before
-copying is the order that matters — a firmware with Secure Boot on starts
+copying is the order that matters - a firmware with Secure Boot on starts
 `\EFI\BOOT\BOOTX64.EFI`, so signing after the copy would leave the one file
 that actually boots unsigned.
 
 **A second run has now shown the same thing from the other side.** On 6
-September a full `uki` install — eleven steps, none failed — was booted against
+September a full `uki` install - eleven steps, none failed - was booted against
 a firmware whose NVRAM had never heard of it. It started the disk from
 `\EFI\BOOT\BOOTX64.EFI`, where the same firmware with a GRUB install and the
 same empty NVRAM had fallen through to PXE the day before, and it reached its
@@ -88,8 +88,8 @@ names consoles and none of them is a screen.
 **`systemd-boot` has been booted**, on 7 September, and this time with a log
 behind it. The firmware was given a pristine variable store and the install had
 been refused an NVRAM entry on purpose, so OVMF fell back to
-`\EFI\BOOT\BOOTX64.EFI` — which `bootctl install` writes beside its own
-directory — and systemd-boot drew its own menu, with the entry and the
+`\EFI\BOOT\BOOTX64.EFI` - which `bootctl install` writes beside its own
+directory - and systemd-boot drew its own menu, with the entry and the
 five-second timeout step 80 had written, before starting the kernel and
 stopping at the passphrase prompt. `bootctl` came from
 `sys-apps/systemd-utils` under OpenRC, as this project has claimed all along;
@@ -101,15 +101,15 @@ booted where that table does not.
 
 **A stage of your own works too.** `--stage-file` skips the catalogue, finds a
 `.asc` sitting beside the archive without being told about it, checks both the
-signature and the sha256 — and, given an archive with neither, says `nothing
+signature and the sha256 - and, given an archive with neither, says `nothing
 verified this archive`, names the two ways to fix that, and unpacks it anyway,
 because that is what was asked.
 
-**`luks-keyfile-gpg` has been installed and booted** — and until 7 September a
+**`luks-keyfile-gpg` has been installed and booted** - and until 7 September a
 fresh install of it could not start at all. Step 20 hands over to step 30
 before it formats anything, because the LUKS header has to exist before a
 filesystem does, and step 30 then refused because `crypt_key_dir` did not
-exist — about an ESP it was three functions away from formatting itself. With
+exist - about an ESP it was three functions away from formatting itself. With
 that fixed: nine steps, none failed, both ways in exercised (the key file opens
 slot 0, the recovery passphrase opens slot 1), and the machine booted to
 
@@ -122,7 +122,7 @@ Password (/efi/luks-key.gpg on /dev/vda1 for /dev/vda2) [1/3]:
 
 `keydev=` is the half that decides this variant. Without it the command line
 ends at `rd.luks.key=/efi/luks-key.gpg` and dracut looks for that path inside
-the initramfs, where the key is not — the machine falls back to the recovery
+the initramfs, where the key is not - the machine falls back to the recovery
 passphrase and the file the variant exists to place is never read.
 
 **`luks-tpm` has been run to the end**, inside a VM with a software TPM: the
@@ -141,10 +141,10 @@ There is not one PCR policy, and `crypt_pcrs` takes a name as well as a list:
 
 | name | registers | what it binds |
 |---|---|---|
-| `firmware` | `0,2,3,6` | the default — firmware code, option ROMs, platform events |
+| `firmware` | `0,2,3,6` | the default - firmware code, option ROMs, platform events |
 | `secureboot` | `7` | the Secure Boot policy state alone |
 | `firmware+secureboot` | `0,2,3,6,7` | both; reseal when either changes |
-| `strict` | `0,1,2,3,4,5,6,7` | adds the boot binary — expect to reseal after every kernel |
+| `strict` | `0,1,2,3,4,5,6,7` | adds the boot binary - expect to reseal after every kernel |
 
 Registers 2, 3 and 6 are empty on a good deal of consumer firmware: they hold
 the value of a register extended with `EV_SEPARATOR` and nothing else, so
@@ -154,7 +154,7 @@ says the same thing register by register.
 
 Getting there took two things a stock Gentoo does not give you, and both are
 worth knowing before you choose this variant. **`app-crypt/clevis` is not in the
-official Gentoo repository** — it is in GURU, where it is also unstable — and
+official Gentoo repository** - it is in GURU, where it is also unstable - and
 its dracut modules only exist with `USE=dracut`, which the installer now writes
 for you:
 
@@ -167,7 +167,7 @@ emerge --ask app-crypt/clevis
 
 Without clevis the run still produces a working encrypted machine: the container
 is built, the recovery passphrase is proved against it, the kernel and the
-bootloader are installed, and step 75 says — in those words — that nothing was
+bootloader are installed, and step 75 says - in those words - that nothing was
 sealed and what to do about it. The one thing you do not get is the automatic
 unlock. The installer says this before the disk is erased, not after.
 
@@ -176,8 +176,8 @@ it stopped where it should: `dracut: luksOpen /dev/vdb2`, then
 `Enter passphrase for /dev/vdb2:`, and nothing further until it is answered.
 
 **`efistub` has been booted too**, which was the last of the four with nothing
-behind it. Installed from a live medium — so the NVRAM entry the variant needs
-was written, the guard permitting exactly that case — and started with no
+behind it. Installed from a live medium - so the NVRAM entry the variant needs
+was written, the guard permitting exactly that case - and started with no
 bootloader of any kind in between:
 
 ```
@@ -188,7 +188,7 @@ Enter passphrase for /dev/vda2:
 ```
 
 **What none of it covers.** No `musl` or `hardened` stage has been installed,
-and `efistub` has not been booted from the removable path — that one needs a
+and `efistub` has not been booted from the removable path - that one needs a
 kernel with its command line compiled in, because the fallback is started with
 no load options at all. Version `0.1.0` should still meet a disk you would miss with `--dry-run`
 first.
@@ -197,7 +197,7 @@ One finding from that run is worth repeating here, because it is the difference
 between a disk that boots and a disk that does not. A UEFI firmware with no
 NVRAM entry pointing at your loader tries exactly one path: the removable one,
 `\EFI\BOOT\BOOTX64.EFI`. The first image this project produced had a working
-GRUB, a valid `grub.cfg` and a correct `fstab`, and dropped straight to PXE —
+GRUB, a valid `grub.cfg` and a correct `fstab`, and dropped straight to PXE -
 because nothing was at that path. The installer now writes it whenever it cannot
 create an NVRAM entry, and `--boot-removable yes` asks for it outright.
 
@@ -213,17 +213,17 @@ The table of contents is the table of the steps, in the order they run.
 - [Quick start](#quick-start)
 - [How it works](#how-it-works)
 - **The install**
-  - [10 preflight](#10-preflight) — privileges, tools, network, disk inventory
-  - [20 disk](#20-disk) — partition and format the target disks (DESTRUCTIVE)
-  - [30 crypt](#30-crypt) — LUKS containers and keyfiles
-  - [40 stage](#40-stage) — fetch, verify and unpack the stage3 tarball
-  - [50 chroot](#50-chroot) — mount the pseudo-filesystems and enter the chroot
-  - [60 portage](#60-portage) — make.conf, repositories, profile, USE flags
-  - [70 kernel](#70-kernel) — kernel sources, configuration and build
-  - [75 seal](#75-seal) — seal the container to the TPM, inside the target
-  - [80 boot](#80-boot) — bootloader install and entries
-  - [90 system](#90-system) — fstab, locale, timezone, network, users, packages
-  - [95 finalize](#95-finalize) — verify, unmount, report what to do next
+  - [10 preflight](#10-preflight) - privileges, tools, network, disk inventory
+  - [20 disk](#20-disk) - partition and format the target disks (DESTRUCTIVE)
+  - [30 crypt](#30-crypt) - LUKS containers and keyfiles
+  - [40 stage](#40-stage) - fetch, verify and unpack the stage3 tarball
+  - [50 chroot](#50-chroot) - mount the pseudo-filesystems and enter the chroot
+  - [60 portage](#60-portage) - make.conf, repositories, profile, USE flags
+  - [70 kernel](#70-kernel) - kernel sources, configuration and build
+  - [75 seal](#75-seal) - seal the container to the TPM, inside the target
+  - [80 boot](#80-boot) - bootloader install and entries
+  - [90 system](#90-system) - fstab, locale, timezone, network, users, packages
+  - [95 finalize](#95-finalize) - verify, unmount, report what to do next
 - **Reference**
   - [The four choices](#the-four-choices)
   - [Stage3 variants](#stage3-variants)
@@ -295,7 +295,7 @@ sudo ./gentoo-install.sh --resume
 ## How it works
 
 Eleven steps run in order. Each is one file under `steps/`, each returns a code,
-and the runner accumulates failures instead of stopping at the first one — a
+and the runner accumulates failures instead of stopping at the first one - a
 run that announces success after a failed step tells you nothing. The final
 summary names what failed and how to resume:
 
@@ -307,7 +307,7 @@ summary names what failed and how to resume:
 ```
 
 `--steps 20,40-60,95` selects; `--skip-steps 30` removes. A bare number has to
-name a real step — `--steps 99` is a mistake worth stopping for — while a range
+name a real step - `--steps 99` is a mistake worth stopping for - while a range
 is a span and simply selects whatever exists inside it. Both are resolved at
 parse time, in milliseconds, never in the middle of an `emerge`.
 
@@ -317,7 +317,7 @@ Standard output carries only values and `--json`, so `./gentoo-install.sh --json
 is a clean file. Colour follows `-t 2` and `NO_COLOR`, so `| tee install.log`
 keeps it.
 
-A state journal under `/var/lib/gentoo-install` records which steps completed —
+A state journal under `/var/lib/gentoo-install` records which steps completed -
 what was done, never with what: no passphrase and no key ever reaches it.
 `--resume` skips what it marks done, `--restart` clears it. That matters on a
 distribution that compiles its own kernel: an interrupted install must not
@@ -325,8 +325,8 @@ start over.
 
 Resuming also means getting back to a target the last process let go of. Every
 run releases what it mounted when it ends, so step 50 mounts the tree again
-from the plan step 20 wrote down: it opens the container — asking for a
-passphrase, once — activates the volume group and mounts what the plan
+from the plan step 20 wrote down: it opens the container - asking for a
+passphrase, once - activates the volume group and mounts what the plan
 describes, in order. A plan naming the disk this machine booted from is refused
 rather than mounted.
 
@@ -347,14 +347,14 @@ Eleven read-only checks, each ending in `PASS`, `WARN`, `FAIL` or `SKIP`
 followed by why and by the exact command that fixes it: privileges, firmware,
 architecture, tools, network, DNS, clock, disks, memory, TPM, keyring.
 
-No check aborts on its own — you want the whole list in one pass, not one
+No check aborts on its own - you want the whole list in one pass, not one
 refusal per attempt. The aggregate decides: a `FAIL` stops, a `WARN` asks, and
 `--force` answers only the question a `WARN` asks. Nothing lifts a `FAIL`,
 because a `FAIL` is a proof that failed.
 
 "Stops" means the run ends there. Every other step's failure is accumulated and
-reported at the end, which is right — a failed bootloader should not stop the
-accounts being created — but this one decides whether anything may be written at
+reported at the end, which is right - a failed bootloader should not stop the
+accounts being created - but this one decides whether anything may be written at
 all. It was accumulated like the rest until a run refused a disk for being under
 the minimum and then erased it anyway.
 
@@ -368,7 +368,7 @@ The only step that cannot be undone, so it is the one that says the most before
 it acts. It validates the settings, inventories the disks, picks the target,
 refuses it if it is removable, in use, or carrying the running system, computes
 the layout as a table of real sizes and prints it, prints the disk's identity
-and everything currently on it — and only then asks for the device path to be
+and everything currently on it - and only then asks for the device path to be
 typed out.
 
 A layout is a **proportion, not a table of gigabytes**: `root:50` works on the
@@ -400,7 +400,7 @@ encrypting a machine you will one day hand on.
 the controller is free to interpret. `zero` overwrites the blocks the controller
 currently maps, and the ones it retired through wear levelling keep whatever
 they held. If the data mattered, the answer was to encrypt it before writing it,
-not to scrub it afterwards — which is what `luks` above is for.
+not to scrub it afterwards - which is what `luks` above is for.
 
 ## 30 crypt
 
@@ -417,7 +417,7 @@ off leaves you guessing whether it was skipped or forgotten.
 
 Walks the trust chain from one end to the other: pick the variant, prove the
 signed pointer, prove the tarball, unpack it. See
-[Verifying the stage3](#verifying-the-stage3) — it is the part of this project
+[Verifying the stage3](#verifying-the-stage3) - it is the part of this project
 that is worth reading before the rest.
 
 The tarball is cached under `/var/cache/gentoo-install`, outside the target
@@ -455,7 +455,7 @@ They are also only defaults. What the kernel offers is what you may use:
 ```
 
 A cipher is not checked against a list, because the right list differs between
-kernels. It is put to `cryptsetup benchmark` — and only when it is not the
+kernels. It is put to `cryptsetup benchmark` - and only when it is not the
 default, since an unknown cipher fails in twenty milliseconds while a valid one
 costs two seconds to measure. Paying that once for a deliberate choice, before
 step 20 wipes anything, is worth it; paying it on every run to re-confirm the
@@ -465,14 +465,14 @@ Two things are worth knowing before you change these:
 
 **Serpent and Twofish are slower, by a lot.** On the machine this was written
 on, `cryptsetup benchmark` reports 7076 MiB/s for `aes-xts` against 655 MiB/s
-for `serpent-xts` — a factor of ten, and it is the speed of every read and write
+for `serpent-xts` - a factor of ten, and it is the speed of every read and write
 for the life of the disk. Choose them because you distrust AES, not because
 more names sound safer.
 
 **`pbkdf2` takes no memory parameter.** Memory and parallelism are argon2's;
 pbkdf2 is an iteration count and nothing else, and cryptsetup refuses the pair.
 Setting `crypt_pbkdf = pbkdf2` together with `crypt_pbkdf_memory` is refused at
-parse time rather than by `luksFormat` in step 30 — which would be after step 20
+parse time rather than by `luksFormat` in step 30 - which would be after step 20
 had already wiped the disk.
 
 ## 60 portage
@@ -487,20 +487,20 @@ The profile is never set on trust: the directory is looked up in the synced
 tree first, so a profile that is not there produces a sentence naming every
 candidate tried, instead of eselect's "invalid profile" three steps into an
 install. And `make.conf` is written, handed to `emerge --info`, and rolled back
-when Portage refuses it — one unbalanced quote there makes every later emerge
+when Portage refuses it - one unbalanced quote there makes every later emerge
 fail with a parse error.
 
 ## 70 kernel
 
 Three ways to get a kernel behind one step: `dist-kernel`, `genkernel`,
 `manual`. What the step itself owns is the part that decides whether an
-encrypted machine comes back up — the dracut module list and the kernel command
+encrypted machine comes back up - the dracut module list and the kernel command
 line, both composed from what steps 20 and 30 recorded rather than hardcoded.
 
 genkernel does not use dracut: its initramfs reads `crypt_root=`, `root_key=`
 and `dolvm` where dracut reads `rd.luks.uuid=` and `rd.luks.key=`. The step
 composes the right dialect rather than assuming one, and writes a
-`/etc/dracut.conf.d` file only where dracut is the generator — a command line
+`/etc/dracut.conf.d` file only where dracut is the generator - a command line
 in the wrong dialect sitting in dracut's directory is a trap for the day
 something pulls dracut in.
 
@@ -521,7 +521,7 @@ third option. The reason it is not here is that two of the four encryption
 variants depend on dracut modules by name: `clevis` and `clevis-pin-tpm2` for
 the TPM, `crypt-gpg` for the wrapped key file on the ESP. Those are dracut's,
 not a standard every generator implements, and an initramfs that silently
-cannot open the container produces exactly one symptom — a machine that asks
+cannot open the container produces exactly one symptom - a machine that asks
 for nothing, finds no root, and drops to a shell the operator cannot type a
 passphrase into.
 
@@ -534,7 +534,7 @@ how an installer earns a reputation it deserves.
 
 What the encryption variant still owes the target, done inside the target. One
 variant owes anything today: `luks-tpm` seals a keyslot with clevis, and clevis
-is not on the Gentoo minimal ISO — no jose, no tpm2-tools either, and no way to
+is not on the Gentoo minimal ISO - no jose, no tpm2-tools either, and no way to
 add them there, because that medium carries no ebuild repository.
 
 So the binding does not happen on the live medium. Step 70 has already
@@ -549,7 +549,7 @@ What that buys, beyond the ordering:
 # install now, seal later, deliberately
 sudo ./gentoo-install.sh --skip-steps 75
 
-# seal a target that is already installed — after a BIOS update, or a run
+# seal a target that is already installed - after a BIOS update, or a run
 # that stopped before this point
 sudo ./gentoo-install.sh --steps 50,75
 ```
@@ -577,7 +577,7 @@ that would be one too many.
 
 ### Secure Boot
 
-Give `--secureboot-keyfile` and `--secureboot-cert` — a matching pair in PEM —
+Give `--secureboot-keyfile` and `--secureboot-cert` - a matching pair in PEM -
 and every EFI binary this step installs is signed on the way in. Without them
 the binaries are installed unsigned and the step says so: a machine with Secure
 Boot enabled will not start them.
@@ -585,7 +585,7 @@ Boot enabled will not start them.
 Two details are load-bearing, and both are the tools behaving reasonably rather
 than badly. `sbverify --list` **exits 0 on a binary with no signature at all**,
 so the verdict is read from its text; code that tested the exit status would
-call an unsigned kernel signed. And `sbsign` **appends** — signing in place,
+call an unsigned kernel signed. And `sbsign` **appends** - signing in place,
 which is what happens when the ESP is at `/boot` and the kernel is already
 where the loader reads it, leaves one more signature per run. The image is
 stripped first, so an install run four times carries one signature, from the
@@ -594,8 +594,8 @@ is what rotating one is for.
 
 Every signature is read back with `sbverify --cert` before the install is
 called done. A signature table can be present on an image whose signature
-covers different bytes than the ones on disk — an ESP that filled up mid-write
-gives exactly that — and the firmware's answer to it is a refusal that names
+covers different bytes than the ones on disk - an ESP that filled up mid-write
+gives exactly that - and the firmware's answer to it is a refusal that names
 nothing.
 
 ## 90 system
@@ -617,8 +617,8 @@ built will come back up, says what is left to do by hand, releases exactly what
 this install mounted, and stops.
 
 The check that pays for the file is the initramfs one, and it is asked of the
-**image itself** — `lsinitrd` when there is one, the cpio archive when there is
-not — never of the configuration that was meant to produce it. An image without
+**image itself** - `lsinitrd` when there is one, the cpio archive when there is
+not - never of the configuration that was meant to produce it. An image without
 the modules the encryption variant needs is a machine that stops at a dracut
 prompt with no root and no explanation.
 
@@ -636,7 +636,7 @@ here reboots on its own.
 | Kernel | `kernel` | `dist-kernel` · `genkernel` · `manual` | `dist-kernel` |
 | Disk layout | `disk_layout` | `minimal` · `server` · `desktop` · `custom` | `desktop` |
 
-**Encryption** — `luks-passphrase` is the default because it is safe by default
+**Encryption** - `luks-passphrase` is the default because it is safe by default
 and depends on no hardware: no TPM, no key file, no second partition to keep in
 sync. If the machine boots, the passphrase opens it. It writes two keyslots,
 not one: the everyday passphrase in slot 0 and a recovery passphrase in slot 1,
@@ -644,14 +644,14 @@ so a mistyped-and-forgotten credential is an annoyance and not a wiped disk.
 `luks-tpm` seals to the TPM with clevis and always keeps a recovery slot,
 because a TPM that stops releasing the key after a firmware update is a
 documented incident and not a hypothesis. It needs `app-crypt/clevis` in the
-target, which the official Gentoo repository does not carry — the GURU overlay
-does — and the sealing is [step 75](#75-seal), on its own, so a machine
+target, which the official Gentoo repository does not carry - the GURU overlay
+does - and the sealing is [step 75](#75-seal), on its own, so a machine
 installed without it can be sealed later without being reinstalled. `luks-keyfile-gpg` draws a long
 random key, pipes it straight into a GPG envelope, and puts the envelope on the
 ESP: two secrets, the passphrase that opens the file and the file that opens
 the disk. `none` says out loud what it means.
 
-**Bootloader** — `grub` is the default because it is the one that boots
+**Bootloader** - `grub` is the default because it is the one that boots
 everything: UEFI and legacy BIOS, an encrypted `/boot`, a root on LVM, a disk
 that also carries Windows, and it has a menu you can edit from the keyboard
 when something is wrong. `efistub` puts nothing between the firmware and the
@@ -660,13 +660,13 @@ kernel, and gives up the menu and the fallback entry in exchange.
 that can mount FAT; it is UEFI-only by construction and refuses a BIOS run
 before touching anything.
 
-**Kernel** — `dist-kernel` is what a first Gentoo install should get: Portage
+**Kernel** - `dist-kernel` is what a first Gentoo install should get: Portage
 installs a kernel like anything else, and `emerge -uDN @world` keeps it up to
 date. `genkernel` compiles here and builds its own initramfs. `manual` fetches
-sources and compiles a `.config` you supply — it refuses to invent one, because
+sources and compiles a `.config` you supply - it refuses to invent one, because
 a kernel built from a guess is a machine that boots to a blinking cursor.
 
-**Disk layout** — `minimal` is one root filesystem and no LVM. `server` puts
+**Disk layout** - `minimal` is one root filesystem and no LVM. `server` puts
 `/var` and `/var/log` on their own volumes so a runaway log does not take sshd
 with it, and leaves a fifth of the group unallocated. `desktop` gives `/home`
 what is left. `custom` reads the records you write in `disk_volumes` or
@@ -674,7 +674,7 @@ what is left. `custom` reads the records you write in `disk_volumes` or
 plan can be started from `--disk-layout desktop`, read off the table, and
 adjusted. One source or the other, never both: they name two different layouts
 and merging them is how a disk gets partitioned for one nobody wrote. The set
-is judged before the erase — exactly one volume must mount `/`, and at most one
+is judged before the erase - exactly one volume must mount `/`, and at most one
 may ask for `rest`.
 
 ---
@@ -682,13 +682,13 @@ may ask for `rest`.
 ## Stage3 variants
 
 Nineteen published amd64 variants, listed once in
-[`data/stages.tsv`](data/stages.tsv). They are a composition of two axes —
-`init` × `flavour` — and the names compose:
+[`data/stages.tsv`](data/stages.tsv). They are a composition of two axes -
+`init` × `flavour` - and the names compose:
 
 | flavour | openrc | systemd | libc | constraints |
 |---|---|---|---|---|
-| `base` | ✔ | ✔ | glibc | — |
-| `desktop` | ✔ | ✔ | glibc | — |
+| `base` | ✔ | ✔ | glibc | - |
+| `desktop` | ✔ | ✔ | glibc | - |
 | `nomultilib` | ✔ | ✔ | glibc | no-multilib |
 | `hardened` | ✔ | ✔ | glibc | hardened-toolchain |
 | `hardened-selinux` | ✔ | ✔ | glibc | hardened-toolchain, selinux |
@@ -696,14 +696,14 @@ Nineteen published amd64 variants, listed once in
 | `musl-hardened` | ✔ | ✔ | musl | no-multilib, hardened-toolchain |
 | `llvm` | ✔ | ✔ | glibc | libcxx-abi |
 | `musl-llvm` | ✔ | ✔ | musl | no-multilib, libcxx-abi, experimental |
-| `splitusr` | ✔ | — | glibc | openrc-only, split-usr |
+| `splitusr` | ✔ | - | glibc | openrc-only, split-usr |
 
 Nine flavours × two init systems, plus `splitusr` for OpenRC only: nineteen.
 `libc` and the stage id are derived from the row, not set by hand.
 
 `splitusr` is **the exception the selector knows about**. Upstream publishes no
-systemd counterpart, so the combination is refused at parse time — before the
-disks are touched — instead of 404-ing halfway through an install:
+systemd counterpart, so the combination is refused at parse time - before the
+disks are touched - instead of 404-ing halfway through an install:
 
 ```console
 $ ./gentoo-install.sh --flavour splitusr --init systemd --dry-run
@@ -734,7 +734,7 @@ means walking the `inherits` column up to the root and concatenating the
 
 | Set | Inherits | Adds | Total | What it adds |
 |---|---|---|---|---|
-| [`base`](data/packages/base.list) | — | 5 | 5 | Portage tooling and hardware inventory: `gentoolkit`, `portage-utils`, `git`, `pciutils`, `usbutils` |
+| [`base`](data/packages/base.list) | - | 5 | 5 | Portage tooling and hardware inventory: `gentoolkit`, `portage-utils`, `git`, `pciutils`, `usbutils` |
 | [`minimal`](data/packages/minimal.list) | `base` | 7 | 12 | A machine that boots and can repair itself: `sudo`, `vim`, `cpuid2cpuflags`, `dhcpcd`, `dosfstools`, `htop`, `linux-firmware` |
 | [`server`](data/packages/server.list) | `minimal` | 7 | 19 | Headless and always on: `logrotate`, `tmux`, `nftables`, `chrony`, `dmidecode`, `smartmontools`, `lsof` |
 | [`desktop`](data/packages/desktop.list) | `server` | 9 | 28 | A graphical session: `xorg-server`, `xrandr`, `xterm`, `xdg-utils`, `pipewire`, `wireplumber`, `networkmanager`, `dejavu`, `noto` |
@@ -744,17 +744,17 @@ was chosen, according to `--init`:
 
 | Overlay | Adds | Why |
 |---|---|---|
-| [`init-openrc`](data/packages/init-openrc.list) | 2 | `syslog-ng` and `cronie` — the two services systemd provides itself |
+| [`init-openrc`](data/packages/init-openrc.list) | 2 | `syslog-ng` and `cronie` - the two services systemd provides itself |
 | [`init-systemd`](data/packages/init-systemd.list) | 0 | Deliberately empty. journald is the log and timers are the cron; adding the OpenRC pair would give the machine two of each with the logs split between them |
 
 `@system` is not repeated in any of these files: they are the delta, and a list
 that restates `@system` is a list nobody trusts to be one. No desktop
-environment is listed either — GNOME, Plasma and Xfce are a choice with a
+environment is listed either - GNOME, Plasma and Xfce are a choice with a
 Portage profile attached (see [`data/profiles.tsv`](data/profiles.tsv)), and an
 installer that picks one promotes its author's taste to a default.
 
 **Which set gets installed**: whichever of `--flavour` or `--disk-layout` you
-set **explicitly** and which names a set in the table — so `--flavour desktop`
+set **explicitly** and which names a set in the table - so `--flavour desktop`
 and `--disk-layout server` each select their namesake. With neither given
 explicitly, the answer is `minimal`. Both carry a default of their own, and a
 plain run must not quietly install a desktop.
@@ -770,7 +770,7 @@ There are three ways to set anything, and they are the same surface:
 printf 'bootloader = efistub\ncrypt = luks-tpm\n' > machine.conf
 ./gentoo-install.sh --config machine.conf --dry-run
 
-# 2. a flag — every declared setting is one, spelled with dashes
+# 2. a flag - every declared setting is one, spelled with dashes
 ./gentoo-install.sh --bootloader efistub --crypt luks-tpm --dry-run
 
 # 3. the setting under its own name, which is what --dump-config prints
@@ -784,7 +784,7 @@ built-in default  <  profile  <  configuration file  <  explicit flag
 ```
 
 The profile applies *after* parsing, with a "set unless the operator already
-asked" primitive written once and used for every setting — so it can never
+asked" primitive written once and used for every setting - so it can never
 overwrite an intention, and not merely for the handful somebody remembered.
 
 **Every declared setting is also a flag.** There is no hand-maintained list of
@@ -800,7 +800,7 @@ assume_yes               = no                           # default
 boot_device              =                              # default
 ```
 
-A key that is not in that list is refused — in a `.conf` on the line that
+A key that is not in that list is refused - in a `.conf` on the line that
 spells it, and on the command line as an unknown option. A value outside its
 enumeration is refused too, once every source has been merged, before a single
 step runs:
@@ -816,7 +816,7 @@ $ ./gentoo-install.sh --config bad.conf
 ### The CPU governor while it builds
 
 An install is one long compile, and a live medium boots on whatever governor
-its image shipped with — usually `powersave` or `schedutil`, which is the right
+its image shipped with - usually `powersave` or `schedutil`, which is the right
 default for a laptop reading a web page and the wrong one for four hours of
 gcc. `cpu_governor` is `performance` by default and `keep` opts out.
 
@@ -824,14 +824,14 @@ What it changes belongs to the machine running the installer and not to the
 target, so it is announced, recorded in the state journal, and put back three
 ways: by step 95, by the exit trap, and from the journal on the next run if the
 machine lost power in between. A name this machine's cpufreq driver does not
-offer is refused at the prompt — the list comes from
+offer is refused at the prompt - the list comes from
 `scaling_available_governors`, because `intel_pstate` has two and
 `acpi-cpufreq` has five.
 
 ### The target root
 
 The directory the stage3 is unpacked into and the system is built under is the
-`root` setting, default `/mnt/gentoo` — the same name in a `.conf` (`root = /mnt/gentoo`)
+`root` setting, default `/mnt/gentoo` - the same name in a `.conf` (`root = /mnt/gentoo`)
 and on the command line (`--root /mnt/gentoo`), like every other declared
 setting. It is not `--target`, `--prefix` or `--destdir`; those do not exist.
 
@@ -839,7 +839,7 @@ There is one such setting, and there were four. Step 20 mounts the tree it has
 just made on the same path steps 40 to 95 build in, because an install split
 between two directories is an install where the stage3 lands on the disk of the
 machine running the installer while the target sits mounted and empty. The
-other three names — `disk_root`, `chroot_dir`, `target_root` — are gone, and
+other three names - `disk_root`, `chroot_dir`, `target_root` - are gone, and
 naming one now says so:
 
 ```console
@@ -857,10 +857,10 @@ stage3 to fetch; it does not choose your disk layout or your bootloader.
 
 | `--profile` | flavour | init | also |
 |---|---|---|---|
-| `minimal` | `base` | `openrc` | — |
-| `default` | `base` | `openrc` | — |
-| `desktop` | `desktop` | `systemd` | — |
-| `server` | `nomultilib` | `openrc` | — |
+| `minimal` | `base` | `openrc` | - |
+| `default` | `base` | `openrc` | - |
+| `desktop` | `desktop` | `systemd` | - |
+| `server` | `nomultilib` | `openrc` | - |
 | `hardened` | `hardened` | `openrc` | `on_conflict = prompt` |
 
 ### Writing to files
@@ -876,7 +876,7 @@ else:
 
 `--on-conflict` decides what happens to a file that already differs:
 `overwrite`, `skip`, `prompt`, or `backup` (the default). Where a file has a
-checker — `emerge --info`, `findmnt --verify`, `grub-script-check` — it is
+checker - `emerge --info`, `findmnt --verify`, `grub-script-check` - it is
 written, validated, and rolled back if the checker objects.
 
 ---
@@ -890,7 +890,7 @@ into `tar`. **A mirror is a stranger.**
    `latest-stage3-amd64-<variant>.txt` names which timestamped tarball is
    current and how many bytes it has. That file is clearsigned by the Gentoo
    release key. The path and the byte count are read out of **what gpg wrote**,
-   never out of the file on disk — text appended outside the signature is
+   never out of the file on disk - text appended outside the signature is
    therefore unparseable rather than trusted.
 2. **The tarball's own detached signature is checked.** The `.asc` beside the
    tarball is a signature over the tarball's bytes. This is the strong
@@ -914,7 +914,7 @@ the keys from anywhere but a trusted medium is itself a trust problem, and step
 40 refuses to run without them rather than pretending otherwise.
 
 `verify_signatures = no` exists and turns the chain off. It warns, in full,
-every time — a compromised mirror then picks your stage3.
+every time - a compromised mirror then picks your stage3.
 
 ---
 
@@ -957,7 +957,7 @@ is complete by construction rather than by remembering.
 
 **Nothing is erased before another way in has been shown to work.** Step 30
 does not report success until the encryption variant has *exercised* the
-credentials it created — not merely observed that a keyslot or a TPM token
+credentials it created - not merely observed that a keyslot or a TPM token
 exists.
 
 ---
@@ -972,20 +972,20 @@ what you reach for at 2 a.m. with a live USB.
 `lib/`, and each carries its own output helpers and exit codes. The duplication
 is deliberate and is the whole point: a LUKS rescue tool that cannot be copied
 alone onto a USB stick is useless in exactly the situation it exists for. Only
-the output shape is shared with the installer — `[*] [+] [!] [x] [=]`, colour
+the output shape is shared with the installer - `[*] [+] [!] [x] [=]`, colour
 on `-t 2`, the same exit codes. Every one answers `--help` and exits 0.
 
 | Tool | What it is for |
 |---|---|
-| [`luks-check.sh`](tools/luks-check.sh) | Read-only report on a LUKS container: keyslots, clevis tokens, TPM policy, and whether a passphrase or key file still opens it. Opens nothing, writes nothing — the first thing to run on a machine that will not boot |
+| [`luks-check.sh`](tools/luks-check.sh) | Read-only report on a LUKS container: keyslots, clevis tokens, TPM policy, and whether a passphrase or key file still opens it. Opens nothing, writes nothing - the first thing to run on a machine that will not boot |
 | [`luks-open.sh`](tools/luks-open.sh) | Unlocks the container from a live medium, activates the volume group and mounts the tree in the order the layout requires. `close` undoes only what it opened |
-| [`rescue-chroot.sh`](tools/rescue-chroot.sh) | Binds `/dev`, `/sys`, `/proc` and `/run` into a tree `luks-open.sh` has mounted and chroots in. On the way out it names the processes still holding the tree — gpg-agent, usually |
+| [`rescue-chroot.sh`](tools/rescue-chroot.sh) | Binds `/dev`, `/sys`, `/proc` and `/run` into a tree `luks-open.sh` has mounted and chroots in. On the way out it names the processes still holding the tree - gpg-agent, usually |
 | [`luks-addkey.sh`](tools/luks-addkey.sh) | Adds a passphrase to a free keyslot, and removes one only after another has been proved to open the container here and now. Slot 0 is never removed |
-| [`luks-header.sh`](tools/luks-header.sh) | Backs up, verifies, diffs and restores the LUKS2 header — the one thing no secret replaces. `restore` rewrites every keyslot at once and is the most destructive command in this repository |
+| [`luks-header.sh`](tools/luks-header.sh) | Backs up, verifies, diffs and restores the LUKS2 header - the one thing no secret replaces. `restore` rewrites every keyslot at once and is the most destructive command in this repository |
 | [`key-backup.sh`](tools/key-backup.sh) | Takes the GPG-wrapped LUKS key off the machine, after decrypting it and testing it against a real keyslot. Copying a file that no longer works is not a backup |
 | [`tpm-pcr.sh`](tools/tpm-pcr.sh) | Reads the TPM PCRs, says which moved since a snapshot, and whether the clevis policy is even sealed on them. Never writes to the TPM |
 | [`tpm-reseal.sh`](tools/tpm-reseal.sh) | Redoes the clevis binding after a firmware change, then asks the TPM to release what it just sealed and tests it against the keyslot. A token that exists is not a token that works |
-| [`bios-update.sh`](tools/bios-update.sh) | Proves a BIOS flash can be survived — nine checks and an attestation `flash` refuses to run without — then signs `fwupdx64.efi` and flashes |
+| [`bios-update.sh`](tools/bios-update.sh) | Proves a BIOS flash can be survived - nine checks and an attestation `flash` refuses to run without - then signs `fwupdx64.efi` and flashes |
 | [`bios-maint.sh`](tools/bios-maint.sh) | Walks a firmware update through the other tools in the one order that works, across reboots, refusing to continue when the previous step was not proved |
 
 A typical rescue is three commands:
@@ -1023,7 +1023,7 @@ tests/                 bats, run in CI
 ## Contributing
 
 [`CONTRIBUTING.md`](CONTRIBUTING.md) has the short version:
-`make lint test`, and read [`docs/DESIGN.md`](docs/DESIGN.md) first — it is a
+`make lint test`, and read [`docs/DESIGN.md`](docs/DESIGN.md) first - it is a
 contract, not advice. One rule above the others: **a guard rail is not removed
 without saying what it prevented.**
 

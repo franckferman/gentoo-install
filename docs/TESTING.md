@@ -2,8 +2,8 @@
 
 **Run 1 has been made and passed** (2026-09-05): an image taken from an empty
 GPT to a login prompt, then booted under QEMU with OVMF. What it proved, and
-what it did not, is in the README's Status section. Runs 2 to 5 — the encrypted
-ones, the other bootloaders, a stage of your own — have not.
+what it did not, is in the README's Status section. Runs 2 to 5 - the encrypted
+ones, the other bootloaders, a stage of your own - have not.
 
 ---
 
@@ -24,7 +24,7 @@ it. The disk was untouched and no data was lost, and it still cost a live USB, a
 
 Since then the installer refuses both unless it is running from a live medium or
 reinstalling the very disk it booted from, and `--yes` no longer answers the
-reboot question — only `--reboot yes` does. Those guards are in
+reboot question - only `--reboot yes` does. Those guards are in
 `lib/disk.sh:disk_may_write_firmware_state` and they are covered by
 `tests/firmware_guard.bats`. **They are a safety net, not a licence:** test in a
 VM, which is what this page is for.
@@ -51,7 +51,7 @@ free.
 | `qemu-system-x86_64` | the VM |
 | `/dev/kvm` | acceleration; without it a kernel build takes hours instead of tens of minutes |
 | OVMF firmware | UEFI. On Gentoo: `/usr/share/edk2-ovmf/OVMF_CODE.fd` |
-| a Gentoo minimal ISO | <https://www.gentoo.org/downloads/> — the *admin* ISO carries `cryptsetup` and `lvm2` |
+| a Gentoo minimal ISO | <https://www.gentoo.org/downloads/> - the *admin* ISO carries `cryptsetup` and `lvm2` |
 | 30 GB of disk, 4 GB of RAM | the kernel is what needs the room |
 
 Check them:
@@ -112,7 +112,7 @@ swtpm socket --tpm2 --tpmstate dir=tpm \
 `--flags startup-clear` is not decoration: it makes swtpm start the TPM itself
 rather than wait for firmware to send `TPM2_Startup`. Without it the guest can
 find the device and get nothing out of it. Check from inside the guest, not
-from the QEMU monitor — the monitor reports the device QEMU created, which says
+from the QEMU monitor - the monitor reports the device QEMU created, which says
 nothing about whether the guest's kernel bound a driver to it:
 
 ```bash
@@ -127,8 +127,8 @@ next filename"); `swtpm socket` creates the state it needs on its own.
 
 ## Headless: a serial console instead of a window
 
-`-display gtk` needs a screen and a keyboard. To drive a run from a script — or
-from an ssh session — boot the ISO's kernel directly and put the console on a
+`-display gtk` needs a screen and a keyboard. To drive a run from a script - or
+from an ssh session - boot the ISO's kernel directly and put the console on a
 socket. The ISO's own GRUB is graphical, and its menu cannot be driven blind:
 `screendump` returns a framebuffer, not text.
 
@@ -152,8 +152,8 @@ sudo umount /mnt/iso
 The ISO still goes in as `-cdrom`: the kernel above is only the entry point,
 and the live system is read from the same disc. `socat UNIX-CONNECT:serial.sock
 -` then gives a shell, `dhcpcd eth0` gives it network (the `nodhcp` above keeps
-the boot from waiting for one), and the installer's prompts — the typed disk
-proof, the passwords — are answered by writing lines to it.
+the boot from waiting for one), and the installer's prompts - the typed disk
+proof, the passwords - are answered by writing lines to it.
 
 ---
 
@@ -172,7 +172,7 @@ tar xzf /root/gi.tar.gz -C /root && cd /root/gentoo-install
 
 ---
 
-## Run 1 — the simplest path that can possibly work
+## Run 1 - the simplest path that can possibly work
 
 Prove the chain end to end before varying anything. No encryption, GRUB,
 distribution kernel: the fewest moving parts.
@@ -186,7 +186,7 @@ distribution kernel: the fewest moving parts.
 ```
 
 Read the plan. Then drop `--dry-run` and let it run. It will ask you to type
-`/dev/vda` before it erases anything — that confirmation is not lifted by
+`/dev/vda` before it erases anything - that confirmation is not lifted by
 `--force`, and typing anything else must cancel.
 
 **Then reboot into the installed system.** That is the test. Everything before
@@ -207,13 +207,13 @@ tools under `tools/` are what they are for.
 
 ---
 
-## Run 2 — encryption with a passphrase
+## Run 2 - encryption with a passphrase
 
 The one most people will use.
 
 **Passed, 6 September 2026**, on a plain layout (no LVM): the container built,
-the kernel and GRUB installed, all five of step 95's checks clear, and then —
-booted from its own disk with no ISO attached — this, which is the whole point
+the kernel and GRUB installed, all five of step 95's checks clear, and then -
+booted from its own disk with no ISO attached - this, which is the whole point
 of the run:
 
 ```
@@ -224,8 +224,8 @@ Enter passphrase for /dev/vdb2:
 
 Two things that run also settled, neither of them about encryption:
 
-- **Pre-flight was advisory.** It refused the disk — `16 GiB, minimum 20`, and
-  `--force does not lift these` — and the run erased it anyway, because the
+- **Pre-flight was advisory.** It refused the disk - `16 GiB, minimum 20`, and
+  `--force does not lift these` - and the run erased it anyway, because the
   runner accumulates failures. It stops there now.
 - **Typing the passphrase from outside still does not work.** QEMU's
   `sendkey` reaches the framebuffer and the characters appear under the prompt,
@@ -247,8 +247,8 @@ Two things to watch that Run 1 could not show:
   or the machine will ask for something you cannot type at the next boot.
 - **type the passphrase yourself, at the VM window.** Driving that prompt from
   outside does not work, and the ways it fails are worth knowing before you
-  spend an evening on them. QEMU's `sendkey` delivers the characters — they
-  echo — and dracut's reader never sees the line end. A serial console does not
+  spend an evening on them. QEMU's `sendkey` delivers the characters - they
+  echo - and dracut's reader never sees the line end. A serial console does not
   help either: with `console=tty0 console=ttyS0` the prompt is printed on the
   last console and read from the first, and with `console=ttyS0` alone the
   prompt arrives on the socket and input written to it is still not consumed,
@@ -261,7 +261,7 @@ Two things to watch that Run 1 could not show:
   ```
 
   A passphrase given through `crypt_pass_file` is stored without the newline a
-  prompt would not send, so the file and the keyboard agree — that command is
+  prompt would not send, so the file and the keyboard agree - that command is
   what proves it.
 - **the boot must stop and ask for the passphrase.** If it boots straight
   through, the initramfs is opening the container some other way and that is a
@@ -277,12 +277,12 @@ Then, from the running system:
 
 ---
 
-## Run 3 — the bootloaders
+## Run 3 - the bootloaders
 
 Same encryption, three boot paths. This is where the matrix earns its keep.
 
 The table below is the status of record. `docs/index.html` may call a
-bootloader booted only if this table does, and a test holds it to that — the
+bootloader booted only if this table does, and a test holds it to that - the
 two documents said different things for a while, and the page was the one that
 was wrong.
 
@@ -319,7 +319,7 @@ Three things in that transcript, in order:
 - **`UEFI Misc Device`** is what OVMF calls the removable path when its NVRAM
   has never heard of the disk. `vars.fd` was a fresh copy of `OVMF_VARS.fd`,
   and the install had been given `--no-variables` on purpose, so there was no
-  entry to find — the firmware fell back to `\EFI\BOOT\BOOTX64.EFI`, which
+  entry to find - the firmware fell back to `\EFI\BOOT\BOOTX64.EFI`, which
   `bootctl install` writes beside its own directory. A systemd-boot install
   that never touched an NVRAM still boots.
 - **the menu** is systemd-boot's, with the entry step 80 wrote
@@ -329,7 +329,7 @@ Three things in that transcript, in order:
 
 The assertion this run existed to check also held: `--init openrc`, and
 `bootctl` came from `sys-apps/systemd-utils`. Step 80 found the package
-installed *without* it and rebuilt it for the `boot` USE flag on its own —
+installed *without* it and rebuilt it for the `boot` USE flag on its own -
 a branch of the variant nobody had ever watched execute.
 
 And the run found a defect, which is why it was worth doing: step 80 reported
@@ -346,8 +346,8 @@ three that write one do.
 
 **`efistub` passed on 6 September**, by the first of the two routes this page
 already named and nobody had taken. An efistub install has no configuration
-file: the NVRAM entry *is* the configuration — it carries the kernel command
-line and the `initrd=` — so it needs an entry, and the installer refuses to
+file: the NVRAM entry *is* the configuration - it carries the kernel command
+line and the `initrd=` - so it needs an entry, and the installer refuses to
 write one unless it runs from a live medium or reinstalls the disk it booted
 from (`lib/disk.sh`, `disk_may_write_firmware_state`). A run from the live ISO
 is exactly the permitted case, so the entry was written, and the firmware
@@ -365,14 +365,14 @@ Eleven steps, none failed, and step 95 clear on all five checks including
 
 The second route is still untaken and still worth naming: `boot_removable = yes`
 **and** a kernel with its command line compiled in (`kernel_embed_cmdline`),
-since the fallback path is launched with no load options — which means building
+since the fallback path is launched with no load options - which means building
 a kernel rather than using the distribution's.
 
 The `uki` bootloader exists partly because of this. It carries the command line
 and the initramfs inside the binary, so it needs neither an entry nor a rebuilt
 kernel, and it is the variant to reach for when the NVRAM cannot be trusted.
 
-Reset between runs by recreating the disk and the firmware variables — a stale
+Reset between runs by recreating the disk and the firmware variables - a stale
 boot entry in `vars.fd` will make a broken run look like a working one:
 
 ```bash
@@ -383,7 +383,7 @@ cp /usr/share/edk2-ovmf/OVMF_VARS.fd ./vars.fd
 
 ---
 
-## Run 3b — the unified kernel image, and a firmware that knows nothing
+## Run 3b - the unified kernel image, and a firmware that knows nothing
 
 Run on 6 September 2026, on purpose, against the failure this project was
 shaped by: a UEFI firmware whose NVRAM has never heard of this disk.
@@ -394,8 +394,8 @@ shaped by: a UEFI firmware whose NVRAM has never heard of this disk.
   --kernel-cmdline-extra "console=ttyS0,115200" --hostname giuki --user tester
 ```
 
-**The install passed completely** — eleven steps, none failed, the first run in
-this project's life to do that — and step 95 said:
+**The install passed completely** - eleven steps, none failed, the first run in
+this project's life to do that - and step 95 said:
 
 ```
 3/ 5  [PASS] Boot entry     unified kernel image at the fallback path
@@ -417,7 +417,7 @@ BdsDxe: loading  Boot0001 "UEFI Misc Device" from PciRoot(0x0)/Pci(0x3,0x0)
 BdsDxe: starting Boot0001 "UEFI Misc Device" from PciRoot(0x0)/Pci(0x3,0x0)
 ```
 
-**And then it appeared to hang — because of an instruction on this page.** The
+**And then it appeared to hang - because of an instruction on this page.** The
 firmware started the image and nothing followed: no kernel output on the
 framebuffer, none on `ttyS0` either, and the guest idle. Ruled out in turn: the
 artefact (both copies byte for byte identical, 45,239,808 bytes), its shape (the
@@ -430,7 +430,7 @@ The cause was two things at once, and separating them took a second day.
 The first is `--kernel-cmdline-extra "console=ttyS0,115200"`, taken from the
 advice this page used to give for driving a boot from outside. The kernel
 prints to every `console=` it is given and makes **the last one** `/dev/console`
-— so with only a serial port named, the framebuffer shows nothing at all, and
+- so with only a serial port named, the framebuffer shows nothing at all, and
 with `console=tty0 console=ttyS0,115200` the kernel log appears on the screen
 while the passphrase prompt, which userspace writes to `/dev/console`, goes to
 the serial port. Put the console you are watching **last**.
@@ -453,7 +453,7 @@ With that, the whole boot arrives, ending exactly where it should:
 Enter passphrase for /dev/vda2:
 ```
 
-The kernel is not the problem and never was — `gentoo-kernel-bin` is built with
+The kernel is not the problem and never was - `gentoo-kernel-bin` is built with
 `CONFIG_SERIAL_8250_CONSOLE=y`, checked in the config it installs beside itself.
 
 Booted with `console=tty0` alone, the same kernel and the same initramfs reach
@@ -473,7 +473,7 @@ kernel_cmdline_extra = "console=tty0 console=ttyS0,115200"
 ```
 
 The installer now says so itself when a command line names consoles and none of
-them is a screen — a machine that boots correctly and says nothing is
+them is a screen - a machine that boots correctly and says nothing is
 indistinguishable from one that hung, and this is how long that costs.
 
 ### Typing the passphrase from outside, and why an automated test should not
@@ -492,7 +492,7 @@ ask_for_password \
 ```
 
 No `--tty-prompt` is passed, so `Enter passphrase for /dev/vda2:` is printed by
-**cryptsetup**, which also reads it — from `/dev/tty` when it can open one, from
+**cryptsetup**, which also reads it - from `/dev/tty` when it can open one, from
 standard input otherwise.
 
 **The guest does receive keystrokes.** `sendkey ctrl-alt-delete` reboots the
@@ -503,15 +503,15 @@ whichever console is named last.
 
 **So do not build an automated boot test around typing it.** A test that needs
 an encrypted machine to come up on its own has two honest ways to do that:
-`crypt = luks-tpm`, where the chip answers and nobody types anything — proved on
-6 September, the machine reaching a login prompt unaided — or `rd.luks.key=` and
+`crypt = luks-tpm`, where the chip answers and nobody types anything - proved on
+6 September, the machine reaching a login prompt unaided - or `rd.luks.key=` and
 a key file, which is what `luks-keyfile-gpg` installs anyway. Typing is for a
 person at a window, and what a headless run can prove is that the prompt appears
 and names the right container.
 
 ---
 
-## Run 4 — the TPM
+## Run 4 - the TPM
 
 Needs the swtpm lines above and the headless section: the installer has to run
 **inside** the VM, because sealing binds a key to the TPM of the machine being
@@ -529,7 +529,7 @@ emerge --ask app-crypt/clevis
 ```
 
 Without it the run is still worth doing and still ends with an encrypted
-machine — the container built, the recovery passphrase proved, the kernel and
+machine - the container built, the recovery passphrase proved, the kernel and
 the bootloader installed. What you are checking then is that step 75 refuses
 clearly and that nothing else is damaged by its refusal, which is a real
 property: an earlier version failed step 70 over the same missing package and
@@ -547,9 +547,9 @@ mode this whole project was shaped by.
 **Passed, 6 September 2026**, and the sequence that got there is worth keeping
 because no single run does it: the installer in the guest, `--steps 20,30,40,50,60`
 first, then GURU and its keyword line written into the target, then
-`--steps 50,70,75,80,95`. Between phases the target has to be mounted again —
+`--steps 50,70,75,80,95`. Between phases the target has to be mounted again -
 the installer releases what it mounted when it exits, and only step 20 mounts
-the tree — so `tools/luks-open.sh` is what puts it back:
+the tree - so `tools/luks-open.sh` is what puts it back:
 
 ```bash
 GI_PASSPHRASE=... ./tools/luks-open.sh open --device /dev/vda2 \
@@ -581,12 +581,12 @@ It reached `gitpm login:` without asking for anything, having checked root,
 ```
 
 The machine should now ask for the recovery passphrase, `tpm-pcr.sh compare`
-should name the PCR that moved, and `tools/tpm-reseal.sh` should put it back —
+should name the PCR that moved, and `tools/tpm-reseal.sh` should put it back -
 and should refuse to claim success unless the TPM actually releases the key.
 
 ---
 
-## Run 4b — the key file, read where it was put
+## Run 4b - the key file, read where it was put
 
 `crypt = luks-keyfile-gpg`, `--bootloader uki`, `disk_layout minimal`, run on
 7 September. It is the variant whose whole point is that nothing is typed for
@@ -595,12 +595,12 @@ sitting on the ESP, which the initramfs finds and unwraps.
 
 **A fresh install of it could not start at all** until this run. Step 20 hands
 over to step 30 *before* it formats anything, because the LUKS header has to
-exist before a filesystem does — and step 30 then refused because
+exist before a filesystem does - and step 30 then refused because
 `crypt_key_dir` (`/boot/efi`) did not exist:
 
 ```
 [x] crypt_key_dir does not exist: /mnt/gentoo/boot/efi
-[x]        it has to be mounted before this step runs — normally the
+[x]        it has to be mounted before this step runs - normally the
 [x]        ESP, which step 20 formats and mounts
 ```
 
@@ -627,14 +627,14 @@ project's life. Without it the command line ends at
 `rd.luks.key=/efi/luks-key.gpg`, and dracut looks for that path *inside the
 initramfs*, where the key is not: the machine falls back to the recovery
 passphrase and the file the variant exists to place is never read. Both halves
-are visible above — the path relative to the root of the ESP, and the
-filesystem that carries it — and dracut mounted `/dev/vda1`, found the file,
+are visible above - the path relative to the root of the ESP, and the
+filesystem that carries it - and dracut mounted `/dev/vda1`, found the file,
 and is asking for the envelope's passphrase, which is what
 `crypt_variant_boot_note` says it will do.
 
 ---
 
-## Run 6 — systemd as the init
+## Run 6 - systemd as the init
 
 `--init systemd --crypt luks-passphrase --bootloader uki`, run on 7 September.
 The first time a systemd target had ever been built by this installer, and it
@@ -652,12 +652,12 @@ Conflict: 2 blocks (2 unsatisfied)
 
 Measured in that target afterwards: `sys-apps/systemd-260.1-r2` is installed,
 its `IUSE` carries `boot` and `ukify`, its `USE` carries `kernel-install` and
-not `boot` — so the stub was absent, and it is the flag on the package that is
+not `boot` - so the stub was absent, and it is the flag on the package that is
 *already there* that puts it back. The variant asks systemd on a systemd target
 now, and systemd-utils only on OpenRC.
 
 **Step 90 enabled nothing.** `systemctl --root=<target> enable` needs a
-`systemctl`, and the one it was running is the *host's* — and the host of a
+`systemctl`, and the one it was running is the *host's* - and the host of a
 Gentoo install is the minimal ISO, which is OpenRC and carries none:
 
 ```
@@ -666,14 +666,14 @@ Gentoo install is the minimal ISO, which is OpenRC and carries none:
 ```
 
 The install then finished with no network service at all, step 90 said `done`,
-and step 95 said *"nothing was left half-done"* — because every caller of
+and step 95 said *"nothing was left half-done"* - because every caller of
 `_sys_enable_service` ignores its return value and nothing recorded the
 failure. It asks the target's own `systemctl` now, the way the OpenRC branch
 has always asked the target's `rc-update`, and a service that will not enable
 leaves a to-do behind.
 
 **And the machine could not open its own root.** With both of those fixed the
-install completed, five checks clear — and the boot hung:
+install completed, five checks clear - and the boot hung:
 
 ```
 dracut-initqueue[404]: Failed to start
@@ -694,7 +694,7 @@ dracut *modules* were all present. The modules were never the missing piece.
 **The check knows the difference now**, and finding out cost two more defects.
 dracut ships `71systemd-cryptsetup` and includes it only when
 `/usr/lib/systemd/systemd-cryptsetup` exists, so the question to ask of a
-systemd image is whether that module is in it — asked of the image, not of the
+systemd image is whether that module is in it - asked of the image, not of the
 setting, because an image carrying the `systemd` module is the one that will
 look for the unit. Run against the very image that hung:
 
@@ -742,12 +742,12 @@ root=/dev/mapper/gentoo … console=ttyS0,115200 root=/dev/mapper/gentoo … con
 ```
 
 `dracut --kernel-cmdline` is *added* to the `kernel_cmdline` the configuration
-files already carry, not substituted for it — and step 70 writes exactly that
+files already carry, not substituted for it - and step 70 writes exactly that
 line into `/etc/dracut.conf.d/70-gentoo-install.conf`, because a normal
 initramfs needs it there. Harmless while the two copies agree, and unbounded
 when they do not: which of two contradicting `root=` or `console=` arguments
 the kernel takes is not a thing to leave to chance. It is passed now only when
-the target's own configuration does not already say precisely it — which is
+the target's own configuration does not already say precisely it - which is
 also the case where it matters, a `--steps 80` against a tree step 70 never
 configured. The same image, rebuilt:
 
@@ -760,7 +760,7 @@ once, and the kernel prints it once at boot.
 
 ---
 
-## Run 7 — a layout of your own
+## Run 7 - a layout of your own
 
 `--disk-layout custom` with
 
@@ -768,7 +768,7 @@ once, and the kernel prints it once at boot.
 disk_volumes = "swap:swap:2G::;root:/:12G:ext4;srv:/srv:rest:ext4"
 ```
 
-on LVM, unencrypted, GRUB, OpenRC — the first time a disk was ever partitioned
+on LVM, unencrypted, GRUB, OpenRC - the first time a disk was ever partitioned
 from a hand-written layout. It stopped on its second line:
 
 ```
@@ -781,7 +781,7 @@ Three things in those three lines.
 
 **The disk had already been erased for a run that could not continue.**
 `disk_vg` defaults to `vg0`, which is the commonest volume group name there
-is — and the machine running this installer has a `vg0` of its own, carrying
+is - and the machine running this installer has a `vg0` of its own, carrying
 its root, home, var and swap. `vgcreate` refused the duplicate, correctly, and
 by then the partition table was gone. The name is checked now in `disk_guard`,
 before anything is touched, and a group of that name *on the target disk* is
@@ -790,7 +790,7 @@ this install's own from a previous run and not a collision:
 ```
 [x] a volume group named vg0 already exists, and not on /dev/loop0
 [x]        vgcreate would refuse it, after this disk had been erased for a
-[x]        run that cannot finish — and every step after step 20 names the
+[x]        run that cannot finish - and every step after step 20 names the
 [x]        group by that name, including the one that deactivates it
 [x]        example:  disk_vg = gi-vg0
 ```
@@ -803,11 +803,11 @@ host's own root, home, var and swap. LVM would have refused the mounted ones
 and said so; the unmounted ones it would not have refused, and none of them
 were this run's to touch. It asks the same question as `disk_release` now.
 
-**`1 partition(s) created` was a miscount.** Both partitions existed —
+**`1 partition(s) created` was a miscount.** Both partitions existed -
 `sgdisk -p` showed the ESP and the Linux LVM partition, and the kernel had
 nodes for both. The counter is advanced by the loop that lays out a non-LVM
 table and was left at 2 on the LVM branch, so the message said "1" next to
-"vgcreate failed on /dev/loop0p2" — which reads as *the partition is not
+"vgcreate failed on /dev/loop0p2" - which reads as *the partition is not
 there* when it is, and sent the first half hour of this run down the wrong
 path.
 
@@ -822,7 +822,7 @@ With a free name, the layout goes down as written:
 ```
 
 and the group's name carries a hyphen, so this run is also the first to
-exercise the `/dev/mapper` doubling — `gi--vg0-root` — that `kernel_cmdline`
+exercise the `/dev/mapper` doubling - `gi--vg0-root` - that `kernel_cmdline`
 has always written and nothing had ever read back. Step 70 composed both
 spellings of the same name in one line, each correct for its reader:
 
@@ -836,12 +836,12 @@ write NVRAM through their own installers:
 
 ```
 [!] not letting grub-install write an NVRAM entry: /dev/loop0 is not the
-[+] removable path: /mnt/gi7c/boot/EFI/BOOT/BOOTX64.EFI — the firmware finds this one with no entry
+[+] removable path: /mnt/gi7c/boot/EFI/BOOT/BOOTX64.EFI - the firmware finds this one with no entry
    3/ 5  [PASS] Boot entry   grub on the removable path, no entry needed
 ```
 
-The host's NVRAM was untouched — every `Boot0*` variable still carries its
-6 September timestamp — and the disk booted anyway, from the fallback path,
+The host's NVRAM was untouched - every `Boot0*` variable still carries its
+6 September timestamp - and the disk booted anyway, from the fallback path,
 all the way through:
 
 ```
@@ -870,21 +870,21 @@ Read out of the generated file, grub's first and this project's second:
 	linux	/vmlinuz-6.18.48-gentoo-dist-bin root=/dev/mapper/gi--vg0-root ro root=/dev/mapper/gi--vg0-root rootfstype=ext4 ro rd.lvm.vg=gi-vg0 …
 ```
 
-What was missing is that nothing checked it. The ordering is load-bearing —
-reverse it and the machine boots from whatever grub-probe guessed, in silence —
+What was missing is that nothing checked it. The ordering is load-bearing -
+reverse it and the machine boots from whatever grub-probe guessed, in silence -
 so step 80 now reads the generated `grub.cfg` back and refuses a linux line
 whose last `root=` is not the one this run composed.
 
 ---
 
-## Run 8 — the second invocation, for real
+## Run 8 - the second invocation, for real
 
 Every earlier run typed the whole configuration again. This one is the case the
 installer talks about most and had never actually been made: an install
 interrupted, and picked up with nothing but the state directory.
 
-Steps 20, 30 and 40 on an encrypted disk with a container named `vault` — not
-the default — then the run ends, the container is closed, and the tree is gone.
+Steps 20, 30 and 40 on an encrypted disk with a container named `vault` - not
+the default - then the run ends, the container is closed, and the tree is gone.
 The second invocation is what an operator would really type:
 
 ```bash
@@ -903,16 +903,16 @@ No `--crypt`. No `--crypt-name`. No `--disk`. No configuration file.
 [+] step 50 step_50_chroot: done
 ```
 
-`vault` came from the journal. With the settings answering instead — which is
+`vault` came from the journal. With the settings answering instead - which is
 what step 50 did until the reattach was made to read `crypt.variant` and
-`crypt.name` — `crypt` would have been the default `luks-passphrase` and
+`crypt.name` - `crypt` would have been the default `luks-passphrase` and
 `crypt_name` the default `gentoo`, and the container would have been reopened
 under a name the recorded plan does not mention. That fix had been reasoned
 about and pinned by tests that name the setting explicitly, which is the one
 case where the two cannot disagree. This is the run where they did.
 
 Step 95 was then asked to release it all, and refused the machine as it should:
-four blocking checks — no kernel, no initramfs, no boot entry, no fstab — for
+four blocking checks - no kernel, no initramfs, no boot entry, no fstab - for
 an install that stopped after step 40. It closed the container and unmounted
 the tree anyway, which is the half that is not a proof.
 
@@ -927,7 +927,7 @@ which has none.
 
 ---
 
-## Run 9 — genkernel, the builder nothing had ever run
+## Run 9 - genkernel, the builder nothing had ever run
 
 ```bash
 sudo script -qefc ./run9gk.sh console
@@ -938,7 +938,7 @@ sudo script -qefc ./run9gk.sh console
 `kernel = genkernel` had been reasoned about, refused for the TPM with the
 right reason, and given the right command-line dialect. It had never been run.
 Steps 20 to 50 passed, step 70 composed exactly the line the design says it
-should —
+should -
 
 ```
 root=/dev/mapper/gi--vg9-root rootfstype=ext4 ro dolvm \
@@ -946,7 +946,7 @@ root=/dev/mapper/gi--vg9-root rootfstype=ext4 ro dolvm \
 ```
 
 `dolvm` and `crypt_root=` where dracut would read `rd.lvm.vg=` and
-`rd.luks.uuid=` — and then:
+`rd.luks.uuid=` - and then:
 
 ```
 [*] genkernel all --bootdir=/boot --no-mountboot --makeopts=-j16 --luks --lvm --firmware
@@ -966,7 +966,7 @@ the symlink only with the `symlink` USE flag, which a stage3 does not carry.
 genkernel reads `/usr/src/linux` and nowhere else, so **every genkernel install
 this project could produce ended here.** `kernel = manual` had the same
 dependency and refused in the open, telling the operator to run
-`eselect kernel set 1` by hand — which is the command the installer runs now,
+`eselect kernel set 1` by hand - which is the command the installer runs now,
 for both, before either builds. Replayed on `--steps 50,70,80,90,95` against
 the same container:
 
@@ -984,17 +984,17 @@ plan around this option: genkernel's stock configuration builds essentially
 every module in the tree, and the module phase alone had been running three
 hours at `-j16` on a 16-thread host. `dist-kernel` is minutes.
 
-Three more defects came out of the same run, all of them the same shape — the
+Three more defects came out of the same run, all of them the same shape - the
 step knowing which *encryption* it was building for and not which *generator*:
 
 - `/etc/dracut.conf.d/70-gentoo-install.conf` was written on the genkernel
   target, carrying `kernel_cmdline` in genkernel's dialect. dracut was not
-  installed, so the file was inert — until the day something pulls dracut in,
+  installed, so the file was inert - until the day something pulls dracut in,
   and then it bakes a `crypt_root=` it cannot read into its image and the
   container is never opened. Written only where dracut is the generator.
 - `sys-kernel/dracut` was in the package list of every encrypted target, so the
   genkernel machine was having a second initramfs generator installed that it
-  will never run — the thing that would have found the file above.
+  will never run - the thing that would have found the file above.
 - `--show-plan` promised dracut modules a genkernel run does not install.
 
 None of the three is visible by reading step 70; all three are visible in the
@@ -1002,7 +1002,7 @@ first line of its output on a genkernel target.
 
 ---
 
-## Run 5 — a stage of your own
+## Run 5 - a stage of your own
 
 ```bash
 # on the host, or in the VM
@@ -1027,7 +1027,7 @@ Two things the first run showed that this page did not promise:
   an archive downloaded from a mirror with its signature is verified by
   signature *and* by checksum, not by checksum alone;
 - with neither a signature nor a checksum the run does not stop. It says
-  `nothing verified this archive`, names both ways to fix it, and unpacks —
+  `nothing verified this archive`, names both ways to fix it, and unpacks -
   *"because that is what was asked"*. That is the right call for a flag whose
   whole purpose is to install something the catalogue does not know about, and
   it is worth knowing before you rely on it.
@@ -1041,7 +1041,7 @@ And two things the replay found, neither of them about `--stage-file`:
   builds.
 - the guard that refuses to unpack onto the installer's own disk only fired
   when the disk plan's mountpoint was the very path being written, so the case
-  above — two roots that disagree, nothing mounted on either — went straight
+  above - two roots that disagree, nothing mounted on either - went straight
   past it.
 
 **Run it under a pty.** The typed disk confirmation reads `/dev/tty`, so
@@ -1051,7 +1051,7 @@ gives the installer a terminal and keeps the transcript.
 
 ---
 
-## Secure Boot signing — exercised against the real tools
+## Secure Boot signing - exercised against the real tools
 
 No VM. `sbsign`, `sbverify`, `sbattach` and `openssl` on the host, a real
 `grubx64.efi` that step 80 had installed in a previous run, and two throwaway
@@ -1064,9 +1064,9 @@ openssl req -new -x509 -newkey rsa:2048 -nodes -sha256 -days 3650 \
 
 `--secureboot-keyfile` and `--secureboot-cert` had been reasoned about and
 never run. Two of the things that reading got right are worth recording,
-because both are traps: `sbverify --list` **exits 0 on an unsigned binary** —
+because both are traps: `sbverify --list` **exits 0 on an unsigned binary** -
 it prints `No signature table present` and returns success, so the verdict has
-to be read from the text — and `sbsign` **appends rather than replaces**, so an
+to be read from the text - and `sbsign` **appends rather than replaces**, so an
 in-place signature adds one signature per run of step 80. Both were already
 handled. Measured:
 
@@ -1081,7 +1081,7 @@ signature 1
 ```
 
 Four in-place runs, one signature, identical size, and after rotating the pair
-the retired certificate is gone — which is the whole point of rotating one.
+the retired certificate is gone - which is the whole point of rotating one.
 A firmware that still has the old certificate enrolled will not start the
 image, and that is the correct outcome.
 
@@ -1114,13 +1114,13 @@ Signature verification OK
 
 Both settings *were* given. The second paragraph sends the operator to check
 the one part that is already correct. It now says the reason is above, and the
-"both are required" paragraph is kept for the case it describes — exactly one
-half given — where it also names which half.
+"both are required" paragraph is kept for the case it describes - exactly one
+half given - where it also names which half.
 
 **The signature was written and never read back.** Everywhere else in this
 project a write is read back: `write_validated` re-reads its file, the UKI
 fallback copy is compared rather than trusted. The one write where being wrong
-costs a boot was the exception. `sbverify --list` does not close it — it says a
+costs a boot was the exception. `sbverify --list` does not close it - it says a
 signature table is present, which is also true of an image whose signature
 covers different bytes than the ones on disk. An ESP that fills up mid-write
 gives exactly that. Truncating a signed `grubx64.efi` by 2000 bytes:
@@ -1137,7 +1137,7 @@ gives exactly that. Truncating a signed `grubx64.efi` by 2000 bytes:
 Step 80 reads every signature back with `sbverify --cert` now, and refuses the
 install rather than reporting `signed` on an image the firmware will reject
 with a message that names nothing. Where `sbverify` is absent the signature is
-still made and the miss is said out loud — refusing an install because the
+still made and the miss is said out loud - refusing an install because the
 check cannot be made would trade a machine that boots for a check.
 
 **What this run does not prove.** No firmware has been asked to *enrol* these
@@ -1147,7 +1147,7 @@ firmware's check is modelled on, which is as far as this bench goes.
 
 ---
 
-## efistub on the removable path — settled
+## efistub on the removable path - settled
 
 It is possible for exactly one kind of machine, and the installer refuses every
 other combination with the reason. `\EFI\BOOT\BOOTX64.EFI` is launched with
@@ -1198,7 +1198,7 @@ tested is the kind of claim this project exists not to make.
 
 That is the point of the exercise. The useful reflex:
 
-1. `./gentoo-install.sh --resume` — the state journal knows what completed.
+1. `./gentoo-install.sh --resume` - the state journal knows what completed.
 2. `/var/log/gentoo-install.log` on the target.
 3. The tools under `tools/` work from the live image against the installed
    disk: `luks-check.sh report`, `luks-open.sh open`, `rescue-chroot.sh enter`.

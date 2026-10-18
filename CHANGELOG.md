@@ -13,7 +13,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 ### Added
 
 - **An interrupted install has been resumed, for real.** Steps 20, 30 and 40 on
-  an encrypted disk with a container named `vault` — not the default — then the
+  an encrypted disk with a container named `vault` - not the default - then the
   run ended, the container closed, the tree gone. The second invocation carried
   no `--crypt`, no `--crypt-name`, no `--disk` and no configuration file, and
   reopened `/dev/loop0p2` as `/dev/mapper/vault` from the journal before
@@ -25,12 +25,12 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 - **Step 80 checks which `root=` the kernel will keep.** grub-mkconfig emits
   its own `root=` from grub-probe and then appends `GRUB_CMDLINE_LINUX`, so the
   generated line carries two; the kernel keeps the last, which is why this
-  project puts its own there — grub-probe run from inside a chroot has been
+  project puts its own there - grub-probe run from inside a chroot has been
   known to name the installer's disk rather than the target's. That ordering is
   load-bearing and nothing checked it: reverse it and the machine boots from
   whatever grub-probe guessed, in silence. The generated `grub.cfg` is read
   back now, and a linux line whose last `root=` is not the one this run
-  composed — or which carries none at all — is refused.
+  composed - or which carries none at all - is refused.
 
 - **The GPG-wrapped key file has been read by an initramfs.** Nine steps, none
   failed, then a boot: `dracut: rd.luks.key: keypath='/efi/luks-key.gpg'
@@ -44,8 +44,8 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 - **`systemd-boot` has been booted.** The last of the four, and the last claim
   in this project without a log behind it. On a firmware given a pristine
   variable store, with the install refused an NVRAM entry on purpose, OVMF fell
-  back to `\EFI\BOOT\BOOTX64.EFI` and systemd-boot drew its own menu — the
-  entry step 80 wrote, counting down the timeout step 80 wrote — then started
+  back to `\EFI\BOOT\BOOTX64.EFI` and systemd-boot drew its own menu - the
+  entry step 80 wrote, counting down the timeout step 80 wrote - then started
   the kernel, and dracut stopped at the passphrase prompt. The assertion the
   run existed to check held too: under `--init openrc`, `bootctl` comes from
   `sys-apps/systemd-utils`, and step 80 found the package installed without it
@@ -55,7 +55,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 - **The page's status section is four lines, one per bootloader.** A dense
   paragraph is where "all four of them started at least once" hid a boot that
   had not happened. Each bootloader now has its own row, its verdict in a
-  colour, and the reason — including the one that reads *not booted*, which is
+  colour, and the reason - including the one that reads *not booted*, which is
   the row that made the section worth rewriting.
 
 - **The four choice groups on the page are checked against `variants/`.** A
@@ -67,8 +67,8 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   before one: `cfg_yes`/`cfg_is`, then `_fin_recorded` one level down, then
   `_pf_cfg_first`. Each time the new reader was invisible to the test whose
   purpose is to notice exactly that. The shape is now enumerated instead of
-  trusted: a helper that walks a list of candidate names — `for key in "$@"`
-  over `CFG[$key]` — must be one the scan knows, and adding one without
+  trusted: a helper that walks a list of candidate names - `for key in "$@"`
+  over `CFG[$key]` - must be one the scan knows, and adding one without
   teaching the scan fails. Proved both ways: with the scan widened the defect
   above is caught, and with the scan as it was the same defect passes.
 
@@ -76,7 +76,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   `luksAddKey` reusing the same argv, and each key proved against each keyslot
   were exercised on a loop-backed LUKS2 container: both slots come out at 512
   bits and each credential opens its own slot and only its own. The ways-in
-  gate — the counter that insists on two independent credentials — is pinned
+  gate - the counter that insists on two independent credentials - is pinned
   too, including that a description holding a bare number is not mistaken for a
   slot.
 
@@ -91,8 +91,8 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   `kernel/genkernel`, `kernel/manual` and the removable path of `boot/efistub`
   had no test naming them. Eight now do, and five fail with the corresponding
   guard broken. Reading a refusal is not the same as watching it fire: the
-  vocabularies these files compare against — `crypt_family`'s `keyfile`,
-  `target_topology`'s `lvm` — are the two that have each cost this project a
+  vocabularies these files compare against - `crypt_family`'s `keyfile`,
+  `target_topology`'s `lvm` - are the two that have each cost this project a
   whole install by drifting.
 
 - **`docs/TESTING.md` settles efistub on the removable path.** It is possible
@@ -115,7 +115,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 - **A `hardened` stage has been installed, through step 60.** Steps 20 to 60 on
   an encrypted disk: signed pointer, detached `.asc` and signed sha256 all
   verify, and the profile that follows is `default/linux/amd64/23.0/hardened`
-  with no experimental warning — which is what `data/profiles.tsv` says it is.
+  with no experimental warning - which is what `data/profiles.tsv` says it is.
   Four flavours have now been unpacked: `base`, `musl`, `hardened`; `llvm` has
   not.
 
@@ -127,7 +127,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 - **A `musl` stage has been installed.** Never done before: the flavour was
   offered, the tables named it, and nothing had ever unpacked one. Steps 20 to
-  50 on an encrypted disk, four steps and none failed — the signed pointer, the
+  50 on an encrypted disk, four steps and none failed - the signed pointer, the
   detached `.asc` and the signed sha256 all check out for
   `stage3-amd64-musl-openrc`, and the tree that lands is a real musl one
   (`ld-musl-x86_64.so.1`, `CHOST="x86_64-pc-linux-musl"`, no `libc.so.6`). The
@@ -142,7 +142,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   ways: step 95, the exit trap, and the journal on the next run if the machine
   lost power in between. A governor this machine's cpufreq driver does not
   offer is refused at the prompt, from `scaling_available_governors` rather
-  than a table — `intel_pstate` has two and `acpi-cpufreq` has five. `keep`
+  than a table - `intel_pstate` has two and `acpi-cpufreq` has five. `keep`
   opts out.
 
 - **PCR policies have names.** There is not one policy: `crypt_pcrs` now takes
@@ -152,8 +152,8 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   and a later reseal all read the same thing.
 
 - **The installer says when a policy binds nothing.** Registers 2, 3 and 6 are
-  empty on a good deal of consumer firmware — the value of a register extended
-  with `EV_SEPARATOR` and nothing else — so the default policy rests on PCR 0
+  empty on a good deal of consumer firmware - the value of a register extended
+  with `EV_SEPARATOR` and nothing else - so the default policy rests on PCR 0
   alone. `tools/tpm-pcr.sh` reported that; the installer sealed against them
   without a word. It measures them now and says which ones bind nothing.
 
@@ -161,7 +161,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 - **`_fin_fact()`, a second copy of `target_fact()`.** The two bodies were
   identical. The comment that justified the copy said `target_fact` "reads CFG
-  first" — it has not for some time; it carries the same explicit-then-journal
+  first" - it has not for some time; it carries the same explicit-then-journal
   ordering and the same explanation. Two implementations of a precedence rule
   drift, and precedence is what the fix above is about.
 
@@ -175,8 +175,8 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 ### Fixed
 
 - **A Secure Boot signature is read back before the install is called done.**
-  Everywhere else in this project a write is read back — `write_validated`
-  re-reads its file, the UKI fallback copy is compared rather than trusted —
+  Everywhere else in this project a write is read back - `write_validated`
+  re-reads its file, the UKI fallback copy is compared rather than trusted -
   and the one write where being wrong costs a boot was the exception.
   `sbverify --list` does not close it: it says a signature table is present,
   which is also true of an image whose signature covers different bytes than
@@ -185,20 +185,20 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   nothing wrong, `--cert` said `Signature verification failed`. Step 80 asks
   `sbverify --cert` now and refuses rather than reporting `signed` on an image
   the firmware will reject with a message that names nothing. Where `sbverify`
-  is absent the signature is still made and the miss is said out loud — refusing
+  is absent the signature is still made and the miss is said out loud - refusing
   an install because the check cannot be made would trade a machine that boots
   for a check.
 
 - **A Secure Boot refusal no longer contradicts itself.** A key path with a
   typo in it produced `Secure Boot key not readable: /root/db.kye` and then,
-  underneath, `secureboot_keyfile and secureboot_cert are both required` —
+  underneath, `secureboot_keyfile and secureboot_cert are both required` -
   sending the operator to check the two settings that are the part already
   correct. The second paragraph is kept for the case it actually describes,
   exactly one half given, where it now also names which half is missing.
 
 - **`kernel = genkernel` could not build a kernel at all.** The first genkernel
   install this project ever ran got through steps 20 to 50, composed the right
-  command line — `dolvm crypt_root=UUID=…` in genkernel's own dialect — and then
+  command line - `dolvm crypt_root=UUID=…` in genkernel's own dialect - and then
   stopped on `genkernel failed`, with the reason in `/var/log/genkernel.log`
   *inside* the target:
 
@@ -210,13 +210,13 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   that symlink only with the `symlink` USE flag, which a stage3 does not carry;
   genkernel reads `/usr/src/linux` and nowhere else. Every genkernel install
   ended there. Step 70 runs `eselect kernel set 1` in the target now, before
-  genkernel, and refuses if the symlink is still absent afterwards — `eselect`
+  genkernel, and refuses if the symlink is still absent afterwards - `eselect`
   exits 0 on an empty list, and letting that through only moves the failure to
   a log the operator is not looking at.
 
-- **`kernel = manual` stopped on the same missing symlink.** One notch softer —
+- **`kernel = manual` stopped on the same missing symlink.** One notch softer -
   it refused, in the open, with a message telling the operator to go and run
-  `eselect kernel set 1` themselves — but it was still a stop on the default
+  `eselect kernel set 1` themselves - but it was still a stop on the default
   path for something the installer can do. It does it now, and only for the
   default: `--kernel-source-dir` is a choice, and moving `/usr/src/linux` on
   its behalf would quietly build a different kernel from the one asked for, so
@@ -226,7 +226,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 - **A genkernel install was given a dracut configuration.** Step 70 wrote
   `/etc/dracut.conf.d/70-gentoo-install.conf` on every target regardless of the
   generator, so a genkernel machine ended up carrying a `kernel_cmdline` in
-  genkernel's dialect inside dracut's configuration directory — inert until the
+  genkernel's dialect inside dracut's configuration directory - inert until the
   day something pulls dracut in, and then a command line dracut cannot read,
   written by this installer, in a file no one remembers. The file is written
   only when dracut is the generator, and `--show-plan` no longer promises
@@ -235,19 +235,19 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 - **A genkernel target was given dracut to install.** `sys-kernel/dracut` was
   in the package list of every encrypted target regardless of what builds the
   image, so a genkernel machine ended up carrying a second initramfs generator
-  it will never run — and, with a stray `dracut.conf.d` file beside it, a way
+  it will never run - and, with a stray `dracut.conf.d` file beside it, a way
   for the next tool along to build an unbootable image from a command line in
   the wrong dialect. Emerged only where dracut is the generator; `cryptsetup`
   and `gnupg`, which both generators need, are unchanged.
 
 - **The reason for writing no dracut configuration is given once.**
   `kernel_write_dracut_conf` is called three times on the way through step 70,
-  and on a genkernel target each call printed the same three-line paragraph —
+  and on a genkernel target each call printed the same three-line paragraph -
   three copies reading like three separate decisions.
 
 - **A layout that makes no volume group is no longer refused for a name.** The
   collision guard added one cycle earlier asked `disk_lvm`, which defaults to
-  `auto` — and `auto` means *whatever the layout says*, `minimal` saying
+  `auto` - and `auto` means *whatever the layout says*, `minimal` saying
   `lvm: no`. On a machine that has a `vg0` of its own, a perfectly good minimal
   install was refused for a group name it was never going to use. The question
   is asked of the plan now, which is what says whether a group will be made,
@@ -273,7 +273,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 - **An LVM disk said it had one partition when it had two.** The counter is
   advanced by the loop that lays out a non-LVM table and was left where it
   started on the LVM branch, so the message read `1 partition(s) created`
-  directly above `vgcreate failed on /dev/loop0p2` — which says the partition
+  directly above `vgcreate failed on /dev/loop0p2` - which says the partition
   is not there when `sgdisk -p` and the kernel both showed it was.
 
 - **A unified kernel image carried its command line twice.**
@@ -289,7 +289,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   agree and unbounded when they do not: which of two contradicting `root=` or
   `console=` arguments the kernel takes is not a thing to leave to chance. It
   is passed now only when the target's own dracut configuration does not
-  already say precisely it — which is also the case where it matters, a
+  already say precisely it - which is also the case where it matters, a
   `--steps 80` against a tree step 70 never configured.
 
 - **The initramfs check now asks a systemd image the question that matters.**
@@ -298,7 +298,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   `systemd-cryptsetup@<name>.service`, and dracut ships `71systemd-cryptsetup`
   and includes it only when `/usr/lib/systemd/systemd-cryptsetup` exists. The
   module is required now when the image carries the `systemd` module and
-  something is encrypted — asked of the image and not of the setting, because
+  something is encrypted - asked of the image and not of the setting, because
   the image is what will look for the unit. Run against the image that hung, it
   fails with the package and the USE flag beside it.
 
@@ -306,14 +306,14 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   `sys-apps/systemd` for `cryptsetup` so the initramfs can open the container;
   the `uki` variant asks the same package for `boot` so the EFI stub exists;
   `write_block` replaces what it finds, so whichever ran second left the
-  other's flag off — `[ebuild R] sys-apps/systemd USE="… cryptsetup* …
+  other's flag off - `[ebuild R] sys-apps/systemd USE="… cryptsetup* …
   -boot* …"`. The block accumulates now, and a line already in it is not
   repeated, so a rerun is a no-op rather than a growing file.
 
 - **An initramfs older than the packages it is built out of is made again.**
   systemd came back with `USE=cryptsetup` at 10:16 and the image on disk was
   still the one from 09:48, without the module that opens the container.
-  Nothing downstream noticed — the kernel was installed and `/boot` held an
+  Nothing downstream noticed - the kernel was installed and `/boot` held an
   image, so the build was skipped. Step 70 rebuilds it when a package it is
   built out of was rebuilt while the step ran.
 
@@ -321,14 +321,14 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
   *The unified kernel image could not be installed.* The `uki` variant asked
   every target for `sys-apps/systemd-utils`, which on a systemd target is a
-  blocker against the `sys-apps/systemd` already installed — `Conflict: 2
+  blocker against the `sys-apps/systemd` already installed - `Conflict: 2
   blocks (2 unsatisfied)`, and step 80 failed. Measured in that target: systemd
   has `boot` in `IUSE` and not in `USE`, so the EFI stub is absent and it is
   the flag on the package already there that puts it back. The variant asks
   systemd on a systemd target now, systemd-utils only on OpenRC.
 
   *No service was enabled.* `systemctl --root=<target> enable` needs a
-  `systemctl`, and it was running the **host's** — the host of a Gentoo install
+  `systemctl`, and it was running the **host's** - the host of a Gentoo install
   being the minimal ISO, which is OpenRC and has none. The install finished
   with no network service, step 90 said `done`, and step 95 said "nothing was
   left half-done", because every caller ignores this function's return value
@@ -351,20 +351,20 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   that `crypt_key_dir` (`/boot/efi`) existed and refused:
 
       [x] crypt_key_dir does not exist: /mnt/gentoo/boot/efi
-      [x]        it has to be mounted before this step runs — normally the
+      [x]        it has to be mounted before this step runs - normally the
       [x]        ESP, which step 20 formats and mounts
 
   about an ESP that step 30 itself was three functions away from formatting.
   `_kg_install_key` creates that directory at deploy time, after the
   filesystems are made and mounted, so nothing needed it to exist that early.
   The comment above the check records the *previous* version of the same
-  mistake — it asked the question of the wrong filesystem — and the fix then
+  mistake - it asked the question of the wrong filesystem - and the fix then
   changed which path was tested without changing when. It is asked once the
   target root is mounted now, which is the case a `--steps 30` rerun is.
 
 - **A README transcript showed output the command had stopped producing.** The
   `--dump-config | head -5` block listed `arch`, `assume_yes`, `boot_device`,
-  `boot_disk`, `boot_label` — which stopped being the first five settings the
+  `boot_disk`, `boot_label` - which stopped being the first five settings the
   day `accounts` and `accounts_file` were declared, since both sort ahead of
   them. It is presented as a `console` block with a `$` prompt, so it reads as
   something that was run. Nobody reruns a transcript, so a test does: every
@@ -374,7 +374,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 - **The PCR table offered a value the validator refuses.** Three of its four
   rows print a register list an operator can type; the fourth said `0-7`, which
-  reads like the same kind of value and is not one — `crypt_pcrs = 0-7` is
+  reads like the same kind of value and is not one - `crypt_pcrs = 0-7` is
   answered with *"Invalid PCR list: 0-7"*. It now prints `0,1,2,3,4,5,6,7`,
   which is exactly what the code expands `strict` to. A test walks the table
   and requires both halves of every row: the name must expand to the registers
@@ -383,7 +383,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 - **A verifier that reads the NVRAM of the machine it runs on is not a
   verifier.** Found by the run the previous fix finally made safe. Step 80
   installed `systemd-boot` to a loop image, was refused its variables, wrote no
-  entry at all — and then reported
+  entry at all - and then reported
 
       [+] NVRAM entry 'Linux Boot Manager' points at the loader
 
@@ -391,7 +391,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   host has a `Linux Boot Manager` entry of its own from the day before. `grub`
   is worse: `boot_label` defaults to `gentoo`, which is exactly what a Gentoo
   workstation calls its own entry, so an install to a loop image would have
-  been told its entry was in place. `efistub` failed the other way — it
+  been told its entry was in place. `efistub` failed the other way - it
   *demanded* an entry step 80 had deliberately not written, and would have
   failed a correct install. All three now ask
   `disk_may_write_firmware_state()` before reading, as the three that write
@@ -404,10 +404,10 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   machine, replaced that machine's own 'gentoo' NVRAM entry with one pointing
   at the loop device's ESP; the installer then rebooted, and the firmware found
   nothing to boot."* When it was written it was wired into the path that
-  caused the accident — `efistub`, which calls `efibootmgr` through
+  caused the accident - `efistub`, which calls `efibootmgr` through
   `boot_create_entry`. `grub` and `systemd-boot` do not call `efibootmgr` at
   all: `grub-install` and `bootctl install` write the entry themselves, through
-  the efivarfs they find in the chroot — and step 50 binds the host's `/sys`
+  the efivarfs they find in the chroot - and step 50 binds the host's `/sys`
   into the target, so on a UEFI host that efivarfs is the host's own.
 
   Measured on this machine, with the target a loop device:
@@ -418,7 +418,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
       chroot <target> bootctl --esp-path=/efi install
 
   with nothing to stop either. `systemd-boot`'s only guard asked a different
-  question — *is there an efivarfs in the chroot* — which answers yes about the
+  question - *is there an efivarfs in the chroot* - which answers yes about the
   wrong machine's; `grub` asked nothing. Both ask the guard now, and add
   `--no-nvram` / `--no-variables` when the answer is no, saying which disk and
   why. Nothing is lost: `bootctl` writes `\EFI\BOOT\BOOTX64.EFI` itself, and
@@ -426,7 +426,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   A test refuses a bootloader that writes firmware state without asking.
 
 - **The project page, the README and `docs/TESTING.md` said a bootloader had
-  been booted that never has.** All three claimed `systemd-boot` — the page "as
+  been booted that never has.** All three claimed `systemd-boot` - the page "as
   far as the passphrase prompt", the README "`bootctl` installed, the loader
   entry written, and the machine started from `\EFI\BOOT\BOOTX64.EFI`", and
   TESTING.md a flat "**All four pass.**" over a table with no evidence column.
@@ -434,8 +434,8 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   no run recorded, while `grub`, `efistub` and `uki` each have a quoted line
   from the firmware or the kernel. The claim was written from the shape of the
   matrix, which is the one thing the top of TESTING.md says it will not do.
-  `docs/TESTING.md` now carries the status of record — one row per bootloader,
-  a Result of exactly `booted` or `not booted`, and the evidence beside it —
+  `docs/TESTING.md` now carries the status of record - one row per bootloader,
+  a Result of exactly `booted` or `not booted`, and the evidence beside it -
   the page states the same four as data attributes, and a test refuses the page
   or the README if either says booted where the record does not.
 
@@ -447,11 +447,11 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 - **A file its own checker refuses is removed when there was nothing there
   before.** `write_validated` rolls back by putting the previous content back,
-  and for a file that did not exist there was no previous content — so the
+  and for a file that did not exist there was no previous content - so the
   rejected bytes stayed. For the files this function guards that is the worst
   of the three outcomes. A new `/etc/sudoers.d/10-gentoo-install` that `visudo`
-  refuses makes sudo refuse to run **at all** — *"no valid sudoers sources
-  found, quitting"* — on every account, which is a machine nobody can
+  refuses makes sudo refuse to run **at all** - *"no valid sudoers sources
+  found, quitting"* - on every account, which is a machine nobody can
   administer: the accident this whole project is written against. A
   `dracut.conf.d` snippet that does not source breaks every initramfs build
   after it, and a loader entry the firmware cannot read is a boot menu with a
@@ -461,7 +461,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 - **A rerun of step 90 no longer lists the work it has just finished.** The
   to-do entries are numbered from 1 on every run, so a second run recording
-  fewer of them left the earlier ones in the journal. Measured — three to-dos,
+  fewer of them left the earlier ones in the journal. Measured - three to-dos,
   then one:
 
       system.todo.1=install an ssh key
@@ -474,32 +474,32 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   before recording its own.
 
 - **Pre-flight asks for the tools the configuration actually needs.** The
-  filesystem lookup read `fs`, `filesystem` and `root_fs` — three names nothing
-  declares — so the answer was always the `ext4` fallback and `mkfs.btrfs`,
+  filesystem lookup read `fs`, `filesystem` and `root_fs` - three names nothing
+  declares - so the answer was always the `ext4` fallback and `mkfs.btrfs`,
   `mkfs.xfs` and `mkfs.f2fs` were never required. Measured: with
   `disk_filesystem` set to each of the four, step 10 asked for `mkfs.ext4`
   every time. A btrfs install on a medium without `btrfs-progs` therefore got a
   green *"Required tools: N present"* from the one step whose whole job is to
-  say so before the disk is touched, and met the refusal in step 20 instead —
+  say so before the disk is touched, and met the refusal in step 20 instead -
   which is exactly the "one refusal per attempt" this step exists to prevent.
   Ten of the twelve setting names step 10 read were declared by nothing; the
   other nine were harmless because the real name led each list.
 
 - **The ssh key goes to the account the list names.** `accounts` supersedes
-  `user` — `_sys_accounts_records` says so out loud and then refuses to merge
-  the two — but `_sys_sshd` read `CFG[user]` anyway. So the documented way of
+  `user` - `_sys_accounts_records` says so out loud and then refuses to merge
+  the two - but `_sys_sshd` read `CFG[user]` anyway. So the documented way of
   declaring an account silently switched off the ssh-key half of the sshd part.
   Measured on a throwaway tree: with
   `accounts = "alice:wheel:/bin/bash:sudo"` and `ssh_key` set, the key was
   installed **nowhere**, `PasswordAuthentication` stayed **yes**, and the run
   warned *"no authorized key was supplied"* about a key that had been supplied.
-  The key now follows the first account of the list — the same one
-  `_sys_accounts` already records as `system.user` — and falls back to
+  The key now follows the first account of the list - the same one
+  `_sys_accounts` already records as `system.user` - and falls back to
   `CFG[user]` for configurations written before the list existed.
 
 - **A key in the home of an account that does not exist is not a way in.** The
   directory would be created by root, `chown` would fail because there is no
-  such user, and sshd would refuse to read it under `StrictModes` — and
+  such user, and sshd would refuse to read it under `StrictModes` - and
   password authentication would have been turned off on the strength of it,
   leaving sshd running with nothing able to log in. The key is not installed in
   that case, passwords stay on, and the reason is said. Asked only when
@@ -507,7 +507,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   on ignorance.
 
 - **The closing screen reads the names the steps actually write.** The recap
-  asked the journal for `disk.filesystem` and `disk.vg` — two of the four names
+  asked the journal for `disk.filesystem` and `disk.vg` - two of the four names
   step 20's own comment lists as the wrong ones, next to the note that they are
   "names no consumer reads". The writer was corrected; this reader was not. So
   the last screen of every LVM install said
@@ -525,7 +525,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 - **A stage of one's own is recorded, and so is what checked it.** The
   catalogue path journals `stage.variant` and `stage.verified`; `--stage-file`
   journalled neither, so the recap printed no stage line and no verified line
-  at all — silent about the archive it had installed and silent about whether
+  at all - silent about the archive it had installed and silent about whether
   anything had vouched for it. `stage_local_verify` now publishes what it
   checked (`pgp-signature`, `sha256`, both, or `nothing`), step 40 journals it,
   and the recap falls back to the archive's own file name when there is no
@@ -534,15 +534,15 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 - **The steps that run after step 30 read the encryption from the journal.**
   `crypt` defaults to `luks-passphrase` and `crypt_name` to `gentoo`, and a
-  second invocation — `--resume`, `--steps 70,80`, the sequence step 95 prints
-  when it fails — is very often launched without the configuration file, so CFG
+  second invocation - `--resume`, `--steps 70,80`, the sequence step 95 prints
+  when it fails - is very often launched without the configuration file, so CFG
   holds those defaults and nothing else. `target_fact` exists for exactly this
   and its own comment says so; step 50 and step 75 read CFG anyway. It cost in
   both directions. An install the operator asked to leave *plain* was
   reattached by trying to open a LUKS container on a partition with no header,
   and step 50 gave up with "the target could not be made reachable". An install
-  with `crypt_name = vault` was reopened as `/dev/mapper/gentoo` — not the
-  device the recorded plan names — so the mount failed and a mapping under the
+  with `crypt_name = vault` was reopened as `/dev/mapper/gentoo` - not the
+  device the recorded plan names - so the mount failed and a mapping under the
   wrong name was left behind. Step 75 was the quiet one: on a `luks-tpm`
   machine it loaded the passphrase variant, found it defines no
   `crypt_variant_seal`, and returned **success** saying "luks-passphrase has
@@ -560,12 +560,12 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   unset for good. Measured on a loop image: `blkid` on a partitioned,
   unformatted ESP prints nothing, the same partition after `mkfs.vfat` prints
   `38CE-7632`. The cost fell on the one variant that exists to make unlocking
-  automatic — with no `disk.esp_uuid`, `crypt.keyfile_uuid` was never recorded
+  automatic - with no `disk.esp_uuid`, `crypt.keyfile_uuid` was never recorded
   either and step 70 wrote `rd.luks.key=/efi/luks-key.gpg` with no device after
   it, which dracut reads from *inside* the initramfs, where the key is not: the
   machine booted, asked for the recovery passphrase, and never opened the file
   `crypt = luks-keyfile-gpg` had just deployed. `disk_record_plan_facts()` now
-  lives in `lib/disk.sh`, which owns the plan format, and both steps call it —
+  lives in `lib/disk.sh`, which owns the plan format, and both steps call it -
   step 30 with the plan retargeted onto the open container, so the journal
   names the mapper the root filesystem is really on. What is *not* re-recorded
   is `disk.crypt_device`: the device to encrypt is what lies under the mapper,
@@ -581,7 +581,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   The note above `CFG_ENUM` records why the table exists: *"a value out of a
   configuration file went through no check at all, so `bootloader = frobnicate`
   was accepted and only failed two hours later, inside step 80."* Nine were
-  still outside it. Two — `efistub_cmdline` and `firmware` — repeated that
+  still outside it. Two - `efistub_cmdline` and `firmware` - repeated that
   failure exactly. The yes/no ones were worse, because they are read as
   `== "yes"`: a typo silently meant no. `boot_removable` is read as `== "yes"`
   by grub and as `== "no"` by uki, so `boot_removable = ture` meant *no
@@ -593,25 +593,25 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   declared `sshd`, so `--ssh` came back "Unknown option" and the lookup could
   only ever answer no. The hygiene test that keeps every read key declared now
   scans `cfg_yes` and `cfg_is` as well as `cfg`, `target_fact`, `_sys_cfg` and
-  the rest — which is how it was found, and what stops the class recurring.
+  the rest - which is how it was found, and what stops the class recurring.
 
 - **Every spelling of `/` is refused as a chroot target.** The refusal that
   keeps mounts off the running system compared the path as text, so `/` and `//`
-  were caught while `/.`, `/..`, `/mnt/..` and `/tmp/../` — four other spellings
-  of the same directory — went straight through. Past it, `/proc`, `/sys` and
+  were caught while `/.`, `/..`, `/mnt/..` and `/tmp/../` - four other spellings
+  of the same directory - went straight through. Past it, `/proc`, `/sys` and
   `/dev` would have been mounted onto the running machine's own, recorded as
-  this run's, and unmounted again by `chroot_cleanup` — which is exactly the
+  this run's, and unmounted again by `chroot_cleanup` - which is exactly the
   sentence the refusal already printed and could not keep. The path is resolved
   before it is compared, and kept resolved, so `/mnt/gentoo/../gentoo` also
   arrives as `/mnt/gentoo`.
 
 - **On a machine with only `wget`, a 404 was retried instead of reported.** The
   fallback downloader ran `wget --quiet` and then searched wget's message for
-  `404 ` to tell "gone" from "try again" — but `--quiet` silences that very
+  `404 ` to tell "gone" from "try again" - but `--quiet` silences that very
   line, so every permanent failure came out transient, was retried through the
   backoff, and the operator never saw the message that names `--arch`, `--init`
   and `--flavour` as the thing to check. The comment above it said "wget's
-  statuses do not separate gone from try again"; they do — 8 is "the server
+  statuses do not separate gone from try again"; they do - 8 is "the server
   answered with an error", 4 is a network failure. The code is now read as a
   number from a line `--no-verbose` keeps, and never from wget's words, which
   are translated: a French wget writes the 404 followed by a non-breaking
@@ -621,42 +621,42 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 - **The key handed to the sealing side says when it is not in RAM.**
   `crypt_secure_tmpdir` asks which of `/run`, `/dev/shm` and `/tmp` is in RAM
-  and warns out loud when none is — *"key material will touch a persistent
+  and warns out loud when none is - *"key material will touch a persistent
   filesystem while this runs; it is deleted afterwards, and deleted is not
   erased"*. The one directory it never sees is the copy the sealing side reads:
   that has to sit at a path both sides agree on, so it is placed by name rather
   than chosen, and it was never asked about. Measured with `/run` unbound in the
   target: the LUKS key landed on ext4 in the clear and nothing was said. It
-  warns now, like its sibling, and names what puts it right — step 50 binds
+  warns now, like its sibling, and names what puts it right - step 50 binds
   `/run` into the target.
 
 - **Disk verification says what each mountpoint carries, not merely that
   something is there.** `disk_verify` checked that the planned device exists,
   that *something* is mounted at each target, and that the planned device holds
-  the right filesystem type — never that the thing mounted at the target is the
+  the right filesystem type - never that the thing mounted at the target is the
   planned device. Proved on two loop devices: `/var` mounted from a different
   disk entirely, and the run reported "disk verification passed" a moment before
   step 40 would have unpacked the stage3 into that tree. Its own docstring is
   *"Nothing is claimed that has not been checked."* `disk_mount_tree` compares
-  the source before it mounts — it refuses to stack on somebody else's — so the
+  the source before it mounts - it refuses to stack on somebody else's - so the
   comparison was already in the file, four functions away.
 
 - **"volume group is still active" asked about the allocation policy.** The
   teardown's last check ran `vgs -o vg_attr --noheadings | grep -q 'a'`, and the
   `a` in `vg_attr` is the allocation policy, not activity. Measured on a real
   machine: an active group reads `wz--n--`, with no `a` anywhere, so the warning
-  never fired for the thing it names — while a group created with
+  never fired for the thing it names - while a group created with
   `--alloc anywhere` reads `wz--a--` and would have raised it while perfectly
   inactive. LVM states activity per logical volume, so that is where it is asked
   now. Verified on a loop-backed group in both states.
 
 - **The last partition no longer swallows space the plan keeps back.** Without
-  LVM, `disk_partition` gave the last partition `0:0` — the rest of the disk —
+  LVM, `disk_partition` gave the last partition `0:0` - the rest of the disk -
   whatever the plan said. The `server` layout keeps a fifth of the disk
   unallocated on purpose, so on a 200 GiB disk the plan read "home 28.6 GiB,
   38.2 GiB unpartitioned" and the disk came back with a 66.9 GiB home. The plan
   is what the operator confirms by typing the device path. `0:0` is now used
-  only when the plan emits no free row — which is exactly when the last volume
+  only when the plan emits no free row - which is exactly when the last volume
   is meant to take the rest, and where `0:0` is also the exact answer because it
   absorbs the megabyte alignment rounds away. Measured on a loop device before
   and after: 66.9 GiB, then 28.6 GiB, with `minimal` and `desktop` unchanged.
@@ -664,7 +664,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 - **Releasing a disk no longer deactivates volumes on another one.**
   `disk_release` frees the holders of the target so that `sgdisk` cannot fail on
   a busy device, and it finds the volume group through a logical volume on that
-  target — then deactivates the whole group. A group spanning a second disk was
+  target - then deactivates the whole group. A group spanning a second disk was
   deactivated there too. Proved on two loop devices: releasing the first took
   down a logical volume living entirely on the second, and the run said nothing.
   Every write in `lib/disk.sh` passes through `_disk_assert_target`; `vgchange`
@@ -676,7 +676,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   `disk_root_ancestors` asked `lsblk -nso NAME`, and inverse mode still draws
   the tree: the names came back as `└─nvme0n1p3` and `    └─nvme0n1`. `tr -d ' '`
   removed the spaces and left the box-drawing characters, so nothing it
-  returned ever equalled a plain disk name — only the first line, which carries
+  returned ever equalled a plain disk name - only the first line, which carries
   no prefix and is a mapper name, could match anything at all.
 
   Two guards stand on it, and they fail in opposite directions.
@@ -691,8 +691,8 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   `write_block` replaces its own block with an `awk` that starts printing at the
   opening marker and consumes lines until the closing one. With no closing
   marker it consumed to the end: a `make.conf` whose closing line a hand edit or
-  an `etc-update` merge had removed came back four lines shorter — `USE`,
-  `ACCEPT_LICENSE`, `VIDEO_CARDS` and `GRUB_PLATFORMS` gone — and the run
+  an `etc-update` merge had removed came back four lines shorter - `USE`,
+  `ACCEPT_LICENSE`, `VIDEO_CARDS` and `GRUB_PLATFORMS` gone - and the run
   reported "block written". The writer's contract is *"a rerun replaces its own
   block and nothing else, so hand edits elsewhere in the file survive"*, and the
   one state where that matters is the one where it did not hold. Nothing is
@@ -705,38 +705,38 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   root at a path `--state-dir` chose, and `: >"$STATE_FILE"` follows a link:
   proved on a dangling one, where the file appeared at the other end.
   `_core_plain_file` two lines further down already refused to `chmod` a
-  symlink — it just did not refuse to create through one. Only a regular file
+  symlink - it just did not refuse to create through one. Only a regular file
   is used now; anything else stops the run rather than being guessed at or
   quietly removed, because a symlink where the journal belongs is a sign, not
   an accident. `state_reset` was already safe: `rm` unlinks the link, not what
   it names.
 
 - **An initramfs that cannot be read is not an initramfs missing its crypt
-  module.** The check ran the *host's* `lsinitrd` on the target's image — the
+  module.** The check ran the *host's* `lsinitrd` on the target's image - the
   third site in this repository to ask the wrong machine for a tool that lives
-  in the target — and read an empty listing as "the module is absent". It is
+  in the target - and read an empty listing as "the module is absent". It is
   not: it is "the image could not be read", which is what `lsinitrd` returns for
   a file another process is still writing, an initramfs being copied onto the
   ESP for instance. Watched on the musl run: it warned that the crypt module was
   missing from an image that carried it, as `lsinitrd --mod` said plainly a
-  minute later. Step 95 already knows this one — *"'this file is not an
-  initramfs' turns into 'every module is missing'"* — and now step 70 does too.
+  minute later. Step 95 already knows this one - *"'this file is not an
+  initramfs' turns into 'every module is missing'"* - and now step 70 does too.
 
 - **A fresh target is no longer told its machine will not boot.** dracut is not
   in a stage3, so on a target that has just been unpacked its module directory
   does not exist and every module it provides reads as missing. The check said
   so anyway and ended on *"the initramfs will build without them and the machine
-  will not open its container"* — on every encrypted install, a minute before
+  will not open its container"* - on every encrypted install, a minute before
   emerging the package that brings those modules and building a correct
   initramfs. A warning nobody should act on is what teaches an operator to skip
   the ones that matter, which this project has written down once already about
   the NVRAM entry in step 95. `kernel_dracut_prune_modules` takes the same
-  reading a few lines down and says it plainly — "not there yet" is not "not
-  coming" — and what gets built is checked afterwards against the image itself.
+  reading a few lines down and says it plainly - "not there yet" is not "not
+  coming" - and what gets built is checked afterwards against the image itself.
 
 - **A layout's one-line description no longer claims a topology the plan can
   override.** `server` and `desktop` began theirs with "LVM;", and `disk_lvm`
-  overrides what a layout asks for — so `--disk-layout server --disk-lvm no`
+  overrides what a layout asks for - so `--disk-layout server --disk-lvm no`
   printed "LVM; /var and /var/log split off…" one line above "no LVM: plain GPT
   partitions". That sentence is the one an operator reads before typing the
   device path to confirm the erase. The topology is stated by the plan, which
@@ -745,8 +745,8 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 - **A `--resume` no longer writes a TPM slot into the journal that nothing
   sealed.** On the already-provisioned path, the `luks-tpm` variant asserted
   `crypt_tpm_slot` outright, and it was wrong in both directions. Where step 75
-  had never succeeded — no TPM in the target, clevis absent, a sealing the chip
-  refused, all of which this project has hit — the journal came out saying the
+  had never succeeded - no TPM in the target, clevis absent, a sealing the chip
+  refused, all of which this project has hit - the journal came out saying the
   TPM opens this container. And where the sealing *had* succeeded, clevis may
   have taken another slot: it picks the first free one when the one asked for
   is busy, which the sealing code says a few lines down while reading the real
@@ -760,7 +760,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   its own comment, and two callers had never been moved over. The one that
   mattered decided whether a wrapped LUKS key file already on the ESP belonged
   to another container: with no `cmp`, `! cmp -s` reads as "these differ", so a
-  rerun of step 30 took the key it had just written for a stranger's — and
+  rerun of step 30 took the key it had just written for a stranger's - and
   under `--on-conflict refuse` that stops the run with "it belongs to another
   container; this one would not open", about its own file. The other, in
   `boot_copy_to_esp`, only ever meant copying a file that was already right.
@@ -769,7 +769,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   right name.** Step 95 checked that `EFI/BOOT/BOOTX64.EFI` existed and called
   that "unified kernel image at the fallback path". An ESP that carried GRUB
   keeps GRUB's own copy there, and with `boot_removable = no` the UKI variant
-  writes nothing to it — so the verdict passed while a firmware with nothing in
+  writes nothing to it - so the verdict passed while a firmware with nothing in
   NVRAM would have started the other loader, looking for a `grub.cfg` this
   install never wrote. The two files are compared now, with the `files_identical`
   helper that exists because the minimal ISO has no `cmp`.
@@ -780,12 +780,12 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 - **An EFI binary signed in place carries one signature, not one per run.**
   `sbsign` appends rather than replaces, and `boot_install_efi` signs the
-  kernel in place whenever the ESP is mounted at `/boot` — this installer's own
-  default layout — because the loader already reads it where it is. Measured on
+  kernel in place whenever the ESP is mounted at `/boot` - this installer's own
+  default layout - because the loader already reads it where it is. Measured on
   a real PE binary: four runs of step 80, four signatures, and the file grows
   each time. The size is the least of it: after rotating the Secure Boot pair
   the image still verified against the **retired** certificate, so any firmware
-  that still has it enrolled would start the image — which is the one thing
+  that still has it enrolled would start the image - which is the one thing
   rotating a key is meant to end. Every signature is stripped before the new
   one goes on, so the image carries exactly the pair in force. Where source and
   destination differ, `sbsign` writes a fresh file from a pristine one and
@@ -796,7 +796,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   just installed *in the target*; `have` reads the installer's own PATH, and a
   live medium need not carry grub at all. So on such a medium the writer
   skipped the one check standing between a `grub.cfg` that does not parse and a
-  machine that stops at a rescue prompt with no shell to fix it from — and the
+  machine that stops at a rescue prompt with no shell to fix it from - and the
   verifier, three lines later, skipped it too and said nothing. Neither ever
   showed up on this bench, which is a Gentoo box with grub on it: every run
   took the checked path. Same shape as the `lsinitrd` check that existed and
@@ -805,14 +805,14 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 - **A layout is judged as a set, before the disk is erased.** Every check in
   `_disk_parse_records` judged one record at a time, and the message printed
-  for an empty list promised something none of them tested — "at least a root
+  for an empty list promised something none of them tested - "at least a root
   volume is needed". A hand-written layout with no `/` was accepted, the disk
   was erased and partitioned for it, and the install failed three steps later.
   Exactly one volume must mount `/` now, and at most one may ask for `rest`.
 
 - **`disk_volumes` and `disk_volumes_file` are no longer merged.** Both were
   printed in turn: two layouts concatenated, two volumes able to claim `rest`,
-  and the plan's own one-line description naming whichever source came second —
+  and the plan's own one-line description naming whichever source came second -
   the sentence the operator reads before typing the device path to confirm the
   erase. They get the refusal `stage_file` and `stage_url` get, for the same
   reason.
@@ -821,7 +821,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   not exist.** Once in a comment and once in an error message; the hygiene test
   that catches this class only reads lines beginning `example:`. Comments and
   blank lines in a volumes file are also dropped now, as the header had always
-  said they were — they went through verbatim and worked only because the
+  said they were - they went through verbatim and worked only because the
   record parser happened to be forgiving.
 
 - **`VIDEO_CARDS` and `GRUB_PLATFORMS` say where they came from.** Both are
@@ -840,7 +840,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   it was left behind after the restore. It outlives the run: a later one
   reaching step 95 read it and set the machine back to the governor of the day
   of the install, undoing in silence a choice the operator had made since. It
-  is now cleared — but only after reading the governor back, because the writes
+  is now cleared - but only after reading the governor back, because the writes
   are silent on failure and dropping the record then would lose the only note
   of what the machine is owed.
 
@@ -850,7 +850,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   `/bin/true` needs none of them. On a target with no `/proc`, no `/sys` and no
   `/dev`, the check passed, the step wrote `make.conf`, `emerge --info` failed
   with *"Failed to validate a sane '/dev'"*, and the step reported the file as
-  rejected — *"one unbalanced quote is enough"* — then restored the backup. The
+  rejected - *"one unbalanced quote is enough"* - then restored the backup. The
   operator was left with a reverted `make.conf` and a wrong explanation.
   `chroot_pseudo_ready()` probes `/proc`, `/sys`, `/dev` and `/dev/fd` and
   names the ones that are missing, before anything is written.
@@ -864,7 +864,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   `--ssh-key` all came back "Unknown option" and the lookups always answered
   empty. The ssh one cost the most: with `ssh_key` unreachable, the branch that
   turns password authentication off could never be taken, and the warning that
-  fires instead named `ssh_key = /path/to/id_ed25519.pub` as the remedy — a
+  fires instead named `ssh_key = /path/to/id_ed25519.pub` as the remedy - a
   setting nothing declared. Same shape as `secureboot_keyfile`, `user_shell`
   and `user_groups` before them.
 
@@ -877,7 +877,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 - **Twenty-two alias spellings that no configuration file could use are gone.**
   `_sys_cfg` and `_portage_cfg` take a fallback and then every name a step is
-  willing to answer to — `tz`, `host`, `use`, `makeopts`, `sudo_tool`,
+  willing to answer to - `tz`, `host`, `use`, `makeopts`, `sudo_tool`,
   `video_cards`, `device` and fifteen more. None was declared, so none could
   ever arrive; they were lookups that could only ever miss. One name for one
   thing, as with `disk_root`, `chroot_dir` and `target_root` before them. The
@@ -889,7 +889,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   `/etc/locale.gen` is a file nothing on such a system reads. Step 90 wrote it
   anyway, warned that the locales "were listed, not built", and handed the
   operator `chroot ... locale-gen && eselect locale set en_US.UTF-8` to run by
-  hand — a command that cannot succeed there. A to-do nobody can do reads as
+  hand - a command that cannot succeed there. A to-do nobody can do reads as
   unfinished work on a machine that is finished. `LANG` is still written to
   `/etc/env.d/02locale`, because programs read it for their own messages and
   for the character set they assume. The C library is read off the tree and
@@ -912,7 +912,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   machine" are not the same question, and one function answered both. A tang
   binding is not what a firmware flash invalidates, so it is not what gets
   taken away and put back; but it opens the machine with nobody typing
-  anything, so it voids the proof `verify-boot` exists to make — the test
+  anything, so it voids the proof `verify-boot` exists to make - the test
   reboot that this whole sequence is built around. `prepare` and `rebind` keep
   the tpm2 pin; `verify-boot` and `status` see every binding.
 
@@ -926,28 +926,28 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 - **No tool writes its error log through a symlink any local user can plant.**
   All nine kept stderr in a fixed name under `/tmp`, cleared it with
-  `: >"$ERR_LOG"` and chmod'd it — as root, on a path in a world-writable
+  `: >"$ERR_LOG"` and chmod'd it - as root, on a path in a world-writable
   directory. A symlink left there beforehand made that arbitrary file
   truncation and an arbitrary mode change: the same shape as the incident
   `tests/mode_guard.bats` exists for, in the ten scripts that tell the
   operator to run them under `sudo`. Proved and then re-run against the fix:
   the planted target keeps its 32 bytes and its mode. `init_err_log` unlinks
-  whatever is at the path — `rm` never follows a symlink — and creates the
+  whatever is at the path - `rm` never follows a symlink - and creates the
   file with `O_EXCL`, falling back to an unpredictable name if the race is
   lost rather than writing through what was put back.
 
 - **`tpm-pcr.sh snapshot --dir` no longer demands root.** The subcommand asked
   for it unconditionally, while `do_snapshot` four lines further down answers
-  the unprivileged case itself — "Not writable: ... Point `--dir` at a
-  directory this account can write" — a sentence the root check made
+  the unprivileged case itself - "Not writable: ... Point `--dir` at a
+  directory this account can write" - a sentence the root check made
   unreachable, advertising a flag it prevented anyone from using. Root is
   still required for `/var/lib/gentoo-install`. A snapshot taken from an
   ordinary shell now says which fields it could not read: the registers are
   world-readable, the DMI serial and the event log are not.
 
 - **`luks-addkey.sh` refuses every clevis-owned keyslot, not the first one.**
-  clevis is built to hold several pins at once — a tpm2 pin for the machine
-  that unlocks itself, a tang pin for the one that asks the network — and the
+  clevis is built to hold several pins at once - a tpm2 pin for the machine
+  that unlocks itself, a tang pin for the one that asks the network - and the
   guard read `clevis luks list | head -n 1`. With two bindings,
   `remove --slot <the second>` killed the keyslot and left its token behind
   pointing at a slot that no longer exists: exactly what the refusal printed
@@ -958,11 +958,11 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 - **`tpm-reseal.sh` and `bios-maint.sh` name the pin they mean.** Both took the
   first binding as "the one clevis owns". A BIOS flash breaks a tpm2 sealing
   and does nothing to a tang one, so on a tang-first machine both tools worked
-  on a slot that has nothing to do with the TPM — one of them resealing it.
+  on a slot that has nothing to do with the TPM - one of them resealing it.
   They select the `tpm2` line, and report nothing to adopt when there is none.
 
 - **A generated passphrase is refused on the ESP wherever it is.** The check
-  was `/boot/efi` anywhere in the path — the layout the tooling grew up on —
+  was `/boot/efi` anywhere in the path - the layout the tooling grew up on -
   while gentoo-install mounts the ESP at `/boot`. On a machine it had
   installed, `--gen --pass-out /boot/pw` wrote the passphrase onto the
   partition the firmware reads before anything is decrypted, and reported it
@@ -974,9 +974,9 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 - **Two more names for the target root, removed.** `disk_root` went last
   cycle; `chroot_dir` and `target_root` were declared beside it and did the
   same job worse. Measured across the seven resolvers rather than read:
-  `--root` moved all seven, `--chroot-dir` moved exactly one — the chroot,
+  `--root` moved all seven, `--chroot-dir` moved exactly one - the chroot,
   away from the disk the run had just mounted and the stage it had just
-  unpacked — and `--target-root` moved none while being accepted without a
+  unpacked - and `--target-root` moved none while being accepted without a
   word. A flag that is taken and ignored is worse than one that does not
   exist, so both are now refused by name. The tests that were pointing step 90
   at a throwaway tree through `chroot_dir` use `root`, which is what the step
@@ -988,13 +988,13 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   /mnt/x` moved the unpacking, the chroot, the kernel and the bootloader while
   step 20 went on mounting the target disk on `/mnt/gentoo`. Found by running
   `--steps 20,30,40 --root /mnt/gi5`, where step 40 answered "the target root
-  does not exist — step 20 partitions and step 50 mounts; run them first" one
+  does not exist - step 20 partitions and step 50 mounts; run them first" one
   screen under a step 20 that had just succeeded.
 
 - **The guard against unpacking onto the installer's own disk no longer has a
   way past it.** `_stage_assert_target_mounted` was written after 1.3 GB of
   stage3 landed on the wrong disk, and it only bit when the recorded mountpoint
-  was the very path about to be written — so two roots that disagreed, the
+  was the very path about to be written - so two roots that disagreed, the
   exact case above, walked straight past the check that exists for them.
   Nothing was mounted on that root either. It now refuses whenever the disk
   plan recorded a mountpoint and the root being unpacked into is not mounted,
@@ -1002,8 +1002,8 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 - **"Is there a terminal?" is now asked of the kernel, not of the permission
   bits.** `[[ -r /dev/tty ]]` reads the mode of the device node, 0666
-  everywhere, so it is true for a process with no controlling terminal — a run
-  under `sudo` from a pipe, a cron job, a container, a CI job — and the read
+  everywhere, so it is true for a process with no controlling terminal - a run
+  under `sudo` from a pipe, a cron job, a container, a CI job - and the read
   that follows dies on the redirect. Eight guards asked it that way and each
   then reported the wrong reason: the typed disk confirmation printed a raw
   shell error and said "Nothing typed; nothing done" instead of naming what it
@@ -1014,13 +1014,13 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 - **`efistub` has been booted**, which was the last of the four bootloaders with
   nothing behind it. It needs an NVRAM entry, because for that variant the entry
   *is* the configuration, and the installer writes one when it runs from a live
-  medium — the case the guard permits. Eleven steps, none failed, and the
+  medium - the case the guard permits. Eleven steps, none failed, and the
   firmware started the kernel with no bootloader in between. Three lists in the
   README that still named three bootloaders now name four, including one that
   claimed to quote the installer's own refusal.
 
 - **`luks-check.sh` looks for the ESP where this installer mounts it.** It tested
-  `/boot/efi`, hardcoded — the layout of the machine this tooling grew up on —
+  `/boot/efi`, hardcoded - the layout of the machine this tooling grew up on -
   while gentoo-install's own layouts mount the ESP at `/boot`. On a machine it
   had installed, the first tool an operator reaches for said "the ESP is not
   mounted, cannot look for the key" about a filesystem that was mounted all
@@ -1030,7 +1030,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 - **Nine tools ask the install journal for the container before searching for
   it.** The journal is a fact about the machine in front of them; the volume
-  group enumeration underneath is a search. It is checked and not trusted — a
+  group enumeration underneath is a search. It is checked and not trusted - a
   disk is `/dev/vda2` to the machine that was installed and can be `/dev/sdb2`
   to the rescue medium looking at it, so a recorded name that no longer carries
   a LUKS header is worth less than the search. A test requires every tool with a
@@ -1043,25 +1043,25 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   machine in front of it. Composing that fact takes both entries and neither is
   enough alone: `crypt.keyfile` is the path the initramfs is told, relative to
   the root of the filesystem carrying it, and `disk.esp_mount` is where that
-  filesystem is mounted — so a key recorded as `/efi/luks-key.gpg` with an ESP
+  filesystem is mounted - so a key recorded as `/efi/luks-key.gpg` with an ESP
   at `/boot` is `/boot/efi/luks-key.gpg` to anything walking the installed tree.
   The candidates remain, for the machine whose journal is gone, and the "looked
   in" message names the recorded path too.
 
 - **A command line that names only a serial console is called out.** The kernel
   prints to every `console=` it is given and makes the last one `/dev/console`,
-  so naming only `ttyS0` takes the framebuffer away — and this project's own
+  so naming only `ttyS0` takes the framebuffer away - and this project's own
   testing notes recommended exactly that to make a boot drivable. An install
   took the advice, booted correctly, printed nowhere anybody was looking, and
   was read as a hung image for most of an afternoon. Step 70 says so now, and
   names the fix: `console=tty0 console=ttyS0,115200`. Which console the
-  passphrase prompt lands on is decided by the order — `/dev/console` is the
-  last one named — and that is written down in `docs/TESTING.md` along with the
+  passphrase prompt lands on is decided by the order - `/dev/console` is the
+  last one named - and that is written down in `docs/TESTING.md` along with the
   harness mistake that hid it: QEMU discards a socket serial port's output until
   a client connects.
 - **The removable fallback is proved.** A `uki` install with `boot_removable =
   yes`, booted against a pristine NVRAM, is started by the firmware from
-  `\EFI\BOOT\BOOTX64.EFI` — where the same firmware, with a GRUB install and
+  `\EFI\BOOT\BOOTX64.EFI` - where the same firmware, with a GRUB install and
   the same empty NVRAM, fell through to PXE the day before. That is the failure
   this project was shaped by, removed rather than guarded against. The image
   that run produced then hangs after the firmware starts it, which is written up
@@ -1072,14 +1072,14 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 - **A machine this installer signed could not be reflashed by this project's own
   tool.** `tools/bios-update.sh` has to sign `fwupdx64.efi` with the same pair
-  the kernel was signed with, and it had two sources for that pair — a
+  the kernel was signed with, and it had two sources for that pair - a
   conventional `/etc/efikeys`, and a configuration file belonging to another
   tool. Neither is written by gentoo-install, so a machine installed and signed
   here reached "No Secure Boot signing pair found" after being asked about two
   files it never creates. The install journal is consulted first now, because it
   is the one file on that disk this project wrote.
 - **Step 80 recorded the certificate and not the key.** Half a pair, which is
-  exactly what `boot_secureboot_ready()` refuses to work with — and it went
+  exactly what `boot_secureboot_ready()` refuses to work with - and it went
   unnoticed because the state journal refuses a name ending in `_key` outright,
   so `boot.secureboot_cert` on its own looked complete. The path is journalled
   under `boot.secureboot_keyfile`, never the key itself, the same rule
@@ -1094,15 +1094,15 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 - **A failed pre-flight stops the run.** The runner accumulates failures, which
   is right for almost every step and wrong for the one whose checks decide
   whether anything may be written at all. A real run showed it: pre-flight
-  refused a 16 GiB disk — `minimum 20`, and `--force does not lift these: they
-  are proofs, not confirmations` — and the run went on to erase that disk and
+  refused a 16 GiB disk - `minimum 20`, and `--force does not lift these: they
+  are proofs, not confirmations` - and the run went on to erase that disk and
   install onto it. `STEP_HALTS` names the steps whose failure ends the run, in
   a table rather than an `if` on a number, and the report says how many steps
   were not run and that nothing they would have written was written.
 
 - **A reseal reproduces the policy in force.** `tools/tpm-reseal.sh` read the
   binding it was about to replace, printed it on screen, and then resealed with
-  its own default — `pcr_ids 0,2,3,6`. A machine installed with another set of
+  its own default - `pcr_ids 0,2,3,6`. A machine installed with another set of
   registers, or with an RSA key rather than ECC, came back from a reseal bound
   to something its operator never chose, with the old configuration displayed
   two lines above the new one. The stored configuration is reused verbatim now
@@ -1112,7 +1112,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   used `cmp` to avoid stacking a second identical backup, and `cmp` comes from
   diffutils, which the Gentoo minimal ISO does not have. So every file written
   during an install on that ISO printed `cmp: command not found` and then took
-  a backup it did not need — a failed comparison reads as "different". It falls
+  a backup it did not need - a failed comparison reads as "different". It falls
   back to a checksum now, and when nothing can tell it says "different", because
   one backup too many is a wasted copy and one too few is a lost original.
 
@@ -1121,14 +1121,14 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   against the plan, and nothing checked that the two agree. A target whose ESP
   was mounted at `/boot/efi` while the plan said `/boot` produced an fstab
   naming the first and a `grub-install` asking for the second, which answered
-  `/boot doesn't look like an EFI partition` — a message about the ESP, caused
+  `/boot doesn't look like an EFI partition` - a message about the ESP, caused
   by a disagreement two steps earlier that neither step mentioned. Every
   mountpoint the plan describes is now looked for in the fstab, and the ones
   that are missing are named, in a dry run as well.
 
 - **A state journal that a reboot forgets now says so.** The default is
-  `/var/lib/gentoo-install`, and on the medium this installer is designed for —
-  a live ISO — that is RAM: the Gentoo ISO mounts its root as an overlay whose
+  `/var/lib/gentoo-install`, and on the medium this installer is designed for -
+  a live ISO - that is RAM: the Gentoo ISO mounts its root as an overlay whose
   upper layer is `/run/overlayfs`, on tmpfs. So which steps completed, and the
   disk plan step 20 writes beside them, are lost by rebooting the medium, and
   `--resume` starts from the beginning. It is said once, at startup, with
@@ -1137,14 +1137,14 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   nothing on exactly the medium it was written for.
 
 - **The installer could not get back to its own target.** Only step 20 mounted
-  the tree, and every run releases what it mounted when it ends — so the second
+  the tree, and every run releases what it mounted when it ends - so the second
   invocation, which is what `--resume` is, arrived at an empty `/mnt/gentoo` and
   mounted `/proc` and `/dev` over nothing. The way back in was
   `tools/luks-open.sh`, a rescue tool, for the ordinary case of picking up where
   the last run stopped. Step 50 reattaches now, from the plan step 20 recorded:
   it opens the container (asking for a passphrase, once), activates the volume
   group and mounts the tree the plan describes. A plan naming the disk this
-  machine booted from is refused rather than mounted — the same guard the
+  machine booted from is refused rather than mounted - the same guard the
   September incident bought, on this door too.
 - **`make format` no longer leaves root-owned files** in the contributor's own
   checkout. The formatter runs in a container, and a container writing as root
@@ -1164,13 +1164,13 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   exactly as they are.
 - **An initramfs older than its modules is rebuilt rather than kept.** Step 70
   returned early when the kernel package was installed and `/boot` held an
-  image, so a package installed on a later run — clevis, here — never reached
+  image, so a package installed on a later run - clevis, here - never reached
   the initramfs. The image is asked what it carries, with `lsinitrd` run inside
   the target where dracut lives, and the deployment is re-run when it is behind.
 
 - **An LVM root never got the `lvm` binary, so no LVM install could boot.**
   `sys-fs/lvm2` installs device-mapper and nothing more unless it is built with
-  `USE=lvm`, and it arrives as a dependency of cryptsetup — present, correct
+  `USE=lvm`, and it arrives as a dependency of cryptsetup - present, correct
   looking, and missing the one file dracut's `lvm` module checks for. dracut
   then says `Module 'lvm' cannot be installed`, the initramfs fails, the
   kernel's own install phase fails with it, and step 70 ends with a partitioned
@@ -1182,7 +1182,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   initramfs, and that initramfs is built inside the emerge of the kernel. So a
   missing `clevis` did not cost the automatic unlock, it cost the kernel. The
   list is written again once the packages are in place, without the modules
-  that are genuinely absent, saying for each one what the machine loses — and
+  that are genuinely absent, saying for each one what the machine loses - and
   still refusing when what is missing is `crypt`, `dm` or `lvm`, because that
   machine would not start at all.
 - **`app-crypt/clevis` is unstable-keyworded in GURU**, so enabling the overlay
@@ -1192,17 +1192,17 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 - **Nine of the ten tools looked for a volume group named `vg1`.** That is the
   group the machine this tooling grew up on happened to have; `gentoo-install`
   creates `vg0`. So every "detected from the volume group" path found nothing on
-  the machines this project installs, and `luks-open.sh close` was worse — it
+  the machines this project installs, and `luks-open.sh close` was worse - it
   deactivated no group, could not close the container it had opened, and
   reported an item still held. None of them names a group now: they ask LVM
   which group sits inside the container, and say so when more than one does.
 - **`luks-open.sh` mounted a list of volume names instead of the machine's own
   layout.** `root`, `home`, `apps`, `usr`, `var`, `portage`, `log`, `opt`, and
-  the ESP at `/boot/efi` — again the layout of one machine. A system installed
+  the ESP at `/boot/efi` - again the layout of one machine. A system installed
   by this project keeps its ESP at `/boot`, so a rescue mounted it in the wrong
   place and any volume named otherwise was silently missed. It reads the
   target's `/etc/fstab` now, in both the LVM and the plain case. When that file
-  names nothing usable — a stage3 ships one whose every line is a comment — it
+  names nothing usable - a stage3 ships one whose every line is a comment - it
   falls back to the volume names and says that is what it is doing.
 - **A GPG-wrapped key file was written where the initramfs would not look.**
   `crypt_key_dir` is a path in the installed system (`/boot/efi`), while
@@ -1210,7 +1210,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   With the default layout the ESP is mounted at `/boot`, so the key landed at
   `/efi/luks-key.gpg` as the initramfs sees it and the journal recorded the
   constant `/luks-key.gpg`. The machine still booted, asking for the recovery
-  passphrase, so nothing looked broken — while the one file the variant exists
+  passphrase, so nothing looked broken - while the one file the variant exists
   to place was never read. The recorded path is now computed from where the
   file is actually written, and a `crypt_key_dir` that is not on the ESP is
   refused rather than written to.
@@ -1221,15 +1221,15 @@ is the authority; nothing in this file, in the README or in a badge restates it.
 
 - **The TPM sealing left the live medium.** `crypt = luks-tpm` refused at step
   30 unless the running medium carried clevis, jose and tpm2-tools, and
-  `install-amd64-minimal.iso` — the medium the Gentoo handbook tells everyone to
-  boot — carries none of them and cannot install them: it has no ebuild
+  `install-amd64-minimal.iso` - the medium the Gentoo handbook tells everyone to
+  boot - carries none of them and cannot install them: it has no ebuild
   repository. The refusal even blamed the target. The binding now happens in the
   new step 75, inside the target: step 30 ends with one proved way in and says
   so, step 75 adds the second and proves it by making the chip release the key.
   `--steps 50,75` seals a machine that is already installed, and
   `--skip-steps 75` installs now and seals later.
 - **`app-crypt/clevis` is not in the official Gentoo repository**, which the
-  same run discovered — and a missing optional package no longer costs the
+  same run discovered - and a missing optional package no longer costs the
   kernel. Step 70's `emerge` of the sealing helpers failed, the step failed with
   it, and the run lost the kernel, the bootloader and the final verification:
   an unbootable machine, because a helper was unavailable, for a container that
@@ -1237,7 +1237,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   the machine needs to open its container from what seals a slot afterwards, and
   every message that mentions clevis names the GURU overlay it lives in.
 - **No secret file was ever wiped.** `crypt_secret_file()` registered every file
-  it made for the trap and for `cleanup()` — but it printed the path, so every
+  it made for the trap and for `cleanup()` - but it printed the path, so every
   call site was a command substitution and both registrations died with that
   subshell. The array `crypt_wipe_secrets()` read was empty at every exit: a
   file holding the LUKS passphrase in clear survived the run. It fills a
@@ -1248,8 +1248,8 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   count credentials rather than proofs.
 
 - **A dry run of an encrypted install always failed.** The state journal is how
-  one step tells the next what it did — step 20 records `disk.crypt_device`,
-  step 30 reads it — and a dry run wrote nothing, so step 30 stopped with "No
+  one step tells the next what it did - step 20 records `disk.crypt_device`,
+  step 30 reads it - and a dry run wrote nothing, so step 30 stopped with "No
   device to encrypt" and every step behind it fell over the same way. The plan
   an operator asked to see ended in five failures caused by asking. A dry run
   now keeps its writes in memory and reads find them; nothing reaches the
@@ -1257,8 +1257,8 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   steps that talk to each other.
 
 - **A Gentoo `/var` ran out of inodes, not bytes.** The default desktop layout
-  on a 24 GiB disk gives `/var` 3 GiB, mke2fs sizes the inode table by bytes —
-  one per 16 KiB, so 196,608 of them — and the ebuild repository is 160,000
+  on a 24 GiB disk gives `/var` 3 GiB, mke2fs sizes the inode table by bytes -
+  one per 16 KiB, so 196,608 of them - and the ebuild repository is 160,000
   files holding 120 MiB. `emerge --sync` stopped partway through with "No space
   left on device" while `df` reported 2.7 GiB free. A filesystem that will hold
   the repository is now made with inodes for it, and only when mke2fs would not
@@ -1267,7 +1267,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   `/var/tmp/portage`, which is where every package is built. The desktop
   layout's floor for `/var` is 6 GiB rather than 3, and the plan now says, before
   the typed confirmation, when the filesystem that will hold `/var/tmp/portage`
-  is too small to build in — naming the number, and refusing nothing.
+  is too small to build in - naming the number, and refusing nothing.
 
 - **The installer no longer rewrites the firmware state of the machine it runs
   on.** Step 80 wrote an `efibootmgr` entry, and step 95 offered a reboot, with
@@ -1275,7 +1275,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   against a disk image on a working laptop, the two combined: the entry replaced
   that laptop's own, pointing at an ESP that vanished with the loop device, and
   the reboot followed. `lib/disk.sh:disk_may_write_firmware_state` now gates
-  both, and `--yes` no longer answers the reboot question — only `--reboot yes`
+  both, and `--yes` no longer answers the reboot question - only `--reboot yes`
   does, because a reboot is irreversible in the way a typed proof is
   (`DESIGN.md` §12).
 - **A loader is left where a firmware with no NVRAM entry will look for it.**
@@ -1287,7 +1287,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   `--log-file /dev/null`, run as root, reached `chmod 0600 /dev/null` and left
   the machine without a writable `/dev/null`; every shell that redirects to it
   then dies before running its command. `_core_plain_file()` guards every such
-  `chmod`, and `state_init()` only tightens a directory it created — `--state-dir
+  `chmod`, and `state_init()` only tightens a directory it created - `--state-dir
   /tmp` as root would otherwise have stripped the sticky bit off `/tmp`.
 - **Eight settings and state-journal keys were read under names nothing wrote.**
   Found by running the installer rather than reading it: `--device` was accepted
@@ -1296,7 +1296,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   `disk.root`/`disk.vg`/`disk.esp` while steps 70 and 80 read
   `disk.root_device`/`disk.vg_name`/`disk.esp_device`; `chroot_target()` read
   `CFG[target]`, a setting that does not exist, so `--root` never reached step 50;
-  and step 30 journalled `crypt.name` while step 70 read `crypt.luks_name` —
+  and step 30 journalled `crypt.name` while step 70 read `crypt.luks_name` -
   which meant an encrypted install created `/dev/mapper/gentoo` and told the
   kernel `root=/dev/mapper/cryptroot`.
 - **`target_layout()` answered the wrong question.** Ten call sites compared it
@@ -1310,12 +1310,12 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   silence. Pseudo-filesystems are excluded from both the generator and the
   finalize check.
 - **Unpacking a stage refuses a target the disk plan says should be mounted and
-  is not** — 1.3 GB of stage3 had landed on the installer's own filesystem after
+  is not** - 1.3 GB of stage3 had landed on the installer's own filesystem after
   step 20 failed and the run carried on.
 
 ### Added
 
-- **Step 75, `seal`** — what the encryption variant still owes the target, done
+- **Step 75, `seal`** - what the encryption variant still owes the target, done
   inside the target. It is a number of its own rather than a few lines at the
   end of step 70 because the number is the public API: `--skip-steps 75`
   installs now and seals later, `--steps 50,75` seals a machine that is already
@@ -1332,7 +1332,7 @@ is the authority; nothing in this file, in the README or in a badge restates it.
   `\EFI\BOOT\BOOTX64.EFI`). It would remove this class of boot failure rather
   than guard against it.
 
-## [0.1.0] — unreleased
+## [0.1.0] - unreleased
 
 First shape of the project. The ten-step sequence has been run through once
 end to end, producing a disk image that booted to a login prompt under QEMU with
@@ -1342,7 +1342,7 @@ was and was not covered.
 
 ### Added
 
-- **Entry point and step registry.** Ten numbered steps — 10 preflight,
+- **Entry point and step registry.** Ten numbered steps - 10 preflight,
   20 disk, 30 crypt, 40 stage, 50 chroot, 60 portage, 70 kernel, 80 boot,
   90 system, 95 finalize. The number is the public API. Steps are sourced at
   startup and the registry is checked before the plan is printed, so a step
@@ -1361,8 +1361,8 @@ was and was not covered.
   has been merged. An invalid value is refused in milliseconds with the valid
   ones listed, instead of failing inside step 80.
 - **Stage3 catalogue**, `data/stages.tsv`: the 19 published amd64 variants as a
-  composition of `init` × `flavour`. Impossible combinations — `splitusr` with
-  `systemd` — are refused at parse time rather than 404-ing after the disks
+  composition of `init` × `flavour`. Impossible combinations - `splitusr` with
+  `systemd` - are refused at parse time rather than 404-ing after the disks
   have been wiped.
 - **Stage3 trust chain**: the clearsigned `latest-*.txt` pointer verified
   first and its payload read from what gpg wrote, then the tarball's detached
@@ -1372,7 +1372,7 @@ was and was not covered.
   `luks-keyfile-gpg`. Each proves, by exercising them, that more than one way
   back into the container exists before the step reports success.
 - **Bootloader variants**: `grub`, `efistub`, `systemd-boot`, each verifying
-  its own work — the EFI file, `grub-script-check`, the NVRAM entry, the loader
+  its own work - the EFI file, `grub-script-check`, the NVRAM entry, the loader
   entry's targets.
 - **Kernel variants**: `dist-kernel`, `genkernel`, `manual`, with the command
   line and the dracut or genkernel module list composed from what steps 20 and

@@ -24,7 +24,7 @@ make lint test
 ```
 
 `make lint` runs ShellCheck, then `shfmt --diff`, then `bash -n`, over the
-entry point, `lib/`, `steps/` and `tools/` — 43 files. `make test` runs the
+entry point, `lib/`, `steps/` and `tools/` - 43 files. `make test` runs the
 bats suite when there is one.
 
 **Both tools have to be on your `PATH`, and `make lint` fails plainly if they
@@ -46,8 +46,8 @@ bash -n gentoo-install.sh lib/*.sh steps/*.sh tools/*.sh variants/*/*.sh
 ```
 
 `make format` rewrites the files with the same shfmt arguments. A ShellCheck
-directive must precede the **whole** compound command it applies to — never a
-lone `done`, never the middle of a `\` continuation — and `bash -n` stays green
+directive must precede the **whole** compound command it applies to - never a
+lone `done`, never the middle of a `\` continuation - and `bash -n` stays green
 in all the wrong cases, so it is not the check that catches this.
 
 Smoke-test what you changed without touching a disk:
@@ -62,7 +62,7 @@ Smoke-test what you changed without touching a disk:
 
 The single rule that matters most here. Every refusal, every typed
 confirmation, every "verify then roll back" in this repository was put there
-because of a specific failure — a disk erased, a machine that would not boot, a
+because of a specific failure - a disk erased, a machine that would not boot, a
 TPM that stopped releasing a key after a firmware update.
 
 If a check is in your way, that is a fact about the check and worth fixing. But
@@ -72,7 +72,7 @@ an answer. A patch that quietly deletes a refusal, widens a `--force` to cover
 a proof, or turns a typed confirmation into a `y/n` will be rejected on sight.
 
 The reverse also holds: a new refusal names what it protects against, and comes
-with its own switch to lift it — one switch per refusal, never a blanket flag.
+with its own switch to lift it - one switch per refusal, never a blanket flag.
 
 ## Conventions that come up in review
 
@@ -84,7 +84,7 @@ with its own switch to lift it — one switch per refusal, never a blanket flag.
 - **Data goes in `data/`**, one record per line. Not a literal inside a
   function.
 - **Adding a setting** means one `set_default` call with its enumeration in the
-  trailing comment, and — when it has a closed set of values — its entry in
+  trailing comment, and - when it has a closed set of values - its entry in
   `CFG_ENUM`. It then works as a `.conf` key and as a flag with no further
   code.
 - **Adding a step** means one line in `STEP_MAP`, one in `STEP_DESC`, and one
@@ -109,7 +109,7 @@ refactor(stage): read the pointer payload from gpg, not from the file
 
 Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `ci`.
 
-The body explains **why**, not what — the diff already says what. If the change
+The body explains **why**, not what - the diff already says what. If the change
 touches a guard rail, a refusal or a destructive path, the body says what used
 to go wrong.
 
@@ -119,7 +119,7 @@ to go wrong.
 - `make lint` clean, or the container commands above clean, and CI green.
 - Say how you tested it. "Loop device under `/tmp`", "`--dry-run` on a machine
   with no TPM", "a throwaway VM" are all real answers. `--dry-run` alone is a
-  fine answer too — just say so rather than implying more.
+  fine answer too - just say so rather than implying more.
 - Never test against your own disk or bootloader.
 
 ## Reporting a problem
@@ -129,7 +129,7 @@ Include the output of `./gentoo-install.sh --version` and
 number that failed. `--dump-config` says where each value came from, which is
 usually the whole answer to a precedence question.
 
-If the problem is a security one — a way the trust chain can be bypassed, a
-secret reaching a log or the state journal, a refusal that can be sidestepped —
+If the problem is a security one - a way the trust chain can be bypassed, a
+secret reaching a log or the state journal, a refusal that can be sidestepped -
 say so in the report and describe it precisely rather than opening a pull
 request that demonstrates it.
