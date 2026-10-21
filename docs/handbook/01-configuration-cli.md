@@ -100,7 +100,7 @@ $ ./gentoo-install.sh --skip-steps 30 --dry-run     # everything but encryption
 A **bare number must name a real step**: `--steps 99` is a typo worth stopping
 for and is refused with the step table. A **range is a span, not an
 enumeration**: `40-60` means "everything that exists between 40 and 60", so the
-gaps simply are not there. An inverted range (`60-40`), an absurd one, or an
+gaps are not there. An inverted range (`60-40`), an absurd one, or an
 empty item (a stray comma) is refused at parse time, never mid-`emerge`. Step
 numbers are the stable public API (they never change), which is why selection is
 by number. See [State, resume & rollback](02-state-resume-rollback.md) for how

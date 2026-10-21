@@ -308,7 +308,7 @@ summary names what failed and how to resume:
 
 `--steps 20,40-60,95` selects; `--skip-steps 30` removes. A bare number has to
 name a real step - `--steps 99` is a mistake worth stopping for - while a range
-is a span and simply selects whatever exists inside it. Both are resolved at
+is a span and selects whatever exists inside it. Both are resolved at
 parse time, in milliseconds, never in the middle of an `emerge`.
 
 Everything a step prints goes to **stderr**, one glyph per level:
@@ -413,27 +413,6 @@ by exercising them, that there is more than one way back into the container.
 readable by whoever ends up holding it. A step that vanishes when a feature is
 off leaves you guessing whether it was skipped or forgotten.
 
-## 40 stage
-
-Walks the trust chain from one end to the other: pick the variant, prove the
-signed pointer, prove the tarball, unpack it. See
-[Verifying the stage3](#verifying-the-stage3) - it is the part of this project
-that is worth reading before the rest.
-
-The tarball is cached under `/var/cache/gentoo-install`, outside the target
-root so unpacking cannot swallow it.
-
-## 50 chroot
-
-Turns the unpacked stage3 into something commands can run in: `/proc`, `/sys`,
-`/dev` (with `pts` and `shm`), `/run` and the EFI system partition mounted,
-`/etc/resolv.conf` copied in, and a proof that a command really does execute
-inside before any later step assumes it.
-
-The mounts stay up: steps 60 to 90 run inside them and step 95 releases them.
-The `EXIT` trap releases them too, so an interrupted run does not leave the
-target half-mounted.
-
 ### Choosing the cipher and the key derivation
 
 The defaults are `aes-xts-plain64` at 512 bits with `argon2id`, and they are the
@@ -474,6 +453,27 @@ pbkdf2 is an iteration count and nothing else, and cryptsetup refuses the pair.
 Setting `crypt_pbkdf = pbkdf2` together with `crypt_pbkdf_memory` is refused at
 parse time rather than by `luksFormat` in step 30 - which would be after step 20
 had already wiped the disk.
+
+## 40 stage
+
+Walks the trust chain from one end to the other: pick the variant, prove the
+signed pointer, prove the tarball, unpack it. See
+[Verifying the stage3](#verifying-the-stage3) - it is the part of this project
+that is worth reading before the rest.
+
+The tarball is cached under `/var/cache/gentoo-install`, outside the target
+root so unpacking cannot swallow it.
+
+## 50 chroot
+
+Turns the unpacked stage3 into something commands can run in: `/proc`, `/sys`,
+`/dev` (with `pts` and `shm`), `/run` and the EFI system partition mounted,
+`/etc/resolv.conf` copied in, and a proof that a command really does execute
+inside before any later step assumes it.
+
+The mounts stay up: steps 60 to 90 run inside them and step 95 releases them.
+The `EXIT` trap releases them too, so an interrupted run does not leave the
+target half-mounted.
 
 ## 60 portage
 

@@ -67,7 +67,7 @@ empty directory inside the chroot, those writes land on the root filesystem
 instead, the firmware never sees them, and the machine does not boot, with no
 error to explain it. Mounting the real ESP there now is what makes the later
 bootloader step reach the firmware partition. A BIOS machine has no ESP and this
-is simply skipped.
+is skipped.
 
 **Why `resolv.conf` is copied with `cat`, not `cp`.** Inside the chroot,
 `emerge` needs DNS. On a systemd live medium `/etc/resolv.conf` is a symlink into
