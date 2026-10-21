@@ -115,6 +115,15 @@ Then append, in order:
 The LUKS UUID is `cryptsetup luksUUID <device>`; the root filesystem UUID is
 `blkid -s UUID -o value <device>`.
 
+For `keyfile`, the `<path>` is relative to the root of the key's filesystem, not to
+the running system. The default key sits in `crypt_key_dir` (`/boot/efi`) and the
+device is the ESP, so with the ESP mounted at `/boot` the file `/boot/efi/luks-key.gpg`
+is `/efi/luks-key.gpg` as the initramfs sees it: write
+`rd.luks.key=/efi/luks-key.gpg:UUID=<esp-uuid>`, not the running-system path. Getting
+this wrong is silent. The initramfs finds nothing, falls back to the recovery
+passphrase, and the machine still boots, so the key you placed is never used and
+nothing says why.
+
 **Warning:** If you set `console=` to a serial port only (for example
 `console=ttyS0,115200`), the kernel hands the framebuffer to the serial line and
 the initramfs asks for the LUKS passphrase where nobody is looking. Name the

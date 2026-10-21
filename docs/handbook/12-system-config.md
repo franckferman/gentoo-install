@@ -110,7 +110,7 @@ file):
 ```
 # /etc/fstab
 UUID=<root-uuid>   /       ext4   defaults,noatime                          0 1
-UUID=<esp-uuid>    /efi    vfat   defaults,noatime,fmask=0077,dmask=0077    0 2
+UUID=<esp-uuid>    /boot   vfat   defaults,noatime,fmask=0077,dmask=0077    0 2
 UUID=<swap-uuid>   none    swap   sw                                        0 0
 ```
 

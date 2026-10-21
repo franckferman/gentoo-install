@@ -12,7 +12,7 @@
 `step_50_chroot` calls `chroot_prepare`, which, in order: resolves and sanity-
 checks the target root; mounts `/proc`, `/sys`, `/dev` (with `/dev/pts` and
 `/dev/shm`) and `/run` inside it, using the recursive-bind and `make-rslave`
-pattern; mounts the EFI system partition on `/boot/efi`; and copies the live
+pattern; mounts the EFI system partition on its mountpoint (`disk_esp_mount`, default `/boot`); and copies the live
 medium's `/etc/resolv.conf` into the target so Portage has a working network.
 It then proves a command really executes inside by running `/bin/true` there,
 and prints how to open an interactive shell yourself.
@@ -62,7 +62,7 @@ inside the chroot does **not** propagate back out to the host. Skip it and a
 `/run` is bound plainly and made a slave for the same reason.
 
 **Why the EFI system partition is mounted now.** On a UEFI machine the
-bootloader (step 80, chapter 11) writes into `/boot/efi`. If that is just an
+bootloader (step 80, chapter 11) writes into the ESP mountpoint (`/boot` by default). If that is just an
 empty directory inside the chroot, those writes land on the root filesystem
 instead, the firmware never sees them, and the machine does not boot, with no
 error to explain it. Mounting the real ESP there now is what makes the later
@@ -119,20 +119,20 @@ mount -t tmpfs  -o nosuid,nodev,noexec,mode=1777 tmpfs  /mnt/gentoo/dev/shm
 ### 3. Mount the EFI system partition (live)
 
 Find the ESP for the target's disk (the FAT32 partition with the EFI type GUID),
-then mount it on `/boot/efi` inside the target. Assume it is `/dev/sda1` here:
+then mount it on `/boot` inside the target (the installer's `disk_esp_mount` default). Assume it is `/dev/sda1` here:
 
 ```bash
 # live
 blkid /dev/sda1                              # TYPE should be "vfat"
-mkdir -p /mnt/gentoo/boot/efi
-mount -t vfat /dev/sda1 /mnt/gentoo/boot/efi
+mkdir -p /mnt/gentoo/boot
+mount -t vfat /dev/sda1 /mnt/gentoo/boot
 ```
 
-**Warning:** Mount the *right* partition. Mounting a non-vfat partition on `/boot/efi`
+**Warning:** Mount the *right* partition. Mounting a non-vfat partition on `/boot`
 hides the real ESP and loses the bootloader. The installer checks the filesystem
 type with `blkid` and refuses anything that is not `vfat`; do the same by hand.
-(A systemd-boot layout may mount the ESP on `/boot` instead; use that mountpoint
-if that is your layout.)
+(If you set `disk_esp_mount` to `/boot/efi` or `/efi`, mount it there instead and
+use that same path in every later step.)
 
 ### 4. Enter the chroot (live → chroot)
 
@@ -176,12 +176,12 @@ test -r /proc/self/mounts && echo proc ok
 test -d /sys/class        && echo sys ok
 test -c /dev/null         && echo dev ok
 test -e /dev/fd/0         && echo "/dev/fd ok"        # bash process substitution
-findmnt /boot/efi         # on a UEFI machine: the ESP, type vfat
+findmnt /boot             # on a UEFI machine: the ESP, type vfat
 getent hosts gentoo.org   # name resolution works
 ```
 
 The last four matter for real work. `emerge` uses bash process substitution, so
-a missing `/dev/fd` stops it before it reads anything; a working `/boot/efi`
+a missing `/dev/fd` stops it before it reads anything; a working `/boot`
 mount is the difference between a booting and a non-booting machine; and DNS is
 what lets Portage sync and fetch. From another live terminal you can reach the
 same chroot with `chroot /mnt/gentoo /bin/bash -l`.
@@ -201,7 +201,7 @@ same chroot with `chroot /mnt/gentoo /bin/bash -l`.
   order, and let the recursive unmount handle the children:
   ```bash
   # live   (after exiting the chroot shell)
-  umount -R /mnt/gentoo/boot/efi
+  umount -R /mnt/gentoo/boot
   umount -R /mnt/gentoo/dev /mnt/gentoo/run /mnt/gentoo/sys /mnt/gentoo/proc
   ```
   The installer tracks exactly the mounts *this run* created and unmounts only
@@ -222,7 +222,7 @@ same chroot with `chroot /mnt/gentoo /bin/bash -l`.
 - **Uses:** `lib/chroot.sh` (mounts, entry, cleanup), plus `lib/disk.sh` and
   `lib/crypt.sh` for re-mounting a target a previous run left behind
 - **Flags/settings:** `root` (the target, default `/mnt/gentoo`); `esp_device`
-  and the ESP mountpoint (default `/boot/efi`); honours `GI_TARGET`,
+  and the ESP mountpoint (default `/boot`); honours `GI_TARGET`,
   `GI_ESP_DEVICE`, `GI_ESP_MOUNTPOINT` for testing
 - **Writes:** mounts under `root` (`/proc`, `/sys`, `/dev`, `/dev/pts`,
   `/dev/shm`, `/run`, the ESP); `<root>/etc/resolv.conf`; state-journal entries

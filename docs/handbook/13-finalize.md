@@ -66,7 +66,7 @@ awk -F: '$2 ~ /^\$/ {print $1}' /etc/shadow      # accounts with a usable passwo
 
 For the boot entry, confirm the loader or kernel is on the ESP and something
 points the firmware at it (`efibootmgr -v`, or
-`ls /efi/EFI/BOOT/BOOTX64.EFI` for the removable fallback). These mirror
+`ls /boot/EFI/BOOT/BOOTX64.EFI` for the removable fallback). These mirror
 [chapter 11](11-bootloader.md)'s verification.
 
 ### 2. Read the recap, and write down the secrets

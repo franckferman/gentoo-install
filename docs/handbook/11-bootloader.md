@@ -77,7 +77,7 @@ passphrase prompt). Then install and generate:
 
 ```bash
 # chroot (UEFI)
-grub-install --target=x86_64-efi --efi-directory=/efi --bootloader-id=gentoo
+grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=gentoo
 # chroot (legacy BIOS): the whole disk, not a partition
 grub-install --target=i386-pc /dev/sda
 
@@ -100,9 +100,9 @@ firmware menu can change it, or compiled in (`builtin`, `CONFIG_CMDLINE`).
 ```bash
 # chroot
 emerge --verbose sys-boot/efibootmgr
-mkdir -p /efi/EFI/gentoo
-cp /boot/vmlinuz-<version> /efi/EFI/gentoo/vmlinuz.efi
-cp /boot/initramfs-<version>.img /efi/EFI/gentoo/initramfs.img
+mkdir -p /boot/EFI/gentoo
+cp /boot/vmlinuz-<version> /boot/EFI/gentoo/vmlinuz.efi
+cp /boot/initramfs-<version>.img /boot/EFI/gentoo/initramfs.img
 efibootmgr --create --disk /dev/sda --part 1 --label gentoo \
   --loader '\EFI\gentoo\vmlinuz.efi' \
   --unicode 'initrd=\EFI\gentoo\initramfs.img root=/dev/mapper/gentoo ro rd.luks.uuid=luks-<UUID>'
@@ -124,24 +124,24 @@ line. Confirm the file starts with the PE magic (`head -c 2 vmlinuz.efi` prints
 echo 'sys-apps/systemd-utils boot kernel-install' >> /etc/portage/package.use/70-gentoo-install-kernel
 emerge --verbose sys-apps/systemd-utils sys-boot/efibootmgr
 
-bootctl --esp-path=/efi install                # writes the loader + removable copy
-mkdir -p /efi/EFI/gentoo
-cp /boot/vmlinuz-<version> /efi/EFI/gentoo/
-cp /boot/initramfs-<version>.img /efi/EFI/gentoo/
+bootctl --esp-path=/boot install               # writes the loader + removable copy
+mkdir -p /boot/EFI/gentoo
+cp /boot/vmlinuz-<version> /boot/EFI/gentoo/
+cp /boot/initramfs-<version>.img /boot/EFI/gentoo/
 
-mkdir -p /efi/loader/entries
-cat > /efi/loader/loader.conf <<'EOF'
+mkdir -p /boot/loader/entries
+cat > /boot/loader/loader.conf <<'EOF'
 default gentoo.conf
 timeout 5
 EOF
-cat > /efi/loader/entries/gentoo.conf <<EOF
+cat > /boot/loader/entries/gentoo.conf <<EOF
 title      Gentoo Linux
 version    <version>
 linux      /EFI/gentoo/vmlinuz-<version>
 initrd     /EFI/gentoo/initramfs-<version>.img
 options    root=/dev/mapper/gentoo ro rd.luks.uuid=luks-<UUID>
 EOF
-bootctl --esp-path=/efi list                   # the loader's own reading of the entry
+bootctl --esp-path=/boot list                  # the loader's own reading of the entry
 ```
 
 The `linux` and `initrd` paths are relative to the root of the ESP, not to
@@ -157,15 +157,15 @@ initramfs around systemd's EFI stub (`linuxx64.efi.stub`, from
 ```bash
 # chroot
 emerge --verbose sys-kernel/dracut sys-apps/systemd-utils   # or systemd[boot]
-mkdir -p /efi/EFI/Linux
+mkdir -p /boot/EFI/Linux
 dracut --force --uefi --kver <version> \
   --uefi-stub /usr/lib/systemd/boot/efi/linuxx64.efi.stub \
   --kernel-cmdline 'root=/dev/mapper/gentoo ro rd.luks.uuid=luks-<UUID>' \
-  /efi/EFI/Linux/gentoo-<version>.efi
+  /boot/EFI/Linux/gentoo-<version>.efi
 
 # The reason to build a UKI: a copy at the fallback path needs no NVRAM entry.
-mkdir -p /efi/EFI/BOOT
-cp /efi/EFI/Linux/gentoo-<version>.efi /efi/EFI/BOOT/BOOTX64.EFI
+mkdir -p /boot/EFI/BOOT
+cp /boot/EFI/Linux/gentoo-<version>.efi /boot/EFI/BOOT/BOOTX64.EFI
 ```
 
 Note: if step 70 already wrote your command line into
@@ -177,14 +177,14 @@ up in the image twice.
 
 ```bash
 # chroot
-head -c 2 /efi/EFI/.../<binary>.efi            # 'MZ' = a PE binary the firmware can run
+head -c 2 /boot/EFI/.../<binary>.efi           # 'MZ' = a PE binary the firmware can run
 efibootmgr -v                                  # UEFI: the entry and its loader path
-ls /efi/EFI/BOOT/BOOTX64.EFI                    # the removable fallback, if written
+ls /boot/EFI/BOOT/BOOTX64.EFI                   # the removable fallback, if written
 ```
 
 For GRUB also confirm `grep -c '^menuentry' /boot/grub/grub.cfg` is non-zero and
 that your `root=` is the *last* one on the `linux` line. For a UKI, the proof is
-that `/efi/EFI/BOOT/BOOTX64.EFI` is the same file as the image in `/efi/EFI/Linux`.
+that `/boot/EFI/BOOT/BOOTX64.EFI` is the same file as the image in `/boot/EFI/Linux`.
 Step 95 re-runs all of these as its "Boot entry" check.
 
 ## Pitfalls and rollback
