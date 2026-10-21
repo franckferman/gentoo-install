@@ -73,7 +73,16 @@ If `/boot` lives *inside* the LUKS container, GRUB has to open it itself: add
 `GRUB_ENABLE_CRYPTODISK=y` and `GRUB_PRELOAD_MODULES="cryptodisk luks2"` (and
 `lvm` for an LVM root). With `/boot` on the ESP or its own plain partition GRUB
 never sees the encryption, so leave cryptodisk off (it only adds a second
-passphrase prompt). Then install and generate:
+passphrase prompt).
+
+**Warning:** GRUB only learned to open an `argon2id` LUKS2 keyslot in 2.12 (late
+2023), and this installer's default PBKDF is `argon2id` (chapter 05). An encrypted
+`/boot` opened by an older GRUB fails to unlock with a cryptic error. The default
+layout avoids this by keeping `/boot` on the unencrypted ESP; if you deliberately
+put `/boot` inside LUKS, either run GRUB 2.12 or newer, or give GRUB a pbkdf2
+keyslot of its own (`cryptsetup luksAddKey --pbkdf pbkdf2 "$DEV"`).
+
+Then install and generate:
 
 ```bash
 # chroot (UEFI)

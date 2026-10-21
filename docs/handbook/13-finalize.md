@@ -83,6 +83,9 @@ passphrase:
   it becomes the only way in.
 - With `crypt=keyfile`, the GPG-wrapped key sits on an unencrypted partition;
   copy it off the machine, because losing that partition loses the disk.
+- Back the LUKS2 header up off the machine (`cryptsetup luksHeaderBackup`, or
+  `tools/luks-header.sh`). A corrupted or overwritten header is unrecoverable even
+  with the passphrase in hand. See [chapter 05](05-encryption.md).
 
 ### 3. Unmount cleanly
 

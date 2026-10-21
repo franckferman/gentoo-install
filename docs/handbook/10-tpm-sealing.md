@@ -98,8 +98,9 @@ passphrase) to prove it may write a new slot. The installer keeps the key file
 from step 30 on a tmpfs; by hand you supply the passphrase. Then:
 
 ```bash
-# chroot (DEV is the raw LUKS partition, e.g. /dev/nvme0n1p2)
-clevis luks bind -s 2 -d DEV tpm2 '{"pcr_bank":"sha256","pcr_ids":"0,2,3,6"}'
+# chroot
+DEV=/dev/nvme0n1p2        # the raw LUKS partition
+clevis luks bind -s 2 -d "$DEV" tpm2 '{"pcr_bank":"sha256","pcr_ids":"0,2,3,6"}'
 ```
 
 `-s 2` is `crypt_tpm_slot` (the default). clevis prompts for an existing
@@ -109,7 +110,7 @@ which it actually used:
 
 ```bash
 # chroot
-clevis luks list -d DEV          # shows e.g.  2: tpm2 '{"pcr_ids":"0,2,3,6",...}'
+clevis luks list -d "$DEV"          # shows e.g.  2: tpm2 '{"pcr_ids":"0,2,3,6",...}'
 ```
 
 ### 3. Prove the TPM honours the binding
@@ -121,9 +122,9 @@ checked that key against the slot:
 
 ```bash
 # chroot
-clevis luks pass -d DEV -s 2 > /run/released.key   # TPM releases the sealed key
+clevis luks pass -d "$DEV" -s 2 > /run/released.key   # TPM releases the sealed key
 cryptsetup --test-passphrase open --key-file /run/released.key \
-  --key-slot 2 DEV && echo "TPM slot verified"
+  --key-slot 2 "$DEV" && echo "TPM slot verified"
 shred -u /run/released.key
 ```
 
@@ -146,8 +147,8 @@ way, and the binding can be made again afterwards.
 
 ```bash
 # chroot
-clevis luks list -d DEV                       # a tpm2 token on slot 2
-cryptsetup luksDump DEV | grep -A1 'Keyslots'  # slot 0 and slot 2 both in use
+clevis luks list -d "$DEV"                       # a tpm2 token on slot 2
+cryptsetup luksDump "$DEV" | grep -A1 'Keyslots'  # slot 0 and slot 2 both in use
 lsinitrd /boot/initramfs-<version>.img --mod | grep -E 'clevis'
 ```
 
@@ -169,7 +170,7 @@ initramfs and checks for both modules.
 - **Sealing against empty PCRs.** On firmware that never measured option ROMs,
   PCR 2/3/6 hold the empty-register value and add nothing to the policy. The
   installer warns; `./tools/tpm-pcr.sh show` says the same register by register.
-- **Removing a binding.** `clevis luks unbind -d DEV -s 2` drops the TPM slot
+- **Removing a binding.** `clevis luks unbind -d "$DEV" -s 2` drops the TPM slot
   and leaves slot 0 untouched. To re-exercise an existing sealing use the
   `tools/tpm-reseal` tool rather than binding a second slot beside the first.
 - **Resume / restart.** Only a successful seal writes the `tpm2` entry into

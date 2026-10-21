@@ -65,8 +65,10 @@ guessing attack expensive.
 
 **The keyslot convention.** Slot 0 is always a credential a human can produce,
 and nothing automatic ever writes to it, so removing an automatic unlock can
-never remove the last way in. Slot 1 is the recovery credential. Slot 2 is the
-TPM's. Each variant states its own use below.
+never remove the last way in. For the passphrase and keyfile variants the
+recovery credential is slot 1; for `luks-tpm` the recovery passphrase is slot 0
+itself (slot 1 is unused) and the TPM's sealed key is slot 2. Each variant states
+its own use below.
 
 **The proof doctrine.** Nothing here assumes a credential works; it exercises it.
 Every test goes through `cryptsetup open --test-passphrase
@@ -262,6 +264,14 @@ passphrase container with `crypt_recovery = no`, which has one and warns loudly.
 - **One credential only.** With `crypt_recovery = no`, a single secret stands
   between the machine and its data; forget it, mistype it at creation, or lose the
   note, and there is no reset. Keep the recovery slot.
+- **No header backup.** The LUKS2 header holds the wrapped master key and every
+  keyslot. If it is corrupted or overwritten, every credential you hold opens
+  nothing and the data is unrecoverable. Back the header up off the machine right
+  after formatting, to somewhere that is not this disk:
+  `cryptsetup luksHeaderBackup "$DEV" --header-backup-file luks-header.img`. The
+  project ships `tools/luks-header.sh` to back it up and restore it; store the
+  backup as carefully as the passphrase, since it is enough to attempt an offline
+  attack. Chapter 13 lists it among the things to record before you reboot.
 - **Passphrase kept beside the key file.** For `luks-keyfile-gpg`, the installer
   refuses a `crypt_pass_file` that sits in `crypt_key_dir`: the envelope and the
   passphrase that opens it would travel together, which is the same as shipping
