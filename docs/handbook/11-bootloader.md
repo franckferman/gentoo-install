@@ -214,7 +214,7 @@ Step 95 re-runs all of these as its "Boot entry" check.
 - **Uses:** `variants/boot/{grub,efistub,systemd-boot,uki}.sh`;
   `steps/70_kernel.sh` (for `kernel_cmdline`, `kernel_installed`); `lib/*.sh`
 - **Flags/settings:** `--bootloader grub|efistub|systemd-boot|uki`,
-  `--firmware auto|uefi|bios`, `--boot-label`, `--boot-timeout`,
+  `--firmware uefi|bios` (auto-detected if unset), `--boot-label`, `--boot-timeout`,
   `--boot-removable yes|no`, `--efistub-cmdline efibootmgr|builtin`,
   `--secureboot-keyfile PATH`, `--secureboot-cert PATH`
 - **Writes (by variant):** GRUB `/etc/default/grub`, `/boot/grub/grub.cfg`, the

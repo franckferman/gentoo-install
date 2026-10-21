@@ -67,12 +67,12 @@ because `sys-kernel/linux-firmware` alone unpacks 2.5 GiB.
 
 A record reads `name:mountpoint:size:filesystem`, where `size` is `rest`, `auto`
 (swap only), `N%`, `N%/min/max`, or an absolute size like `8G`, and the
-filesystem is a name or `@fs@` for whatever `--filesystem` says.
+filesystem is a name or `@fs@` for whatever `--disk-filesystem` says.
 
 **Swap** (`disk_swap`, default `auto`) is sized from RAM, clamped to the 2-8 GiB
 band, capped at a tenth of the disk, and dropped entirely on a disk under 4 GiB.
 
-**Filesystems** (`--filesystem`, default `ext4`): `ext4` (the boring answer every
+**Filesystems** (`--disk-filesystem`, default `ext4`): `ext4` (the boring answer every
 rescue disk repairs), `xfs`, `btrfs`, or `f2fs`. The ESP is always `vfat`.
 
 **Three gates, not one gate three times.** `wipe_disk` is a tri-state you can
@@ -210,7 +210,7 @@ inside it instead of failing the last `lvcreate`.
 
 ### 6. Format every volume
 
-The ESP is `vfat`; the data volumes get your `--filesystem`. These are the exact
+The ESP is `vfat`; the data volumes get your `--disk-filesystem`. These are the exact
 `mkfs` invocations the installer runs:
 
 ```bash
@@ -291,7 +291,7 @@ mounted here" check and then eat the stage3.
   `variants/layout/desktop.sh`, `variants/layout/server.sh`,
   `variants/layout/custom.sh`
 - **Flags/settings:** `--disk`, `--disk-layout minimal|server|desktop|custom`,
-  `--filesystem ext4|xfs|btrfs|f2fs`, `--lvm auto|yes|no`, `--list-disks`;
+  `--disk-filesystem ext4|xfs|btrfs|f2fs`, `--disk-lvm auto|yes|no`, `--list-disks`;
   settings `disk_esp_size`, `disk_esp_mount`, `disk_swap`, `disk_vg`,
   `disk_erase quick|luks|discard|zero`, `disk_allow_removable|mounted|system`,
   `wipe_disk ask|yes|no`, and for `custom` `disk_volumes` / `disk_volumes_file`

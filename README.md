@@ -190,8 +190,8 @@ Enter passphrase for /dev/vda2:
 **What none of it covers.** No `musl` or `hardened` stage has been installed,
 and `efistub` has not been booted from the removable path - that one needs a
 kernel with its command line compiled in, because the fallback is started with
-no load options at all. Version `0.1.0` should still meet a disk you would miss with `--dry-run`
-first.
+no load options at all. Version `0.1.0` is young: run `--dry-run` first, before you
+point it at a disk whose contents you would miss.
 
 One finding from that run is worth repeating here, because it is the difference
 between a disk that boots and a disk that does not. A UEFI firmware with no
@@ -565,7 +565,7 @@ vanishes when it has no work leaves you guessing.
 
 ## 80 boot
 
-Makes the kernel of step 70 reachable at power-on, with `grub`, `efistub` or
+Makes the kernel of step 70 reachable at power-on, with `grub`, `uki`, `efistub` or
 `systemd-boot`. Each verifies its own work before returning: the EFI file
 exists, `grub-script-check` accepts the generated configuration, the boot entry
 is in NVRAM, the loader entry points at files that are actually there. A
@@ -1003,7 +1003,7 @@ A typical rescue is three commands:
 ```
 gentoo-install.sh      the entry point, the step registry, and the only
                        place VERSION is declared
-lib/                   core, config, state, ui, disk, crypt, stage, chroot
+lib/                   core, config, cpu, state, ui, disk, crypt, stage, chroot
 steps/                 one file per step: 10_preflight.sh … 95_finalize.sh
 variants/crypt/        none, luks-passphrase, luks-tpm, luks-keyfile-gpg
 variants/boot/         grub, uki, efistub, systemd-boot

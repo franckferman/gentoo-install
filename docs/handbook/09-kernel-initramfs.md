@@ -180,9 +180,9 @@ zcat /proc/config.gz > .config                # or cp your own .config here
 For an encrypted or LVM root the configuration must carry at least
 `CONFIG_BLK_DEV_INITRD=y`, `CONFIG_MD=y`, `CONFIG_BLK_DEV_DM=y`,
 `CONFIG_DM_CRYPT=y`, and the crypto the LUKS header uses (`CONFIG_CRYPTO_AES`,
-`CONFIG_CRYPTO_XTS`, `CONFIG_CRYPTO_SHA256`,
+`CONFIG_CRYPTO_XTS`, `CONFIG_CRYPTO_SHA512` for the default `sha512` header hash,
 `CONFIG_CRYPTO_USER_API_SKCIPHER`). For `crypt=tpm` add `CONFIG_TCG_TPM`,
-`CONFIG_TCG_CRB`; for `bootloader=efistub` add `CONFIG_EFI=y`,
+`CONFIG_TCG_CRB`, and `CONFIG_CRYPTO_SHA256` for the TPM's sha256 PCR bank; for `bootloader=efistub` add `CONFIG_EFI=y`,
 `CONFIG_EFI_STUB=y`. Set them with the tree's own tool so dependencies resolve:
 
 ```bash

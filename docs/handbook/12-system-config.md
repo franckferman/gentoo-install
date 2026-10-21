@@ -257,7 +257,7 @@ empty) is a way in. Step 95's "A way in" check reads the same `/etc/shadow`.
 
 - **Step:** `90` - `steps/90_system.sh`
 - **Uses:** `lib/core.sh`, `lib/config.sh`, `lib/state.sh`, `lib/ui.sh`;
-  `data/services.tsv` (extra services)
+  `data/services.tsv` (optional extra services, read only if you create it)
 - **Flags/settings:** `--timezone`, `--locale`, `--locales`, `--keymap`,
   `--hostname`, `--domain`, `--root-lock yes|no`,
   `--groups`, `--accounts`, `--accounts-file`, `--user`, `--user-groups`,
