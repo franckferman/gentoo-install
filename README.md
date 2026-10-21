@@ -658,7 +658,9 @@ when something is wrong. `efistub` puts nothing between the firmware and the
 kernel, and gives up the menu and the fallback entry in exchange.
 `systemd-boot` is a directory of five-line entries, repairable from any machine
 that can mount FAT; it is UEFI-only by construction and refuses a BIOS run
-before touching anything.
+before touching anything. `uki` wraps the kernel, initramfs and command line into
+one signed EFI binary at the removable fallback path, so it needs no NVRAM entry
+and is the simplest shape to sign for Secure Boot; it is UEFI-only too.
 
 **Kernel** - `dist-kernel` is what a first Gentoo install should get: Portage
 installs a kernel like anything else, and `emerge -uDN @world` keeps it up to

@@ -134,9 +134,6 @@ echo 'sys-apps/systemd-utils boot kernel-install' >> /etc/portage/package.use/70
 emerge --verbose sys-apps/systemd-utils sys-boot/efibootmgr
 
 bootctl --esp-path=/boot install               # writes the loader + removable copy
-mkdir -p /boot/EFI/gentoo
-cp /boot/vmlinuz-<version> /boot/EFI/gentoo/
-cp /boot/initramfs-<version>.img /boot/EFI/gentoo/
 
 mkdir -p /boot/loader/entries
 cat > /boot/loader/loader.conf <<'EOF'
@@ -146,16 +143,19 @@ EOF
 cat > /boot/loader/entries/gentoo.conf <<EOF
 title      Gentoo Linux
 version    <version>
-linux      /EFI/gentoo/vmlinuz-<version>
-initrd     /EFI/gentoo/initramfs-<version>.img
+linux      /vmlinuz-<version>
+initrd     /initramfs-<version>.img
 options    root=/dev/mapper/gentoo ro rd.luks.uuid=luks-<UUID>
 EOF
 bootctl --esp-path=/boot list                  # the loader's own reading of the entry
 ```
 
-The `linux` and `initrd` paths are relative to the root of the ESP, not to
-`/boot`: systemd-boot knows only the FAT partition it was launched from. If the
-ESP is mounted at `/boot` the files are already there and are not copied.
+The `linux` and `initrd` paths are relative to the root of the ESP, which
+systemd-boot reads directly. With the ESP at `/boot` (the default) the kernel
+step 70 installed already sits at the ESP root, so the entry points straight at
+it and nothing is copied, which is exactly what the installer does. If you mount
+the ESP elsewhere, say `/efi`, copy the kernel and initramfs into a subdirectory
+on it (`/efi/EFI/gentoo/`) and point `linux` and `initrd` there instead.
 
 ### UKI (`--bootloader uki`, UEFI only)
 

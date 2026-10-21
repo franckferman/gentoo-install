@@ -167,8 +167,8 @@ disk_validate_config() {
   local esp
 
   disk_validate_layout "${CFG[disk_layout]}" "--disk-layout"
-  disk_validate_filesystem "${CFG[disk_filesystem]}" "--filesystem"
-  disk_validate_lvm "${CFG[disk_lvm]}" "--lvm"
+  disk_validate_filesystem "${CFG[disk_filesystem]}" "--disk-filesystem"
+  disk_validate_lvm "${CFG[disk_lvm]}" "--disk-lvm"
 
   if ! esp="$(disk_parse_size "${CFG[disk_esp_size]}" "disk_esp_size")"; then
     return 1
